@@ -16,20 +16,31 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 ## Technical Architecture
 
+
 ### Frontend
-- **Blazor Web App** with Server-Side Rendering (SSR) and Interactive WebAssembly components
-- Real-time communication using SignalR for instant game updates
-- Responsive web design accessible on desktop and mobile devices
-- Clean, terminal-style UI with configurable themes
+- **Blazor Web App** (Server mode) with SSR and interactive pages
+- Real-time client-server communication via Blazor Server’s built-in SignalR
+- Responsive web design for desktop and mobile
+- Terminal-style UI with configurable themes
+
+
+
 
 ### Backend
-- **.NET 8+ Web API** handling game logic and player actions
+- **.NET 8+ Blazor Server**: All game logic and state managed server-side
 - **Entity Framework Core** with SQLite for data persistence
-- **SignalR Hubs** for real-time multiplayer communication
-- **Background Services** for game world simulation (NPCs, spawning, etc.)
+- **RabbitMQ** for async messaging between users, NPCs, and system events
+- **OpenTelemetry** for distributed tracing, logging, and metrics
+- **.NET Aspire** as the app host for development:
+  - Orchestrates all services (web, RabbitMQ, database, etc.)
+  - Simplifies local development and service discovery
+  - Built-in OpenTelemetry and distributed tracing
+  - Easily run RabbitMQ and other dependencies as containers
+- **Background Services** for world simulation, NPCs, and event processing
+
 
 ### Database
-- **SQLite** database for local development and deployment simplicity
+- **SQLite** for local development and deployment simplicity
 - Designed for easy migration to PostgreSQL/SQL Server for production scaling
 
 ## Core Game Features
@@ -195,12 +206,12 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 ## Technical Features
 
-### 1. Real-Time Communication
-- **SignalR Integration**
-  - Instant message delivery
-  - Real-time game state updates
-  - Connection management and reconnection
-  - Scalable group management
+
+### 1. Real-Time & Async Communication
+- **Blazor Server** provides real-time updates between browser and server
+- **RabbitMQ** handles all async, cross-user, and NPC/system messaging
+  - Decouples game logic, enables scalable event-driven architecture
+  - All chat, combat, and world events flow through RabbitMQ
 
 ### 2. Data Management
 - **Entity Framework Core**
@@ -209,16 +220,18 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
   - Optimized queries for game performance
   - Audit logging for player actions
 
-### 3. Performance Optimization
+### 3. Performance & Observability
 - **Caching Strategy**
   - Redis-compatible caching for game state
   - Session state management
   - Static content optimization
-
 - **Scalability Design**
-  - Horizontal scaling preparation
-  - Load balancing considerations
+  - RabbitMQ enables distributed, event-driven scaling
+  - Load balancing and horizontal scaling ready
   - Database optimization for concurrent users
+- **Observability**
+  - OpenTelemetry for tracing, logging, and metrics
+  - Export to Azure Monitor, Jaeger, Zipkin, or other backends
 
 ### 4. Security Features
 - **Authentication & Authorization**

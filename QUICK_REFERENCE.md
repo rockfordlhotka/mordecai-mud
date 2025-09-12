@@ -1,117 +1,144 @@
+
 # Mordecai MUD - Quick Reference
 
 ## Technology Stack Summary
 
-| Component | Technology | Justification |
-|-----------|------------|---------------|
-| **Frontend** | Blazor Web App | Modern .NET web framework, real-time capabilities |
-| **Backend** | .NET 8+ Web API | High performance, robust ecosystem |
-| **Database** | SQLite → PostgreSQL | Simple start, scalable migration path |
-| **Real-time** | SignalR | Native .NET real-time communication |
-| **ORM** | Entity Framework Core | Code-first, strong typing, migrations |
-| **UI Style** | Terminal/Console Theme | Classic MUD aesthetic, accessibility |
+| Component    | Technology           | Justification                                 |
+|--------------|----------------------|-----------------------------------------------|
+| **Frontend** | Blazor Web App (Server) | Real-time UI via built-in SignalR, modern .NET |
+| **Backend**  | .NET 8+ Blazor Server | All game logic/state managed server-side      |
+| **App Host (dev)** | .NET Aspire     | Orchestrates all services, local RabbitMQ, OpenTelemetry |
+| **Async Messaging** | RabbitMQ        | Decoupled, scalable event-driven architecture |
+| **Observability** | OpenTelemetry    | Distributed tracing, logging, and metrics     |
+| **Database** | SQLite → PostgreSQL  | Simple start, scalable migration path         |
+| **ORM**      | Entity Framework Core| Code-first, strong typing, migrations         |
+| **UI Style** | Terminal/Console     | Classic MUD aesthetic, accessibility          |
 
 ## Core Game Systems
 
 ### Character System
-- **Races**: Human, Elf, Dwarf, Halfling, Orc
-- **Classes**: Warrior, Mage, Rogue, Cleric, Ranger  
-- **Levels**: 1-50 progression
-- **Stats**: STR, DEX, INT, WIS, CON, CHA
+- **Species**: Human, Elf, Dwarf, Halfling, Orc
+- **Attributes**: STR (Physicality), DEX (Dodge), END (Drive), INT (Reasoning), ITT (Awareness), WIL (Focus), PHY (Bearing)
+- **Skill System**:
+	- All characters start with 7 core attribute skills
+	- Weapon skills (Swords, Axes, Bows, etc.)
+	- Individual spell skills (each spell is a skill)
+	- Mana recovery skills (per magic school)
+	- Crafting skills (Blacksmithing, Alchemy, etc.)
+- **Progression**: Practice-based advancement (skills improve through use)
 
 ### World Design
-- **Structure**: Room-based navigation
-- **Scale**: Multiple zones with themes
-- **Persistence**: Player actions affect world state
-- **Time**: Dynamic day/night and weather
+- **Room-based world**: Interconnected rooms, multiple zones, dynamic weather/time
+- **Persistence**: Player actions affect world state, items persist, room changes persist
+
 
 ### Combat Mechanics
-- **Style**: Turn-based tactical combat
-- **Types**: PvE (monsters) and optional PvP
-- **Features**: Weapons, spells, status effects
-- **Balance**: Level-appropriate encounters
+- **Style**: Real-time with cooldowns (no turn-based rounds)
+- **Resolution**: All actions resolved via skill checks
+- **PvE/PvP**: Monsters, bosses, optional PvP, dueling, guild wars
+
+### Magic & Spells
+- **Individual spell skills**: Each spell is a skill, organized by school
+- **Mana system**: Separate mana pools and recovery skills per school
+- **Magic items**: Enchanted gear, consumables, artifacts
+
+
+### Social & Admin Features
+- **Communication**: Global/local chat, private messaging, guild chat (all via RabbitMQ async messaging)
+- **Guilds**: Player organizations, halls, ranks, competition
+- **Admin tools**: Web-based content creation (zones, rooms, NPCs, quests, items)
 
 ## Development Priorities
 
+
 ### Phase 1: World Foundation (Weeks 1-4)
-1. Project setup and .NET solution structure
-2. Database schema design with Entity Framework
-3. Basic Blazor application with authentication
-4. **Core room system and character movement (PRIORITY 1)**
-5. **Room descriptions, "look" commands, and neighboring room visibility**
-6. **In-world talking and basic communication**
+- Project setup and architecture
+- Database design and Entity Framework setup
+- Basic Blazor app structure and authentication
+- **Priority 1: Room system, movement, descriptions, look commands, in-world talking**
 
 ### Phase 2: Character Systems (Weeks 5-8)
-1. **Character creation system (PRIORITY 2)**
-2. **Skill-based progression and advancement**
-3. **Attribute system implementation**
-4. Character persistence and save/load
-5. Basic inventory framework
+- **Priority 2: Character creation, skill-based progression, attribute system**
+- Character persistence, save/load, basic inventory
 
 ### Phase 3: Combat Foundation (Weeks 9-12)
-1. **Basic combat mechanics (PRIORITY 3)**
-2. **Melee combat system**
-3. **Ranged combat (bows, throwing weapons)**
-4. **Spell casting system**
-5. Basic monster encounters and balance
+- **Priority 3: Real-time combat (melee, ranged, spells, cooldowns)**
+- Basic monster encounters, combat balance
 
-### Phase 4: Admin Tools & Social (Weeks 13-16)
-1. **Administrative content creation tools**
-2. **Zone and room creation interface**
-3. **NPC and quest creation tools**
-4. Real-time chat system (SignalR)
-5. Multi-player interactions and guilds
+### Phase 4: Social & Admin Tools (Weeks 13-16)
+- Real-time chat, multiplayer, guilds
+- **Admin content tools: zone/room/NPC/quest/item creation**
+
+### Phase 5: Content & Polish (Weeks 17-20)
+- Advanced quest system, magic schools, economy, performance, beta
+
+### Phase 6: Extended Features (Future)
+- Advanced crafting, complex quests, player housing, advanced PvP, mobile, community
 
 ## Key Technical Decisions
 
+
 ### Why Blazor Web App?
-- **Single Technology Stack**: Use C# for both frontend and backend
-- **Real-time Capabilities**: Native SignalR integration
-- **Modern Web Standards**: Progressive Web App potential
-- **Accessibility**: Better screen reader support than pure SPA
+- Single technology stack (C# frontend/backend)
+- Real-time UI via Blazor Server’s built-in SignalR
+- Modern web standards, PWA potential
+- Accessibility (screen reader support)
 
 ### Why SQLite First?
-- **Development Speed**: No external database setup required
-- **Deployment Simplicity**: Single file database, easy backup
-- **Migration Path**: EF Core makes PostgreSQL transition seamless
-- **Cost Effective**: No database hosting costs for small deployments
+- Fast development, no external DB needed
+- Easy deployment, simple backup
+- Seamless migration to PostgreSQL
 
-### Why SignalR for Real-time?
-- **Native Integration**: Built into .NET ecosystem
-- **Automatic Fallbacks**: WebSockets → Server-Sent Events → Long Polling
-- **Scaling Options**: Redis backplane for multi-server deployments
-- **Type Safety**: Strongly typed hubs with C# client
 
-## Success Metrics to Track
 
-### Technical Performance
-- Response time < 100ms for game commands
-- Support 50+ concurrent users (targeting 10-50)
-- 99.9% uptime target
+### Why RabbitMQ for Async Messaging?
+- Decouples game logic and user/NPC/system events
+- Enables scalable, event-driven architecture
+- All cross-user, NPC, and system messaging flows through RabbitMQ
+- Supports distributed processing and future microservices
+
+
+### Why OpenTelemetry for Observability?
+- Standardized distributed tracing, logging, and metrics
+- Works seamlessly with .NET and Blazor Server
+- Exportable to Azure Monitor, Jaeger, Zipkin, and more
+- Enables deep insight into app performance and issues
+
+### Why .NET Aspire for App Hosting (dev)?
+- Orchestrates all services (web, RabbitMQ, database, etc.)
+- Simplifies local development and service discovery
+- Built-in OpenTelemetry and distributed tracing
+- Easily run RabbitMQ and other dependencies as containers
+
+## Success Metrics
+
+### Technical
+- <100ms command response
+- 99.9% uptime
+- 50+ concurrent users (target 10-50)
 - Zero critical security vulnerabilities
 
-### Player Engagement
-- 70% player retention within 7 days
-- Average session length > 30 minutes
-- 80% of players reach level 10
-- 60% of players join social groups
+### Gameplay
+- 70% player retention (7 days)
+- Avg. session > 30 min
+- 80% reach skill milestone (level 10 equivalent)
+- 60% join guilds/groups
 
 ## Next Steps
 
-1. **Review and Approve Specification**: Ensure all features align with vision
-2. **Set Up Development Environment**: Create .NET solution structure
-3. **Design Database Schema**: Plan Entity Framework models
-4. **Create Project Architecture**: Establish folder structure and dependencies
-5. **Begin Phase 1 Implementation**: Start with authentication and basic rooms
+1. Review and approve specification
+2. Set up .NET solution structure
+3. Design Entity Framework models
+4. Establish project architecture
+5. Begin Phase 1: authentication and basic rooms
 
 ## Questions for Consideration
 
-1. **Skill System Details**: What specific skills do you envision? (swords, archery, magic schools, etc.)
-2. **Character Attributes**: Should we stick with the 7 attributes mentioned (STR, DEX, END, INT, INT, WIL, PB)?
-3. **Combat Mechanics**: Turn-based rounds, or real-time with cooldowns?
-4. **Admin Interface**: Should content creation tools be web-based or in-game commands?
-5. **Progression Rate**: How quickly should players advance skills and gain experience?
-6. **World Size**: How many rooms/zones should we plan for initially?
+1. Skill system: Any additional skills or categories?
+2. Progression: Any special rules for skill advancement?
+3. Admin interface: Web-based only, or in-game commands too?
+4. World size: Initial number of rooms/zones?
+5. Community: Out-of-game features (forums, wikis)?
 
 ---
 
