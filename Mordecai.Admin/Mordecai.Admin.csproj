@@ -12,7 +12,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0-rc.1.25451.107" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <!-- Removed Microsoft.AspNetCore.Components.Web 10.0.0-rc package: targets net10 only; using shared framework reference instead. -->
 
 </Project>
