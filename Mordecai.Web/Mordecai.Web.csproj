@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mordecai.Game\Mordecai.Game.csproj" />
+    <ProjectReference Include="..\Mordecai.Data\Mordecai.Data.csproj" />
+    <ProjectReference Include="..\Mordecai.Messaging\Mordecai.Messaging.csproj" />
+    <ProjectReference Include="..\Mordecai.Admin\Mordecai.Admin.csproj" />
+    <ProjectReference Include="..\Mordecai.BackgroundServices\Mordecai.BackgroundServices.csproj" />
+    <ProjectReference Include="..\Mordecai.ServiceDefaults\Mordecai.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+  <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
