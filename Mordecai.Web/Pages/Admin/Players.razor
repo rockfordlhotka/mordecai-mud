@@ -1,0 +1,15 @@
+@page "/admin/players"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>Player Management</h1>
+<p>This is a placeholder for the player management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>View player accounts and characters</li>
+    <li>Monitor player activity and progress</li>
+    <li>Manage player permissions and restrictions</li>
+    <li>Handle player reports and moderation</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

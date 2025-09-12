@@ -1,0 +1,159 @@
+@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Admin Dashboard - Mordecai MUD</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Admin Dashboard</h1>
+            <p class="lead">Welcome to the Mordecai MUD administration panel.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-map-marker text-primary me-2"></i>
+                        World Builder
+                    </h5>
+                    <p class="card-text">Create and manage rooms, zones, and world geography.</p>
+                    <a href="/admin/rooms" class="btn btn-primary">Manage Rooms</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-people text-success me-2"></i>
+                        NPCs
+                    </h5>
+                    <p class="card-text">Design and configure non-player characters and their behaviors.</p>
+                    <a href="/admin/npcs" class="btn btn-success">Manage NPCs</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-briefcase text-warning me-2"></i>
+                        Items
+                    </h5>
+                    <p class="card-text">Create weapons, armor, and other items for the game world.</p>
+                    <a href="/admin/items" class="btn btn-warning">Manage Items</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-task text-info me-2"></i>
+                        Quests
+                    </h5>
+                    <p class="card-text">Design quests and storylines for player progression.</p>
+                    <a href="/admin/quests" class="btn btn-info">Manage Quests</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-cog text-secondary me-2"></i>
+                        Skills
+                    </h5>
+                    <p class="card-text">Configure skill definitions and progression rates.</p>
+                    <a href="/admin/skills" class="btn btn-secondary">Manage Skills</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-person text-danger me-2"></i>
+                        Players
+                    </h5>
+                    <p class="card-text">Monitor and manage player accounts and characters.</p>
+                    <a href="/admin/players" class="btn btn-danger">Manage Players</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="oi oi-bar-chart text-dark me-2"></i>
+                        System Status
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Players Online</h6>
+                                <h4 class="text-primary">@playersOnline</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Total Rooms</h6>
+                                <h4 class="text-success">@totalRooms</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Active NPCs</h6>
+                                <h4 class="text-warning">@activeNpcs</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Server Uptime</h6>
+                                <h4 class="text-info">@serverUptime</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Placeholder data - will be replaced with actual service calls
+    private int playersOnline = 1;
+    private int totalRooms = 0;
+    private int activeNpcs = 0;
+    private string serverUptime = "0:00:00";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // TODO: Implement actual data retrieval
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        // Simulate loading data
+        await Task.Delay(100);
+        
+        // TODO: Replace with actual service calls
+        // playersOnline = await PlayerService.GetOnlineCountAsync();
+        // totalRooms = await WorldService.GetRoomCountAsync();
+        // activeNpcs = await NpcService.GetActiveCountAsync();
+        // serverUptime = (DateTime.Now - ServerStartTime).ToString(@"h\:mm\:ss");
+    }
+}

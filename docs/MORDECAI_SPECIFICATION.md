@@ -190,7 +190,8 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 ### 9. Administrative Tools
 - **Content Creation System**
-  - Web-based admin interface for authorized users
+  - Web-based admin interface integrated into main application
+  - Role-based access control for authorized users
   - Zone and room creation/editing tools
   - NPC creation and behavior scripting
   - Quest designer with branching logic

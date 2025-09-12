@@ -1,6 +1,6 @@
 ﻿@inherits LayoutComponentBase
 
-<PageTitle>Mordecai.Web</PageTitle>
+<PageTitle>Mordecai MUD</PageTitle>
 
 <div class="page">
     <div class="sidebar">
@@ -8,8 +8,16 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+        <div class="top-row px-4 auth">
+            <AuthorizeView>
+                <Authorized>
+                    <span>Welcome, @context.User.Identity?.Name!</span>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="Identity/Account/Login">Login</a>
+                    <a href="Identity/Account/Register">Register</a>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
 
         <article class="content px-4">

@@ -56,10 +56,9 @@ If uncertain between adding a new feature vs reinforcing these priorities, prefe
 - `Mordecai.Game`: Core domain models, services (movement, skills, combat skeleton)
 - `Mordecai.Messaging`: Message contracts, possibly thin dispatch helpers
 - `Mordecai.BackgroundServices`: Hosted services consuming/producing messages
-- `Mordecai.Web`: Blazor Server UI & minimal adapters
+- `Mordecai.Web`: Blazor Server UI & minimal adapters (includes admin content creation UI)
 - `Mordecai.ServiceDefaults`: Cross-cutting extensions (OpenTelemetry, resiliency, etc.)
 - `Mordecai.AppHost`: Aspire orchestration project
-- `Mordecai.Admin`: (Future) admin/content creation UI (scaffold gradually)
 
 ## When Adding Code (Checklist)
 1. Does this change advance one of the active priority phases?

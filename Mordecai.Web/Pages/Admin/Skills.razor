@@ -1,0 +1,16 @@
+@page "/admin/skills"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>Skill Management</h1>
+<p>This is a placeholder for the skill management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>Configure the 7 core attribute skills</li>
+    <li>Define weapon skills and progression</li>
+    <li>Manage individual spell skills</li>
+    <li>Set mana recovery rates by magic school</li>
+    <li>Adjust skill advancement algorithms</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

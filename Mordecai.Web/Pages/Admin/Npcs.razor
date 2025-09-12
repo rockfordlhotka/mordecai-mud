@@ -1,0 +1,15 @@
+@page "/admin/npcs"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>NPC Management</h1>
+<p>This is a placeholder for the NPC management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>Create and design NPCs</li>
+    <li>Set NPC behaviors and AI</li>
+    <li>Configure NPC inventories</li>
+    <li>Assign NPCs to rooms</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

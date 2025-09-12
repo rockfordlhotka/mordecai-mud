@@ -46,7 +46,7 @@
 ### Social & Admin Features
 - **Communication**: Global/local chat, private messaging, guild chat (all via RabbitMQ async messaging)
 - **Guilds**: Player organizations, halls, ranks, competition
-- **Admin tools**: Web-based content creation (zones, rooms, NPCs, quests, items)
+- **Admin tools**: Web-based content creation integrated into main app (zones, rooms, NPCs, quests, items)
 
 ## Development Priorities
 
@@ -67,7 +67,7 @@
 
 ### Phase 4: Social & Admin Tools (Weeks 13-16)
 - Real-time chat, multiplayer, guilds
-- **Admin content tools: zone/room/NPC/quest/item creation**
+- **Admin content tools integrated into web app: zone/room/NPC/quest/item creation**
 
 ### Phase 5: Content & Polish (Weeks 17-20)
 - Advanced quest system, magic schools, economy, performance, beta

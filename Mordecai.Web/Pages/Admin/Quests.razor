@@ -1,0 +1,15 @@
+@page "/admin/quests"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>Quest Management</h1>
+<p>This is a placeholder for the quest management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>Design quest storylines</li>
+    <li>Create branching quest logic</li>
+    <li>Set quest rewards and requirements</li>
+    <li>Manage quest progression chains</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

@@ -1,0 +1,261 @@
+@page "/play"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+<PageTitle>Play Mordecai MUD</PageTitle>
+
+<div class="container-fluid h-100">
+    <div class="row h-100">
+        <div class="col-12 h-100">
+            <div class="game-container h-100 d-flex flex-column">
+                <div class="game-header bg-dark text-white p-2">
+                    <h4 class="m-0">Mordecai MUD - Welcome @context.User.Identity?.Name</h4>
+                </div>
+                
+                <div class="game-output flex-grow-1 p-3 bg-black text-light overflow-auto" style="font-family: 'Courier New', monospace; font-size: 14px;">
+                    @if (gameMessages.Any())
+                    {
+                        @foreach (var message in gameMessages)
+                        {
+                            <div class="game-message mb-1">@((MarkupString)message)</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="welcome-message">
+                            <p class="text-success">Welcome to Mordecai MUD!</p>
+                            <p>A skill-based, real-time text adventure where your actions shape your character.</p>
+                            <p class="text-info">Getting Started:</p>
+                            <ul>
+                                <li>Type <span class="text-warning">'look'</span> to examine your surroundings</li>
+                                <li>Type <span class="text-warning">'help'</span> to see available commands</li>
+                                <li>Type <span class="text-warning">'who'</span> to see other players online</li>
+                                <li>Type <span class="text-warning">'say [message]'</span> to talk to others in the room</li>
+                            </ul>
+                            <p class="text-muted">Your character begins their journey here...</p>
+                        </div>
+                    }
+                </div>
+                
+                <div class="game-input bg-secondary p-2">
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark text-light">&gt;</span>
+                        <input @bind="currentCommand" @onkeypress="OnKeyPress" type="text" 
+                               class="form-control bg-dark text-light border-secondary" 
+                               placeholder="Enter command..." 
+                               @ref="commandInput" />
+                        <button class="btn btn-outline-light" @onclick="SendCommand" disabled="@isProcessing">
+                            @if (isProcessing)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? context { get; set; }
+    
+    private string currentCommand = string.Empty;
+    private bool isProcessing = false;
+    private ElementReference commandInput;
+    private List<string> gameMessages = new();
+    private List<string> commandHistory = new();
+    private int historyIndex = -1;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await commandInput.FocusAsync();
+            AddMessage("You find yourself in the starting area of Mordecai.", "text-info");
+            AddMessage("Type 'look' to examine your surroundings.", "text-muted");
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendCommand();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            NavigateHistory(-1);
+        }
+        else if (e.Key == "ArrowDown")
+        {
+            NavigateHistory(1);
+        }
+    }
+
+    private void NavigateHistory(int direction)
+    {
+        if (commandHistory.Count == 0) return;
+
+        historyIndex += direction;
+        if (historyIndex < 0) historyIndex = 0;
+        if (historyIndex >= commandHistory.Count) historyIndex = commandHistory.Count - 1;
+
+        if (historyIndex >= 0 && historyIndex < commandHistory.Count)
+        {
+            currentCommand = commandHistory[historyIndex];
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendCommand()
+    {
+        if (string.IsNullOrWhiteSpace(currentCommand) || isProcessing)
+            return;
+
+        isProcessing = true;
+        var command = currentCommand.Trim();
+        
+        // Add to history
+        if (!string.IsNullOrEmpty(command))
+        {
+            commandHistory.Add(command);
+            if (commandHistory.Count > 50) // Limit history size
+            {
+                commandHistory.RemoveAt(0);
+            }
+            historyIndex = commandHistory.Count;
+        }
+
+        // Display the command
+        AddMessage($"> {command}", "text-warning");
+
+        // Process the command (stub implementation)
+        await ProcessGameCommand(command);
+
+        currentCommand = string.Empty;
+        isProcessing = false;
+        
+        await commandInput.FocusAsync();
+        StateHasChanged();
+    }
+
+    private async Task ProcessGameCommand(string command)
+    {
+        // Simulate processing delay
+        await Task.Delay(100);
+
+        var cmd = command.ToLower().Trim();
+        
+        switch (cmd)
+        {
+            case "look":
+            case "l":
+                AddMessage("You are in the Tutorial Area.", "text-success");
+                AddMessage("This is a safe starting location for new adventurers. The area is well-lit and peaceful.");
+                AddMessage("Obvious exits: north, south, east, west");
+                break;
+                
+            case "help":
+                AddMessage("Available Commands:", "text-info");
+                AddMessage("look/l - Examine your surroundings");
+                AddMessage("say [message] - Speak to others in the room");
+                AddMessage("who - See who else is online");
+                AddMessage("north/n, south/s, east/e, west/w - Move in those directions");
+                AddMessage("quit - Leave the game");
+                break;
+                
+            case "who":
+                AddMessage("Players currently online:", "text-info");
+                AddMessage($"  {context?.User?.Identity?.Name ?? "Unknown"} (you)");
+                AddMessage("1 player total.");
+                break;
+                
+            case "quit":
+                AddMessage("Thank you for playing Mordecai MUD!", "text-success");
+                AddMessage("Your progress has been saved.");
+                break;
+                
+            case "north":
+            case "n":
+            case "south":
+            case "s":
+            case "east":
+            case "e":
+            case "west":
+            case "w":
+                AddMessage("You cannot go that way. (Movement system not yet implemented)", "text-danger");
+                break;
+                
+            default:
+                if (cmd.StartsWith("say "))
+                {
+                    var message = command.Substring(4).Trim();
+                    if (!string.IsNullOrEmpty(message))
+                    {
+                        AddMessage($"You say: {message}", "text-success");
+                        AddMessage("(No other players in the room to hear you.)", "text-muted");
+                    }
+                    else
+                    {
+                        AddMessage("Say what?", "text-warning");
+                    }
+                }
+                else
+                {
+                    AddMessage($"Unknown command: '{command}'. Type 'help' for available commands.", "text-danger");
+                }
+                break;
+        }
+    }
+
+    private void AddMessage(string message, string cssClass = "")
+    {
+        var formattedMessage = !string.IsNullOrEmpty(cssClass) 
+            ? $"<span class='{cssClass}'>{message}</span>" 
+            : message;
+        
+        gameMessages.Add(formattedMessage);
+        
+        // Limit message history to prevent memory issues
+        if (gameMessages.Count > 1000)
+        {
+            gameMessages.RemoveRange(0, 100);
+        }
+    }
+}
+
+<style>
+    .game-container {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        min-height: 600px;
+    }
+    
+    .game-output {
+        font-family: 'Courier New', monospace;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .game-output::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .game-output::-webkit-scrollbar-track {
+        background: #2d3748;
+    }
+    
+    .game-output::-webkit-scrollbar-thumb {
+        background: #4a5568;
+        border-radius: 4px;
+    }
+    
+    .game-output::-webkit-scrollbar-thumb:hover {
+        background: #718096;
+    }
+</style>

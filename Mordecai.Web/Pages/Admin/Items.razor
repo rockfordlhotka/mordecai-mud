@@ -1,0 +1,15 @@
+@page "/admin/items"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>Item Management</h1>
+<p>This is a placeholder for the item management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>Create weapons, armor, and other items</li>
+    <li>Set item statistics and properties</li>
+    <li>Define item behaviors and effects</li>
+    <li>Manage item rarity and economics</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

@@ -1,0 +1,15 @@
+@page "/admin/rooms"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<h1>Room Management</h1>
+<p>This is a placeholder for the room management interface.</p>
+<p>Features to implement:</p>
+<ul>
+    <li>Create new rooms</li>
+    <li>Edit existing rooms</li>
+    <li>Connect rooms with exits</li>
+    <li>Set room descriptions and properties</li>
+</ul>
+
+<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>

@@ -4,9 +4,15 @@
     <ProjectReference Include="..\Mordecai.Game\Mordecai.Game.csproj" />
     <ProjectReference Include="..\Mordecai.Data\Mordecai.Data.csproj" />
     <ProjectReference Include="..\Mordecai.Messaging\Mordecai.Messaging.csproj" />
-    <ProjectReference Include="..\Mordecai.Admin\Mordecai.Admin.csproj" />
     <ProjectReference Include="..\Mordecai.BackgroundServices\Mordecai.BackgroundServices.csproj" />
     <ProjectReference Include="..\Mordecai.ServiceDefaults\Mordecai.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,9 +1,113 @@
 ﻿@page "/"
 
-<PageTitle>Index</PageTitle>
+<PageTitle>Welcome to Mordecai MUD</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="hero-section text-center py-5">
+    <h1 class="display-4 mb-4">Welcome to Mordecai MUD</h1>
+    <p class="lead mb-4">A modern, skill-based text adventure where your actions shape your character</p>
+    
+    <AuthorizeView>
+        <Authorized>
+            <a href="/play" class="btn btn-primary btn-lg me-3">
+                <span class="oi oi-media-play me-2"></span>Continue Your Adventure
+            </a>
+        </Authorized>
+        <NotAuthorized>
+            <a href="/Identity/Account/Register" class="btn btn-success btn-lg me-3">
+                <span class="oi oi-person me-2"></span>Create Account
+            </a>
+            <a href="/Identity/Account/Login" class="btn btn-outline-primary btn-lg">
+                <span class="oi oi-account-login me-2"></span>Login
+            </a>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
 
-Welcome to your new app.
+<div class="container">
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <span class="oi oi-cog text-primary me-2"></span>
+                        Skill-Based Progression
+                    </h5>
+                    <p class="card-text">
+                        No experience points or levels. Master skills through practice with our unique 
+                        7-attribute system: Physicality, Dodge, Drive, Reasoning, Awareness, Focus, and Bearing.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <span class="oi oi-flash text-warning me-2"></span>
+                        Real-Time Combat
+                    </h5>
+                    <p class="card-text">
+                        Engage in dynamic combat with cooldown-based actions. Master weapons, spells, 
+                        and tactics as your skills improve through use.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <span class="oi oi-people text-success me-2"></span>
+                        Social Adventure
+                    </h5>
+                    <p class="card-text">
+                        Join guilds, form parties, and explore a persistent world with other players. 
+                        Every action matters in our intimate community.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-5">
+        <div class="col-lg-8 mx-auto">
+            <h2 class="text-center mb-4">Game Features</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Individual spell skills</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Magic school mana recovery</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Weapon mastery system</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Crafting and professions</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Dynamic quest system</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Player vs player combat</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Guild wars and politics</li>
+                        <li class="mb-2"><span class="oi oi-check text-success me-2"></span>Persistent world economy</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+<style>
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        margin: -1rem -1rem 2rem -1rem;
+    }
+    
+    .card {
+        transition: transform 0.2s;
+    }
+    
+    .card:hover {
+        transform: translateY(-5px);
+    }
+</style>
