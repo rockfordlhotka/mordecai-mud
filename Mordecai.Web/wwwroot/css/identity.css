@@ -1,0 +1,99 @@
+/* MUD Theme Identity Pages */
+.identity-container {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Courier New', 'Consolas', monospace;
+}
+
+.identity-card {
+    background: rgba(13, 13, 13, 0.95);
+    border: 2px solid #4a4a4a;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(74, 74, 74, 0.3);
+    padding: 2rem;
+    max-width: 400px;
+    width: 100%;
+    color: #e0e0e0;
+}
+
+.identity-card h2 {
+    color: #ffd700;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.mud-form-control {
+    background: rgba(30, 30, 30, 0.8);
+    border: 1px solid #4a4a4a;
+    color: #e0e0e0;
+    border-radius: 5px;
+    transition: border-color 0.3s ease;
+}
+
+.mud-form-control:focus {
+    background: rgba(30, 30, 30, 0.9);
+    border-color: #ffd700;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+    color: #e0e0e0;
+}
+
+.mud-form-control::placeholder {
+    color: #888;
+}
+
+.mud-btn-primary {
+    background: linear-gradient(45deg, #8b4513, #cd853f);
+    border: none;
+    color: #fff;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s ease;
+    border-radius: 5px;
+}
+
+.mud-btn-primary:hover {
+    background: linear-gradient(45deg, #a0522d, #daa520);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(139, 69, 19, 0.4);
+}
+
+.mud-link {
+    color: #87ceeb;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.mud-link:hover {
+    color: #ffd700;
+    text-decoration: underline;
+}
+
+.text-danger {
+    color: #ff6b6b !important;
+    font-size: 0.875rem;
+}
+
+.form-floating > label {
+    color: #b0b0b0;
+}
+
+.form-check-input {
+    background-color: rgba(30, 30, 30, 0.8);
+    border-color: #4a4a4a;
+}
+
+.form-check-input:checked {
+    background-color: #ffd700;
+    border-color: #ffd700;
+}
+
+.navbar-divider {
+    border-color: #4a4a4a;
+    margin: 1rem 0;
+}

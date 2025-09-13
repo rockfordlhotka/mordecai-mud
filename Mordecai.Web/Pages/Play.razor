@@ -1,6 +1,9 @@
 @page "/play"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 @attribute [Authorize]
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Play Mordecai MUD</PageTitle>
 
@@ -9,7 +12,7 @@
         <div class="col-12 h-100">
             <div class="game-container h-100 d-flex flex-column">
                 <div class="game-header bg-dark text-white p-2">
-                    <h4 class="m-0">Mordecai MUD - Welcome @context.User.Identity?.Name</h4>
+                    <h4 class="m-0">Mordecai MUD - Welcome @currentUserName</h4>
                 </div>
                 
                 <div class="game-output flex-grow-1 p-3 bg-black text-light overflow-auto" style="font-family: 'Courier New', monospace; font-size: 14px;">
@@ -59,15 +62,19 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    private HttpContext? context { get; set; }
-    
+    private string currentUserName = "Adventurer";
     private string currentCommand = string.Empty;
     private bool isProcessing = false;
     private ElementReference commandInput;
     private List<string> gameMessages = new();
     private List<string> commandHistory = new();
     private int historyIndex = -1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserName = authState.User?.Identity?.Name ?? "Adventurer";
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -170,7 +177,7 @@
                 
             case "who":
                 AddMessage("Players currently online:", "text-info");
-                AddMessage($"  {context?.User?.Identity?.Name ?? "Unknown"} (you)");
+                AddMessage($"  {currentUserName} (you)");
                 AddMessage("1 player total.");
                 break;
                 
