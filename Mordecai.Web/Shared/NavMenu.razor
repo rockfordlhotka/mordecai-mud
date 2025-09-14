@@ -1,4 +1,8 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿@using Microsoft.AspNetCore.Antiforgery
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAntiforgery Antiforgery
+
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">Mordecai MUD</a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
@@ -18,7 +22,7 @@
         <AuthorizeView>
             <Authorized>
                 <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="play">
+                    <NavLink class="nav-link" href="characters">
                         <span class="oi oi-media-play" aria-hidden="true"></span> Play Game
                     </NavLink>
                 </div>
@@ -86,6 +90,7 @@
                 <hr class="navbar-divider" />
                 <div class="nav-item px-3">
                     <form method="post" action="Identity/Account/LogOut">
+                        <input name="__RequestVerificationToken" type="hidden" value="@antiforgeryToken" />
                         <button type="submit" class="nav-link btn btn-link">
                             <span class="oi oi-account-logout" aria-hidden="true"></span> Logout
                         </button>
@@ -100,8 +105,19 @@
 
 @code {
     private bool collapseNavMenu = true;
+    private string antiforgeryToken = string.Empty;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override void OnInitialized()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            var tokens = Antiforgery.GetAndStoreTokens(httpContext);
+            antiforgeryToken = tokens.RequestToken ?? string.Empty;
+        }
+    }
 
     private void ToggleNavMenu()
     {

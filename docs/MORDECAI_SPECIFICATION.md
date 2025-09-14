@@ -46,6 +46,11 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 ## Core Game Features
 
 ### 1. Player System
+- **Account & Characters**
+  - Each player account may own multiple characters (initial soft cap 3; configurable)
+  - Upon login, players are taken to a Character Selection screen listing their existing characters (name, species, last played)
+  - From this screen players can: Create New Character, Delete (soft-delete future), or Enter World with a selected character
+  - Future: Recently played character shortcut on landing page
 - **Character Creation**
   - Choose from multiple species (Human, Elf, Dwarf, Halfling, Orc)
   - Customize appearance and background
@@ -284,6 +289,7 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 ### Phase 2: Character Systems (Weeks 5-8)
 - **Priority 2: Character creation system**
+  - Multi-character per account selection UI (list + create)
 - **Skill-based progression and advancement**
 - **Attribute system implementation**
 - Character persistence and save/load

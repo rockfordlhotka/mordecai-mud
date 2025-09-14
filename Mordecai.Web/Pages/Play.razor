@@ -1,9 +1,14 @@
+@page "/play/{characterId:guid}"
 @page "/play"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Mordecai.Web.Data.ApplicationDbContext Db
+@inject NavigationManager NavigationManager
+@using Microsoft.EntityFrameworkCore
+@using Mordecai.Web.Data
 
 <PageTitle>Play Mordecai MUD</PageTitle>
 
@@ -12,7 +17,7 @@
         <div class="col-12 h-100">
             <div class="game-container h-100 d-flex flex-column">
                 <div class="game-header bg-dark text-white p-2">
-                    <h4 class="m-0">Mordecai MUD - Welcome @currentUserName</h4>
+                    <h4 class="m-0">Mordecai MUD - @characterName (@currentUserName)</h4>
                 </div>
                 
                 <div class="game-output flex-grow-1 p-3 bg-black text-light overflow-auto" style="font-family: 'Courier New', monospace; font-size: 14px;">
@@ -43,7 +48,7 @@
                 <div class="game-input bg-secondary p-2">
                     <div class="input-group">
                         <span class="input-group-text bg-dark text-light">&gt;</span>
-                        <input @bind="currentCommand" @onkeypress="OnKeyPress" type="text" 
+                        <input @bind="currentCommand" @bind:event="oninput" @onkeydown="OnKeyDown" type="text" 
                                class="form-control bg-dark text-light border-secondary" 
                                placeholder="Enter command..." 
                                @ref="commandInput" />
@@ -62,7 +67,10 @@
 </div>
 
 @code {
+    [Parameter] public Guid? characterId { get; set; }
     private string currentUserName = "Adventurer";
+    private string characterName = "Unknown";
+    private string currentUserId = string.Empty;
     private string currentCommand = string.Empty;
     private bool isProcessing = false;
     private ElementReference commandInput;
@@ -72,8 +80,30 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // If no character ID provided, redirect to character selection
+        if (characterId == null || characterId == Guid.Empty)
+        {
+            NavigationManager.NavigateTo("/characters");
+            return;
+        }
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        currentUserName = authState.User?.Identity?.Name ?? "Adventurer";
+        var user = authState.User;
+        currentUserName = user?.Identity?.Name ?? "Adventurer";
+        currentUserId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
+        if (characterId != Guid.Empty)
+        {
+            var character = await Db.Characters.AsNoTracking().FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == currentUserId);
+            if (character is not null)
+            {
+                characterName = character.Name;
+            }
+            else
+            {
+                characterName = "(Invalid Character)";
+            }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -87,7 +117,7 @@
         }
     }
 
-    private async Task OnKeyPress(KeyboardEventArgs e)
+    private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {

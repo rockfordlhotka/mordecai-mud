@@ -9,4 +9,15 @@ public class ApplicationDbContext : IdentityDbContext
         : base(options)
     {
     }
+
+    public DbSet<Character> Characters => Set<Character>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+        builder.Entity<Character>(entity =>
+        {
+            entity.HasIndex(c => new { c.UserId, c.Name }).IsUnique();
+        });
+    }
 }
