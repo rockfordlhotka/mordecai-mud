@@ -35,6 +35,9 @@ builder.Services.AddGameMessaging();
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();
 
+// Add target resolution service as scoped
+builder.Services.AddScoped<TargetResolutionService>();
+
 // Add game action service as scoped
 builder.Services.AddScoped<GameActionService>();
 

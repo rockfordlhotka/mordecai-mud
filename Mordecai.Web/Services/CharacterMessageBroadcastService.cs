@@ -152,6 +152,7 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             PlayerJoined joined => $"{joined.CharacterName} enters the game.",
             PlayerDisconnected disconnected => $"{disconnected.CharacterName} disconnects from the game.",
             
+            ChatMessage chat when chat.IsTargeted => FormatTargetedChatMessage(chat),
             ChatMessage chat => $"{chat.CharacterName} {GetChatVerb(chat.ChatType)}, \"{chat.Message}\"",
             GlobalChatMessage globalChat => $"[{globalChat.Channel.ToUpper()}] {globalChat.CharacterName}: {globalChat.Message}",
             EmoteMessage emote when emote.IsTargeted && emote.TargetCharacterName != null => 
@@ -177,6 +178,32 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             
             _ => string.Empty
         };
+    }
+
+    private static string FormatTargetedChatMessage(ChatMessage chat)
+    {
+        if (!chat.IsTargeted || string.IsNullOrEmpty(chat.TargetName))
+            return $"{chat.CharacterName} {GetChatVerb(chat.ChatType)}, \"{chat.Message}\"";
+
+        var verb = GetChatVerb(chat.ChatType);
+        var preposition = chat.ChatType switch
+        {
+            ChatType.Say => "to",
+            ChatType.Whisper => "to",
+            ChatType.Yell => "at",
+            ChatType.Tell => "to",
+            _ => "to"
+        };
+
+        var targetDescription = chat.TargetType switch
+        {
+            Mordecai.Messaging.Messages.TargetType.Character => chat.TargetName,
+            Mordecai.Messaging.Messages.TargetType.Npc => $"the {chat.TargetName}",
+            Mordecai.Messaging.Messages.TargetType.Mob => $"the {chat.TargetName}",
+            _ => chat.TargetName
+        };
+
+        return $"{chat.CharacterName} {verb}s {preposition} {targetDescription}, \"{chat.Message}\"";
     }
 
     private static string GetChatVerb(ChatType chatType) => chatType switch

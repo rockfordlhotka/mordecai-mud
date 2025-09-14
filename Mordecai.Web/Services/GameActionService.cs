@@ -10,13 +10,16 @@ namespace Mordecai.Web.Services;
 public class GameActionService
 {
     private readonly IGameMessagePublisher _messagePublisher;
+    private readonly TargetResolutionService _targetResolution;
     private readonly ILogger<GameActionService> _logger;
 
     public GameActionService(
         IGameMessagePublisher messagePublisher,
+        TargetResolutionService targetResolution,
         ILogger<GameActionService> logger)
     {
         _messagePublisher = messagePublisher;
+        _targetResolution = targetResolution;
         _logger = logger;
     }
 
@@ -51,27 +54,80 @@ public class GameActionService
     }
 
     /// <summary>
-    /// Example: Handles sending a chat message
+    /// Handles sending a chat message, with optional targeting
     /// </summary>
-    public async Task HandleChatMessageAsync(
+    public async Task<string> HandleChatMessageAsync(
         Guid characterId,
         string characterName,
         int roomId,
         string message,
-        ChatType chatType = ChatType.Say)
+        ChatType chatType = ChatType.Say,
+        string? targetName = null)
     {
         try
         {
-            var chatMessage = new ChatMessage(characterId, characterName, roomId, message, chatType);
+            CommunicationTarget? target = null;
+            
+            // If a target name is provided, try to resolve it
+            if (!string.IsNullOrWhiteSpace(targetName))
+            {
+                if (!TargetResolutionService.IsValidTargetName(targetName))
+                {
+                    return "Invalid target name.";
+                }
+
+                target = await _targetResolution.FindTargetInRoomAsync(targetName, roomId, characterId);
+                if (target == null)
+                {
+                    return $"There is no '{targetName}' here.";
+                }
+            }
+
+            // Create and publish the chat message
+            var chatMessage = new ChatMessage(
+                characterId, 
+                characterName, 
+                roomId, 
+                message, 
+                chatType,
+                target?.Id,
+                target?.Name,
+                target?.Type);
+
             await _messagePublisher.PublishAsync(chatMessage);
 
-            _logger.LogDebug("Published chat message from character {CharacterId} in room {RoomId}", 
-                characterId, roomId);
+            // Return feedback message for the speaker
+            var feedback = target != null 
+                ? $"You {GetChatVerb(chatType)} to {target.Name}: {message}"
+                : $"You {GetChatVerb(chatType)}: {message}";
+
+            _logger.LogDebug("Published {ChatType} message from character {CharacterId} in room {RoomId}{TargetInfo}", 
+                chatType, characterId, roomId, target != null ? $" targeting {target.Name}" : "");
+
+            return feedback;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish chat message for character {CharacterId}", characterId);
-            throw;
+            return "An error occurred while sending your message.";
+        }
+    }
+
+    /// <summary>
+    /// Gets all available targets in a room for auto-completion or help
+    /// </summary>
+    public async Task<IReadOnlyList<CommunicationTarget>> GetAvailableTargetsAsync(
+        int roomId, 
+        Guid? excludeCharacterId = null)
+    {
+        try
+        {
+            return await _targetResolution.GetAllTargetsInRoomAsync(roomId, excludeCharacterId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get available targets in room {RoomId}", roomId);
+            return Array.Empty<CommunicationTarget>();
         }
     }
 
@@ -161,4 +217,14 @@ public class GameActionService
             throw;
         }
     }
+
+    private static string GetChatVerb(ChatType chatType) => chatType switch
+    {
+        ChatType.Say => "say",
+        ChatType.Whisper => "whisper",
+        ChatType.Yell => "yell",
+        ChatType.Tell => "tell",
+        ChatType.Emote => "emote",
+        _ => "say"
+    };
 }

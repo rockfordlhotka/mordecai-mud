@@ -12,6 +12,7 @@
 @inject NavigationManager NavigationManager
 @inject CharacterMessageBroadcastService MessageBroadcastService
 @inject IGameMessagePublisher MessagePublisher
+@inject GameActionService GameActionService
 @using Microsoft.EntityFrameworkCore
 @using Mordecai.Web.Data
 @implements IDisposable
@@ -256,10 +257,12 @@
                 case "help":
                     AddMessage("Available Commands:", "text-info");
                     AddMessage("look/l - Examine your surroundings");
-                    AddMessage("say [message] - Speak to others in the room");
+                    AddMessage("say [message] - Speak to everyone in the room");
+                    AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
                     AddMessage("ooc [message] - Speak on the out-of-character channel");
                     AddMessage("emote [action] - Perform an emotive action");
                     AddMessage("who - See who else is online");
+                    AddMessage("targets - List all possible targets in the room");
                     AddMessage("north/n, south/s, east/e, west/w - Move in those directions");
                     AddMessage("quit - Leave the game");
                     break;
@@ -331,16 +334,77 @@
                     }
                     break;
                     
+                case "targets":
+                    var targets = await GameActionService.GetAvailableTargetsAsync(currentRoomId.Value, characterId);
+                    if (targets.Any())
+                    {
+                        AddMessage("Available targets in this room:", "text-info");
+                        foreach (var target in targets)
+                        {
+                            var typeDescription = target.Type switch
+                            {
+                                Mordecai.Messaging.Messages.TargetType.Character => "character",
+                                Mordecai.Messaging.Messages.TargetType.Npc => "NPC",
+                                Mordecai.Messaging.Messages.TargetType.Mob => "mob",
+                                _ => "unknown"
+                            };
+                            var onlineStatus = target.IsOnline ? "" : " (offline)";
+                            AddMessage($"  {target.Name} ({typeDescription}){onlineStatus}");
+                        }
+                    }
+                    else
+                    {
+                        AddMessage("There are no other targets in this room.", "text-muted");
+                    }
+                    break;
+                    
                 default:
                     if (cmd.StartsWith("say ") && parts.Length > 1)
                     {
-                        var message = string.Join(" ", parts.Skip(1));
+                        string targetName = null;
+                        string message;
+                        
+                        // Check if this might be a targeted say command
+                        if (parts.Length > 2)
+                        {
+                            // Try to parse as "say [target] [message]"
+                            var potentialTarget = parts[1];
+                            var remainingMessage = string.Join(" ", parts.Skip(2));
+                            
+                            // Check if the potential target exists
+                            var target = await GameActionService.GetAvailableTargetsAsync(currentRoomId.Value, characterId);
+                            var foundTarget = target.FirstOrDefault(t => 
+                                t.Name.Equals(potentialTarget, StringComparison.OrdinalIgnoreCase) ||
+                                t.Name.ToLowerInvariant().StartsWith(potentialTarget.ToLowerInvariant()));
+                            
+                            if (foundTarget != null)
+                            {
+                                targetName = potentialTarget;
+                                message = remainingMessage;
+                            }
+                            else
+                            {
+                                // Not a valid target, treat as regular say with full message
+                                message = string.Join(" ", parts.Skip(1));
+                            }
+                        }
+                        else
+                        {
+                            // Regular say command
+                            message = string.Join(" ", parts.Skip(1));
+                        }
+
                         if (!string.IsNullOrEmpty(message))
                         {
-                            var chatMessage = new ChatMessage(characterId.Value, characterName, currentRoomId.Value, message, ChatType.Say);
-                            await MessagePublisher.PublishAsync(chatMessage);
+                            var result = await GameActionService.HandleChatMessageAsync(
+                                characterId.Value, 
+                                characterName, 
+                                currentRoomId.Value, 
+                                message, 
+                                ChatType.Say, 
+                                targetName);
                             
-                            AddMessage($"You say: {message}", "text-success");
+                            AddMessage(result, "text-success");
                         }
                         else
                         {

@@ -8,10 +8,18 @@ public sealed record ChatMessage(
     string CharacterName,
     int SourceRoomId,
     string Message,
-    ChatType ChatType = ChatType.Say
+    ChatType ChatType = ChatType.Say,
+    Guid? TargetId = null,
+    string? TargetName = null,
+    TargetType? TargetType = null
 ) : GameMessage
 {
     public override int? RoomId => SourceRoomId;
+    
+    /// <summary>
+    /// True if this message is directed at a specific target
+    /// </summary>
+    public bool IsTargeted => TargetId.HasValue && !string.IsNullOrEmpty(TargetName);
 };
 
 /// <summary>
@@ -53,4 +61,14 @@ public enum ChatType
     Yell,
     Tell,
     Emote
+}
+
+/// <summary>
+/// Types of entities that can be targeted in communication
+/// </summary>
+public enum TargetType
+{
+    Character,
+    Npc,
+    Mob
 }
