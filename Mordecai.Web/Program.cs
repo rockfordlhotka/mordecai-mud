@@ -3,8 +3,12 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Mordecai.Web.Data;
+using Mordecai.Messaging.Extensions;
+using Mordecai.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
 
 // Add services to the container.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -22,6 +26,18 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
+// Add RabbitMQ client (Aspire integration)
+builder.AddRabbitMQClient("messaging");
+
+// Add game messaging services
+builder.Services.AddGameMessaging();
+
+// Add character message broadcast service as singleton
+builder.Services.AddSingleton<CharacterMessageBroadcastService>();
+
+// Add game action service as scoped
+builder.Services.AddScoped<GameActionService>();
+
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddHttpContextAccessor();
@@ -32,6 +48,8 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+app.MapDefaultEndpoints();
 
 // Ensure database is created and migrations are applied
 using (var scope = app.Services.CreateScope())

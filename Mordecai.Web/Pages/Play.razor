@@ -3,12 +3,18 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using Mordecai.Web.Services
+@using Mordecai.Messaging.Services
+@using Mordecai.Messaging.Messages
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject Mordecai.Web.Data.ApplicationDbContext Db
 @inject NavigationManager NavigationManager
+@inject CharacterMessageBroadcastService MessageBroadcastService
+@inject IGameMessagePublisher MessagePublisher
 @using Microsoft.EntityFrameworkCore
 @using Mordecai.Web.Data
+@implements IDisposable
 
 <PageTitle>Play Mordecai MUD</PageTitle>
 
@@ -18,9 +24,13 @@
             <div class="game-container h-100 d-flex flex-column">
                 <div class="game-header bg-dark text-white p-2">
                     <h4 class="m-0">Mordecai MUD - @characterName (@currentUserName)</h4>
+                    @if (currentRoomId.HasValue)
+                    {
+                        <small class="text-muted">Room ID: @currentRoomId</small>
+                    }
                 </div>
                 
-                <div class="game-output flex-grow-1 p-3 bg-black text-light overflow-auto" style="font-family: 'Courier New', monospace; font-size: 14px;">
+                <div class="game-output flex-grow-1 p-3 bg-black text-light overflow-auto" style="font-family: 'Courier New', monospace; font-size: 14px;" @ref="gameOutputElement">
                     @if (gameMessages.Any())
                     {
                         @foreach (var message in gameMessages)
@@ -74,9 +84,12 @@
     private string currentCommand = string.Empty;
     private bool isProcessing = false;
     private ElementReference commandInput;
+    private ElementReference gameOutputElement;
     private List<string> gameMessages = new();
     private List<string> commandHistory = new();
     private int historyIndex = -1;
+    private int? currentRoomId = 1; // Default starting room
+    private bool isSubscribed = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,11 +111,22 @@
             if (character is not null)
             {
                 characterName = character.Name;
+                // TODO: Get current room from character data when implemented
+                currentRoomId = 1; // Starting room for now
             }
             else
             {
                 characterName = "(Invalid Character)";
+                return;
             }
+        }
+
+        // Subscribe to messages for this character
+        if (characterId.HasValue)
+        {
+            MessageBroadcastService.MessageReceived += OnMessageReceived;
+            await MessageBroadcastService.RegisterCharacterListenerAsync(characterId.Value, currentRoomId);
+            isSubscribed = true;
         }
     }
 
@@ -113,8 +137,36 @@
             await commandInput.FocusAsync();
             AddMessage("You find yourself in the starting area of Mordecai.", "text-info");
             AddMessage("Type 'look' to examine your surroundings.", "text-muted");
+            
+            // Announce player joining
+            if (characterId.HasValue)
+            {
+                var joinMessage = new PlayerJoined(characterId.Value, characterName, currentRoomId ?? 1);
+                await MessagePublisher.PublishAsync(joinMessage);
+            }
+            
             StateHasChanged();
         }
+    }
+
+    private void OnMessageReceived(Guid targetCharacterId, string message)
+    {
+        // Only handle messages for this character
+        if (targetCharacterId == characterId)
+        {
+            InvokeAsync(() =>
+            {
+                AddMessage(message, "text-light");
+                StateHasChanged();
+                ScrollToBottom();
+            });
+        }
+    }
+
+    private async Task ScrollToBottom()
+    {
+        await Task.Delay(50); // Small delay to ensure DOM is updated
+        await gameOutputElement.FocusAsync();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -150,7 +202,7 @@
 
     private async Task SendCommand()
     {
-        if (string.IsNullOrWhiteSpace(currentCommand) || isProcessing)
+        if (string.IsNullOrWhiteSpace(currentCommand) || isProcessing || !characterId.HasValue)
             return;
 
         isProcessing = true;
@@ -170,7 +222,7 @@
         // Display the command
         AddMessage($"> {command}", "text-warning");
 
-        // Process the command (stub implementation)
+        // Process the command
         await ProcessGameCommand(command);
 
         currentCommand = string.Empty;
@@ -182,70 +234,159 @@
 
     private async Task ProcessGameCommand(string command)
     {
+        if (!characterId.HasValue || !currentRoomId.HasValue) return;
+
         // Simulate processing delay
         await Task.Delay(100);
 
         var cmd = command.ToLower().Trim();
+        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         
-        switch (cmd)
+        try
         {
-            case "look":
-            case "l":
-                AddMessage("You are in the Tutorial Area.", "text-success");
-                AddMessage("This is a safe starting location for new adventurers. The area is well-lit and peaceful.");
-                AddMessage("Obvious exits: north, south, east, west");
-                break;
-                
-            case "help":
-                AddMessage("Available Commands:", "text-info");
-                AddMessage("look/l - Examine your surroundings");
-                AddMessage("say [message] - Speak to others in the room");
-                AddMessage("who - See who else is online");
-                AddMessage("north/n, south/s, east/e, west/w - Move in those directions");
-                AddMessage("quit - Leave the game");
-                break;
-                
-            case "who":
-                AddMessage("Players currently online:", "text-info");
-                AddMessage($"  {currentUserName} (you)");
-                AddMessage("1 player total.");
-                break;
-                
-            case "quit":
-                AddMessage("Thank you for playing Mordecai MUD!", "text-success");
-                AddMessage("Your progress has been saved.");
-                break;
-                
-            case "north":
-            case "n":
-            case "south":
-            case "s":
-            case "east":
-            case "e":
-            case "west":
-            case "w":
-                AddMessage("You cannot go that way. (Movement system not yet implemented)", "text-danger");
-                break;
-                
-            default:
-                if (cmd.StartsWith("say "))
-                {
-                    var message = command.Substring(4).Trim();
-                    if (!string.IsNullOrEmpty(message))
+            switch (cmd)
+            {
+                case "look":
+                case "l":
+                    AddMessage("You are in the Tutorial Area.", "text-success");
+                    AddMessage("This is a safe starting location for new adventurers. The area is well-lit and peaceful.");
+                    AddMessage("Obvious exits: north, south, east, west");
+                    break;
+                    
+                case "help":
+                    AddMessage("Available Commands:", "text-info");
+                    AddMessage("look/l - Examine your surroundings");
+                    AddMessage("say [message] - Speak to others in the room");
+                    AddMessage("ooc [message] - Speak on the out-of-character channel");
+                    AddMessage("emote [action] - Perform an emotive action");
+                    AddMessage("who - See who else is online");
+                    AddMessage("north/n, south/s, east/e, west/w - Move in those directions");
+                    AddMessage("quit - Leave the game");
+                    break;
+                    
+                case "who":
+                    AddMessage("Players currently online:", "text-info");
+                    AddMessage($"  {currentUserName} (you)");
+                    AddMessage("1 player total.");
+                    break;
+                    
+                case "quit":
+                    AddMessage("Thank you for playing Mordecai MUD!", "text-success");
+                    AddMessage("Your progress has been saved.");
+                    
+                    // Announce player leaving
+                    var disconnectMessage = new PlayerDisconnected(characterId.Value, characterName, currentRoomId.Value);
+                    await MessagePublisher.PublishAsync(disconnectMessage);
+                    break;
+                    
+                case "north":
+                case "n":
+                case "south":
+                case "s":
+                case "east":
+                case "e":
+                case "west":
+                case "w":
+                    // Simulate movement (this would be replaced with actual room navigation)
+                    var direction = cmd switch
                     {
-                        AddMessage($"You say: {message}", "text-success");
-                        AddMessage("(No other players in the room to hear you.)", "text-muted");
+                        "n" => "north",
+                        "s" => "south", 
+                        "e" => "east",
+                        "w" => "west",
+                        _ => cmd
+                    };
+                    
+                    // For demo purposes, simulate moving to a different room
+                    var oldRoomId = currentRoomId.Value;
+                    var newRoomId = direction switch
+                    {
+                        "north" => oldRoomId + 1,
+                        "south" => Math.Max(1, oldRoomId - 1),
+                        "east" => oldRoomId + 10,
+                        "west" => Math.Max(1, oldRoomId - 10),
+                        _ => oldRoomId
+                    };
+
+                    if (newRoomId != oldRoomId)
+                    {
+                        // Announce leaving current room
+                        var leftMessage = new PlayerLeft(characterId.Value, characterName, oldRoomId, direction);
+                        await MessagePublisher.PublishAsync(leftMessage);
+
+                        // Update room
+                        currentRoomId = newRoomId;
+                        MessageBroadcastService.UpdateCharacterRoom(characterId.Value, currentRoomId);
+
+                        // Announce arriving in new room
+                        var movedMessage = new PlayerMoved(characterId.Value, characterName, oldRoomId, newRoomId, direction);
+                        await MessagePublisher.PublishAsync(movedMessage);
+
+                        AddMessage($"You go {direction}.", "text-info");
+                        AddMessage($"You are now in room {newRoomId}.", "text-muted");
                     }
                     else
                     {
-                        AddMessage("Say what?", "text-warning");
+                        AddMessage("You cannot go that way.", "text-danger");
                     }
-                }
-                else
-                {
-                    AddMessage($"Unknown command: '{command}'. Type 'help' for available commands.", "text-danger");
-                }
-                break;
+                    break;
+                    
+                default:
+                    if (cmd.StartsWith("say ") && parts.Length > 1)
+                    {
+                        var message = string.Join(" ", parts.Skip(1));
+                        if (!string.IsNullOrEmpty(message))
+                        {
+                            var chatMessage = new ChatMessage(characterId.Value, characterName, currentRoomId.Value, message, ChatType.Say);
+                            await MessagePublisher.PublishAsync(chatMessage);
+                            
+                            AddMessage($"You say: {message}", "text-success");
+                        }
+                        else
+                        {
+                            AddMessage("Say what?", "text-warning");
+                        }
+                    }
+                    else if (cmd.StartsWith("ooc ") && parts.Length > 1)
+                    {
+                        var message = string.Join(" ", parts.Skip(1));
+                        if (!string.IsNullOrEmpty(message))
+                        {
+                            var globalChatMessage = new GlobalChatMessage(characterId.Value, characterName, message, "ooc");
+                            await MessagePublisher.PublishAsync(globalChatMessage);
+                            
+                            AddMessage($"[OOC] You: {message}", "text-info");
+                        }
+                        else
+                        {
+                            AddMessage("Say what on OOC?", "text-warning");
+                        }
+                    }
+                    else if (cmd.StartsWith("emote ") && parts.Length > 1)
+                    {
+                        var emoteText = string.Join(" ", parts.Skip(1));
+                        if (!string.IsNullOrEmpty(emoteText))
+                        {
+                            var emoteMessage = new EmoteMessage(characterId.Value, characterName, currentRoomId.Value, emoteText);
+                            await MessagePublisher.PublishAsync(emoteMessage);
+                            
+                            AddMessage($"{characterName} {emoteText}.", "text-cyan");
+                        }
+                        else
+                        {
+                            AddMessage("Emote what?", "text-warning");
+                        }
+                    }
+                    else
+                    {
+                        AddMessage($"Unknown command: '{command}'. Type 'help' for available commands.", "text-danger");
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error processing command: {ex.Message}", "text-danger");
         }
     }
 
@@ -263,6 +404,15 @@
             gameMessages.RemoveRange(0, 100);
         }
     }
+
+    public void Dispose()
+    {
+        if (isSubscribed && characterId.HasValue)
+        {
+            MessageBroadcastService.MessageReceived -= OnMessageReceived;
+            _ = MessageBroadcastService.UnregisterCharacterListenerAsync(characterId.Value);
+        }
+    }
 }
 
 <style>
@@ -277,6 +427,7 @@
         line-height: 1.4;
         white-space: pre-wrap;
         word-wrap: break-word;
+        scroll-behavior: smooth;
     }
     
     .game-output::-webkit-scrollbar {
@@ -294,5 +445,9 @@
     
     .game-output::-webkit-scrollbar-thumb:hover {
         background: #718096;
+    }
+
+    .text-cyan {
+        color: #17a2b8 !important;
     }
 </style>
