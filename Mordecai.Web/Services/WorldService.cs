@@ -177,12 +177,28 @@ public class WorldService : IWorldService
 
             var description = room.GetDescription(isNight);
 
-            // Add exits information
+            // Add exits information with descriptions
             var exits = await GetExitsFromRoomAsync(roomId);
             if (exits.Any())
             {
-                var exitNames = exits.Select(e => e.Direction).OrderBy(d => d);
-                description += $"\n\nObvious exits: {string.Join(", ", exitNames)}";
+                var exitDescriptions = new List<string>();
+                
+                foreach (var exit in exits.OrderBy(e => e.Direction))
+                {
+                    var exitDesc = exit.GetExitDescription(isNight);
+                    if (!string.IsNullOrEmpty(exitDesc))
+                    {
+                        // Include both direction and description
+                        exitDescriptions.Add($"{exit.Direction} - {exitDesc}");
+                    }
+                    else
+                    {
+                        // Just the direction if no description
+                        exitDescriptions.Add(exit.Direction);
+                    }
+                }
+                
+                description += $"\n\nObvious exits: {string.Join(", ", exitDescriptions)}";
             }
             else
             {

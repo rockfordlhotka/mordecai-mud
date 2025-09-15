@@ -20,10 +20,27 @@
 
 <PageTitle>Play Mordecai MUD</PageTitle>
 
-<div class="container-fluid h-100 p-0" style="height: 100vh;">
-    <div class="row h-100 g-0" style="height: 100vh;">
+<!-- Override the normal layout for the play page -->
+<div class="play-page-container">
+    <!-- Exit button and header -->
+    <div class="play-page-header bg-dark text-white p-2 d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+            <button class="btn btn-outline-light btn-sm me-3" @onclick="ExitGame">
+                <i class="oi oi-arrow-left me-1"></i>Exit Game
+            </button>
+            <h6 class="mb-0">Mordecai MUD - @characterName</h6>
+        </div>
+        <div class="small">
+            @if (currentRoom != null)
+            {
+                <span>@currentRoom.Zone.Name - @currentRoom.Name</span>
+            }
+        </div>
+    </div>
+    
+    <div class="play-page-content">
         <!-- Character Status Panel -->
-        <div class="col-xl-3 col-lg-4 col-md-5 d-none d-md-block character-panel">
+        <div class="character-panel d-none d-md-block">
             <div class="character-status h-100 bg-dark text-white p-3">
                 <div class="character-header mb-3">
                     <h5 class="text-success mb-1">@characterName</h5>
@@ -118,8 +135,8 @@
         </div>
         
         <!-- Game Area -->
-        <div class="col-xl-9 col-lg-8 col-md-7 col-12" style="height: 100vh;">
-            <div class="game-container h-100 d-flex flex-column" style="height: 100vh;">
+        <div class="game-area">
+            <div class="game-container h-100 d-flex flex-column">
                 <!-- Mobile Header (visible on small screens) -->
                 <div class="game-header bg-dark text-white p-2 d-md-none flex-shrink-0">
                     <h6 class="m-0">@characterName (@currentUserName)</h6>
@@ -149,6 +166,7 @@
                                 <p class="text-info">Getting Started:</p>
                                 <ul>
                                     <li>Type <span class="text-warning">'look'</span> to examine your surroundings</li>
+                                    <li>Type <span class="text-warning">'look [direction]'</span> to look in a specific direction (e.g., 'look north')</li>
                                     <li>Type <span class="text-warning">'help'</span> to see available commands</li>
                                     <li>Type <span class="text-warning">'who'</span> to see other players online</li>
                                     <li>Type <span class="text-warning">'say [message]'</span> to talk to others in the room</li>
@@ -196,6 +214,7 @@
     private int? currentRoomId = null;
     private Room? currentRoom = null;
     private bool isSubscribed = false;
+    private bool shouldFocusInput = false;
 
     // Character vital stats (placeholder values - these should come from your character service)
     private int currentFat = 85;
@@ -328,6 +347,7 @@
     {
         if (firstRender)
         {
+            // Focus the input on first render
             await commandInput.FocusAsync();
 
             if (currentRoom != null)
@@ -354,10 +374,11 @@
             
             StateHasChanged();
         }
-        else
+        else if (shouldFocusInput)
         {
-            // Maintain focus on input after each render
-            await JSRuntime.InvokeVoidAsync("maintainInputFocus", commandInput);
+            // Only restore focus when explicitly requested (e.g., after sending command)
+            await commandInput.FocusAsync();
+            shouldFocusInput = false;
         }
     }
 
@@ -438,9 +459,22 @@
         currentCommand = string.Empty;
         isProcessing = false;
         
-        // Ensure input keeps focus
-        await commandInput.FocusAsync();
+        // Request focus restoration after processing
+        shouldFocusInput = true;
         StateHasChanged();
+    }
+
+    private void ExitGame()
+    {
+        // Announce player leaving if they're in the game
+        if (characterId.HasValue && currentRoomId.HasValue)
+        {
+            var disconnectMessage = new PlayerDisconnected(characterId.Value, characterName, currentRoomId.Value);
+            _ = MessagePublisher.PublishAsync(disconnectMessage);
+        }
+        
+        // Navigate back to character selection
+        NavigationManager.NavigateTo("/characters");
     }
 
     private async Task ProcessGameCommand(string command)
@@ -456,20 +490,34 @@
 
         var cmd = command.ToLower().Trim();
         var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var firstWord = parts.Length > 0 ? parts[0].ToLower() : "";
         
         try
         {
-            switch (cmd)
+            switch (firstWord)
             {
                 case "look":
                 case "l":
-                    var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
-                    AddMessage(roomDescription, "text-success");
+                case "examine":
+                case "ex":
+                    if (parts.Length > 1)
+                    {
+                        // Look at a specific direction
+                        var direction = parts[1].ToLower();
+                        await HandleLookDirectionCommand(direction);
+                    }
+                    else
+                    {
+                        // Look around the room
+                        var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
+                        AddMessage(roomDescription, "text-success");
+                    }
                     break;
                     
                 case "help":
                     AddMessage("Available Commands:", "text-info");
-                    AddMessage("look/l - Examine your surroundings");
+                    AddMessage("look/l/examine/ex - Examine your surroundings");
+                    AddMessage("look/l/examine/ex [direction] - Look in a specific direction (e.g., 'look north')");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
                     AddMessage("ooc [message] - Speak on the out-of-character channel");
@@ -537,15 +585,15 @@
                     break;
                     
                 default:
-                    if (cmd.StartsWith("say ") && parts.Length > 1)
+                    if (firstWord == "say" && parts.Length > 1)
                     {
                         await HandleSayCommand(parts);
                     }
-                    else if (cmd.StartsWith("ooc ") && parts.Length > 1)
+                    else if (firstWord == "ooc" && parts.Length > 1)
                     {
                         await HandleOocCommand(parts);
                     }
-                    else if (cmd.StartsWith("emote ") && parts.Length > 1)
+                    else if (firstWord == "emote" && parts.Length > 1)
                     {
                         await HandleEmoteCommand(parts);
                     }
@@ -706,6 +754,71 @@
         }
     }
 
+    private async Task HandleLookDirectionCommand(string direction)
+    {
+        // Normalize direction like movement commands
+        var normalizedDirection = direction switch
+        {
+            "n" => "north",
+            "s" => "south",
+            "e" => "east",
+            "w" => "west",
+            "ne" => "northeast",
+            "nw" => "northwest",
+            "se" => "southeast",
+            "sw" => "southwest",
+            "u" => "up",
+            "d" => "down",
+            _ => direction
+        };
+
+        // Get the exit in that direction
+        var exit = await WorldService.GetExitFromRoomAsync(currentRoomId!.Value, normalizedDirection);
+        
+        if (exit == null)
+        {
+            AddMessage($"You see nothing of interest to the {normalizedDirection}.", "text-muted");
+            return;
+        }
+
+        // Build description for what they see in that direction
+        var description = new List<string>();
+        
+        // Add exit description if available
+        var exitDesc = exit.GetExitDescription(); // TODO: Pass isNight when time system is implemented
+        if (!string.IsNullOrEmpty(exitDesc))
+        {
+            description.Add($"To the {normalizedDirection}, you see {exitDesc}.");
+        }
+        else
+        {
+            description.Add($"To the {normalizedDirection}, you can go to {exit.ToRoom.Name}.");
+        }
+
+        // Add destination room peek if not hidden
+        if (!exit.IsHidden)
+        {
+            description.Add($"That direction leads to {exit.ToRoom.Name} in {exit.ToRoom.Zone.Name}.");
+            
+            // Add a brief peek at the destination room description (first sentence)
+            var destinationDesc = exit.ToRoom.GetDescription(); // TODO: Pass isNight when time system is implemented
+            var firstSentence = destinationDesc.Split('.', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (!string.IsNullOrEmpty(firstSentence))
+            {
+                description.Add($"From here you can see: {firstSentence.Trim()}.");
+            }
+        }
+
+        // Show any skill requirements
+        if (exit.SkillRequired.HasValue && exit.SkillLevelRequired > 0)
+        {
+            description.Add($"This exit requires special skills to use (Skill Level {exit.SkillLevelRequired}).");
+        }
+
+        var finalDescription = string.Join(" ", description);
+        AddMessage(finalDescription, "text-info");
+    }
+
     private void AddMessage(string message, string cssClass = "")
     {
         var formattedMessage = !string.IsNullOrEmpty(cssClass) 
@@ -739,10 +852,37 @@
 }
 
 <style>
+    /* Override the normal layout structure for the play page */
+    .play-page-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 1000;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .play-page-header {
+        border-bottom: 1px solid #dee2e6;
+        flex-shrink: 0;
+        min-height: 50px;
+    }
+    
+    .play-page-content {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+    
     .character-panel {
+        width: 300px;
         border-right: 1px solid #dee2e6;
-        max-height: 100vh;
+        max-height: 100%;
         overflow-y: auto;
+        flex-shrink: 0;
     }
     
     .character-status {
@@ -773,11 +913,18 @@
         border-left: 3px solid #17a2b8;
     }
     
+    .game-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    
     .game-container {
         border: 1px solid #dee2e6;
         border-radius: 0.375rem;
-        height: 100vh;
-        max-height: 100vh;
+        height: 100%;
+        max-height: 100%;
     }
     
     .game-output-container {
@@ -827,23 +974,12 @@
         flex-shrink: 0; /* Prevent the input area from shrinking */
     }
     
-    /* Ensure proper height inheritance */
-    html, body {
-        height: 100%;
-        overflow: hidden;
-    }
-    
-    #app {
-        height: 100%;
-    }
-    
-    /* Make sure the container takes full height */
-    .container-fluid {
-        height: 100vh;
-    }
-    
     /* Mobile adjustments */
     @@media (max-width: 767.98px) {
+        .character-panel {
+            display: none !important;
+        }
+        
         .game-container {
             border-radius: 0;
             border: none;
@@ -854,8 +990,12 @@
             font-size: 12px;
         }
         
-        .container-fluid {
-            height: 100vh;
+        .play-page-header {
+            font-size: 0.9rem;
+        }
+        
+        .play-page-header h6 {
+            font-size: 0.9rem;
         }
     }
     
@@ -863,10 +1003,10 @@
     @@media (max-width: 991.98px) {
         .character-panel {
             position: fixed;
-            top: 0;
+            top: 50px; /* Account for header */
             left: -100%;
             width: 300px;
-            height: 100vh;
+            height: calc(100vh - 50px);
             z-index: 1050;
             transition: left 0.3s ease;
             border-right: 1px solid #dee2e6;
@@ -886,13 +1026,6 @@
             requestAnimationFrame(() => {
                 element.scrollTop = element.scrollHeight;
             });
-        }
-    };
-    
-    // Additional function to maintain input focus
-    window.maintainInputFocus = (inputElement) => {
-        if (inputElement && document.activeElement !== inputElement) {
-            inputElement.focus();
         }
     };
 </script>

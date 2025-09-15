@@ -83,7 +83,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         try
         {
             // Bind to all relevant routing keys
-            await BindToRoutingKeysAsync();
+            BindToRoutingKeysAsync();
 
             // Set up consumer
             _consumer = new AsyncEventingBasicConsumer(_channel);
@@ -126,7 +126,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         }
     }
 
-    private async Task BindToRoutingKeysAsync()
+    private Task BindToRoutingKeysAsync()
     {
         // Bind to global messages
         _channel.QueueBind(_queueName, _exchangeName, "system.*.global");
@@ -135,11 +135,13 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         // Bind to room-specific messages if in a room
         if (CurrentRoomId.HasValue)
         {
-            await BindToRoomMessagesAsync(CurrentRoomId.Value);
+            BindToRoomMessagesAsync(CurrentRoomId.Value);
         }
 
         // Bind to character-specific messages (errors, private tells, etc.)
         _channel.QueueBind(_queueName, _exchangeName, "*.*.global");
+        
+        return Task.CompletedTask;
     }
 
     private Task BindToRoomMessagesAsync(int roomId)
