@@ -120,14 +120,14 @@ public sealed class CharacterMessageBroadcastService : IDisposable
     /// <summary>
     /// Handles messages received from the message bus and fires events for Blazor components
     /// </summary>
-    private async Task OnMessageReceivedAsync(Guid characterId, GameMessage message)
+    private Task OnMessageReceivedAsync(Guid characterId, GameMessage message)
     {
         try
         {
             // Format the message for display
             var displayMessage = FormatMessageForDisplay(message);
             if (string.IsNullOrEmpty(displayMessage))
-                return;
+                return Task.CompletedTask;
 
             // Fire the event on the UI thread
             MessageReceived?.Invoke(characterId, displayMessage);
@@ -138,6 +138,8 @@ public sealed class CharacterMessageBroadcastService : IDisposable
         {
             _logger.LogError(ex, "Failed to broadcast message to character {CharacterId}", characterId);
         }
+        
+        return Task.CompletedTask;
     }
 
     /// <summary>

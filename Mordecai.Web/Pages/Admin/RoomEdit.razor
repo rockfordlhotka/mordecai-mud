@@ -1,0 +1,435 @@
+@page "/admin/rooms/edit/{RoomId:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject Mordecai.Web.Services.IRoomService RoomService
+@inject Mordecai.Web.Services.IZoneService ZoneService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Edit Room - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-pencil text-primary me-2"></i>
+                    Edit Room
+                    @if (room != null)
+                    {
+                        <small class="text-muted">- @room.Name</small>
+                    }
+                </h1>
+                <div>
+                    @if (room != null)
+                    {
+                        <a href="/admin/rooms/exits/@room.Id" class="btn btn-outline-info">
+                            <i class="oi oi-resize-both me-1"></i>
+                            Manage Exits
+                        </a>
+                        <a href="/admin/rooms?zone=@room.ZoneId" class="btn btn-secondary ms-2">
+                            <i class="oi oi-arrow-left me-1"></i>
+                            Back to Zone Rooms
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/admin/rooms" class="btn btn-secondary">
+                            <i class="oi oi-arrow-left me-1"></i>
+                            Back to Rooms
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading room details...</p>
+        </div>
+    }
+    else if (room == null)
+    {
+        <div class="alert alert-danger">
+            <h4>Room Not Found</h4>
+            <p>The room with ID @RoomId was not found.</p>
+            <a href="/admin/rooms" class="btn btn-secondary">
+                <i class="oi oi-arrow-left me-1"></i>
+                Back to Rooms
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12 col-lg-8 col-xl-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-document me-1"></i>
+                            Room Details
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="@room" OnValidSubmit="@UpdateRoom">
+                            <DataAnnotationsValidator />
+                            
+                            <!-- Zone Display (read-only) -->
+                            <div class="mb-3">
+                                <label class="form-label">Zone</label>
+                                <input type="text" class="form-control-plaintext" readonly 
+                                       value="@room.Zone.Name" />
+                                <div class="form-text">
+                                    To move this room to a different zone, delete and recreate it.
+                                </div>
+                            </div>
+
+                            <!-- Room Type Selection -->
+                            <div class="mb-3">
+                                <label class="form-label">Room Type *</label>
+                                <select class="form-select" @bind="room.RoomTypeId">
+                                    @foreach (var roomType in roomTypes)
+                                    {
+                                        <option value="@roomType.Id" selected="@(roomType.Id == room.RoomTypeId)">
+                                            @roomType.Name
+                                        </option>
+                                    }
+                                </select>
+                                <ValidationMessage For="() => room.RoomTypeId" />
+                            </div>
+
+                            <!-- Room Name -->
+                            <div class="mb-3">
+                                <label class="form-label">Room Name *</label>
+                                <input type="text" class="form-control @(string.IsNullOrEmpty(nameExistsError) ? "" : "is-invalid")" 
+                                       @bind="room.Name" placeholder="Enter room name..." maxlength="100" />
+                                @if (!string.IsNullOrEmpty(nameExistsError))
+                                {
+                                    <div class="invalid-feedback">@nameExistsError</div>
+                                }
+                                <ValidationMessage For="() => room.Name" />
+                            </div>
+
+                            <!-- Description -->
+                            <div class="mb-3">
+                                <label class="form-label">Description *</label>
+                                <textarea class="form-control" @bind="room.Description" 
+                                          placeholder="Enter detailed room description..." 
+                                          rows="4" maxlength="2000"></textarea>
+                                <div class="form-text">
+                                    This is the main description players will see when entering the room.
+                                </div>
+                                <ValidationMessage For="() => room.Description" />
+                            </div>
+
+                            <!-- Night Description -->
+                            <div class="mb-3">
+                                <label class="form-label">Night Description (Optional)</label>
+                                <textarea class="form-control" @bind="room.NightDescription" 
+                                          placeholder="Enter alternative description for nighttime..." 
+                                          rows="3" maxlength="2000"></textarea>
+                                <div class="form-text">
+                                    Optional alternative description for night time. Only used if the zone is outdoor or manually enabled.
+                                </div>
+                            </div>
+
+                            <!-- Coordinates -->
+                            <div class="row mb-3">
+                                <div class="col-4">
+                                    <label class="form-label">X Coordinate</label>
+                                    <input type="number" class="form-control" @bind="room.X" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label">Y Coordinate</label>
+                                    <input type="number" class="form-control" @bind="room.Y" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label">Z Coordinate (Floor/Level)</label>
+                                    <input type="number" class="form-control" @bind="room.Z" />
+                                </div>
+                            </div>
+
+                            <!-- Entry/Exit Descriptions -->
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="form-label">Entry Description (Optional)</label>
+                                    <textarea class="form-control" @bind="room.EntryDescription" 
+                                              placeholder="Description when entering..." 
+                                              rows="2" maxlength="500"></textarea>
+                                    <div class="form-text">Shown when a player enters this room.</div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Exit Description (Optional)</label>
+                                    <textarea class="form-control" @bind="room.ExitDescription" 
+                                              placeholder="Description when leaving..." 
+                                              rows="2" maxlength="500"></textarea>
+                                    <div class="form-text">Shown when a player leaves this room.</div>
+                                </div>
+                            </div>
+
+                            <!-- Night Entry/Exit Descriptions -->
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="form-label">Night Entry Description (Optional)</label>
+                                    <textarea class="form-control" @bind="room.NightEntryDescription" 
+                                              placeholder="Night entry description..." 
+                                              rows="2" maxlength="500"></textarea>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Night Exit Description (Optional)</label>
+                                    <textarea class="form-control" @bind="room.NightExitDescription" 
+                                              placeholder="Night exit description..." 
+                                              rows="2" maxlength="500"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- Day/Night Override -->
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="overrideDayNight" 
+                                           @bind="overrideDayNight" />
+                                    <label class="form-check-label" for="overrideDayNight">
+                                        Override Day/Night Settings
+                                    </label>
+                                </div>
+                                @if (overrideDayNight)
+                                {
+                                    <div class="mt-2">
+                                        <div class="form-check">
+                                            <input type="radio" class="form-check-input" id="enableDayNight" 
+                                                   name="dayNightOverride" checked="@(room.OverrideDayNightDescriptions == true)"
+                                                   @onchange="() => room.OverrideDayNightDescriptions = true" />
+                                            <label class="form-check-label" for="enableDayNight">
+                                                Force Enable Day/Night Descriptions
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input type="radio" class="form-check-input" id="disableDayNight" 
+                                                   name="dayNightOverride" checked="@(room.OverrideDayNightDescriptions == false)"
+                                                   @onchange="() => room.OverrideDayNightDescriptions = false" />
+                                            <label class="form-check-label" for="disableDayNight">
+                                                Force Disable Day/Night Descriptions
+                                            </label>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    room.OverrideDayNightDescriptions = null;
+                                }
+                            </div>
+
+                            <!-- Active Status -->
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="isActive" @bind="room.IsActive" />
+                                    <label class="form-check-label" for="isActive">
+                                        Room is Active
+                                    </label>
+                                </div>
+                                <div class="form-text">
+                                    Inactive rooms are not accessible to players but remain in the database.
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="button" class="btn btn-outline-secondary" @onclick="Cancel">
+                                    <i class="oi oi-x me-1"></i>
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" disabled="@saving">
+                                    @if (saving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="oi oi-check me-1"></i>
+                                    }
+                                    Update Room
+                                </button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-4 col-xl-6">
+                <div class="card mt-4 mt-lg-0">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="oi oi-info me-1"></i>
+                            Room Information
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <h6>Current Status</h6>
+                        <ul class="small">
+                            <li><strong>Created:</strong> @room.CreatedAt.ToString("MMM dd, yyyy 'at' h:mm tt")</li>
+                            <li><strong>Created by:</strong> @room.CreatedBy</li>
+                            <li><strong>Zone:</strong> @room.Zone.Name</li>
+                            <li><strong>Room Type:</strong> @room.RoomType.Name</li>
+                            <li><strong>Status:</strong> @(room.IsActive ? "Active" : "Inactive")</li>
+                        </ul>
+
+                        @{
+                            var exitInfo = exitCounts;
+                        }
+                        @if (exitInfo.Item1)
+                        {
+                            <h6>Connected Exits (@exitInfo.Item2)</h6>
+                            <div class="small">
+                                <p>This room has @exitInfo.Item2 exit(s) connecting to other rooms.</p>
+                                <a href="/admin/rooms/exits/@room.Id" class="btn btn-sm btn-outline-info">
+                                    <i class="oi oi-resize-both me-1"></i>
+                                    Manage Exits
+                                </a>
+                            </div>
+                        }
+                        else
+                        {
+                            <h6>No Exits</h6>
+                            <div class="small">
+                                <p>This room is not connected to any other rooms yet.</p>
+                                <a href="/admin/rooms/exits/@room.Id" class="btn btn-sm btn-outline-info">
+                                    <i class="oi oi-plus me-1"></i>
+                                    Add Exits
+                                </a>
+                            </div>
+                        }
+
+                        <h6 class="mt-3">Day/Night Behavior</h6>
+                        <div class="small">
+                            @if (room.OverrideDayNightDescriptions.HasValue)
+                            {
+                                <p>
+                                    <strong>Override:</strong> 
+                                    @(room.OverrideDayNightDescriptions.Value ? "Enabled" : "Disabled")
+                                </p>
+                            }
+                            else
+                            {
+                                <p>
+                                    <strong>Uses zone settings:</strong>
+                                    @(room.Zone.IsOutdoor && !room.RoomType.IsIndoor ? "Enabled" : "Disabled")
+                                </p>
+                            }
+                            @if (room.UsesDayNightDescriptions)
+                            {
+                                <p>This room will show different descriptions during day and night.</p>
+                            }
+                            else
+                            {
+                                <p>This room shows the same description at all times.</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int RoomId { get; set; }
+
+    private Room? room;
+    private List<RoomType> roomTypes = new();
+    private bool loading = true;
+    private bool saving = false;
+    private bool overrideDayNight = false;
+    private string nameExistsError = string.Empty;
+    private (bool HasExits, int ExitCount) exitCounts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoom();
+        await LoadRoomTypes();
+    }
+
+    private async Task LoadRoom()
+    {
+        loading = true;
+        try
+        {
+            room = await RoomService.GetRoomByIdAsync(RoomId);
+            if (room != null)
+            {
+                overrideDayNight = room.OverrideDayNightDescriptions.HasValue;
+                exitCounts = await RoomService.HasExitsAsync(room.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading room: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadRoomTypes()
+    {
+        try
+        {
+            roomTypes = (await RoomService.GetActiveRoomTypesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading room types: {ex.Message}");
+        }
+    }
+
+    private async Task UpdateRoom()
+    {
+        if (room == null) return;
+        
+        nameExistsError = string.Empty;
+        
+        // Validate room name doesn't already exist in the zone (excluding current room)
+        if (await RoomService.RoomNameExistsInZoneAsync(room.Name, room.ZoneId, room.Id))
+        {
+            nameExistsError = "A room with this name already exists in this zone.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            await RoomService.UpdateRoomAsync(room);
+            await JSRuntime.InvokeVoidAsync("alert", $"Room '{room.Name}' updated successfully!");
+            Navigation.NavigateTo($"/admin/rooms?zone={room.ZoneId}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error updating room: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        if (room != null)
+        {
+            Navigation.NavigateTo($"/admin/rooms?zone={room.ZoneId}");
+        }
+        else
+        {
+            Navigation.NavigateTo("/admin/rooms");
+        }
+    }
+}

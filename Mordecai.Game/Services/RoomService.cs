@@ -79,7 +79,7 @@ public class RoomService : IRoomService
     // Note: These methods would need a DbContext injected in a real implementation
     // For now, I'll create placeholder implementations that can be completed when the DbContext is available
 
-    public async Task<Room?> GetRoomAsync(int roomId, CancellationToken cancellationToken = default)
+    public Task<Room?> GetRoomAsync(int roomId, CancellationToken cancellationToken = default)
     {
         // TODO: Implement when DbContext is available
         // return await _context.Rooms
@@ -88,7 +88,7 @@ public class RoomService : IRoomService
         //     .FirstOrDefaultAsync(r => r.Id == roomId && r.IsActive, cancellationToken);
         
         _logger.LogWarning("GetRoomAsync not yet implemented - requires DbContext integration");
-        return null;
+        return Task.FromResult<Room?>(null);
     }
 
     public async Task<string> GetRoomDescriptionAsync(int roomId, CancellationToken cancellationToken = default)
@@ -116,7 +116,7 @@ public class RoomService : IRoomService
         return description;
     }
 
-    public async Task<IReadOnlyList<RoomExitInfo>> GetRoomExitsAsync(int roomId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<RoomExitInfo>> GetRoomExitsAsync(int roomId, CancellationToken cancellationToken = default)
     {
         // TODO: Implement when DbContext is available
         // var exits = await _context.RoomExits
@@ -138,7 +138,7 @@ public class RoomService : IRoomService
         // )).ToList();
 
         _logger.LogWarning("GetRoomExitsAsync not yet implemented - requires DbContext integration");
-        return Array.Empty<RoomExitInfo>();
+        return Task.FromResult<IReadOnlyList<RoomExitInfo>>(Array.Empty<RoomExitInfo>());
     }
 
     public async Task<RoomExitInfo?> GetExitInDirectionAsync(int roomId, string direction, CancellationToken cancellationToken = default)
@@ -147,7 +147,7 @@ public class RoomService : IRoomService
         return exits.FirstOrDefault(e => e.Direction.Equals(direction, StringComparison.OrdinalIgnoreCase));
     }
 
-    public async Task<IReadOnlyList<string>> GetCharactersInRoomAsync(int roomId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<string>> GetCharactersInRoomAsync(int roomId, CancellationToken cancellationToken = default)
     {
         // TODO: Implement when Character entity has CurrentRoomId and DbContext is available
         // return await _context.Characters
@@ -156,7 +156,7 @@ public class RoomService : IRoomService
         //     .ToListAsync(cancellationToken);
 
         _logger.LogWarning("GetCharactersInRoomAsync not yet implemented - requires DbContext integration");
-        return Array.Empty<string>();
+        return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
     }
 
     public async Task<(bool CanMove, string? Reason)> CanMoveToRoomAsync(int fromRoomId, int toRoomId, Guid characterId, CancellationToken cancellationToken = default)

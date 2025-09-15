@@ -35,8 +35,11 @@ builder.Services.AddGameMessaging();
 
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
-builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
 builder.Services.AddScoped<Mordecai.Web.Services.IZoneService, Mordecai.Web.Services.ZoneService>();
+builder.Services.AddScoped<Mordecai.Web.Services.IRoomService, Mordecai.Web.Services.RoomService>();
+builder.Services.AddScoped<IWorldService, WorldService>();
+builder.Services.AddScoped<ICharacterService, CharacterService>();
 
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();

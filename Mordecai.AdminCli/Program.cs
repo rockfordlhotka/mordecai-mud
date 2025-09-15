@@ -167,6 +167,11 @@ public class Program
                 .WithExample(["show-zone", "Whispering Woods"])
                 .WithExample(["show-zone", "Dragon's Lair", "--rooms"]);
 
+            config.AddCommand<SeedWorldCommand>("seed-world")
+                .WithDescription("Create basic world structure with starting zone and rooms")
+                .WithExample(["seed-world"])
+                .WithExample(["seed-world", "--force"]);
+
             // Legacy aliases for backwards compatibility
             config.AddCommand<ListUsersCommand>("list")
                 .WithDescription("List all users in the system (alias for list-users)")

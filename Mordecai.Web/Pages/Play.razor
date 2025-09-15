@@ -6,15 +6,15 @@
 @using Mordecai.Web.Services
 @using Mordecai.Messaging.Services
 @using Mordecai.Messaging.Messages
+@using Mordecai.Game.Entities
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject Mordecai.Web.Data.ApplicationDbContext Db
 @inject NavigationManager NavigationManager
 @inject CharacterMessageBroadcastService MessageBroadcastService
 @inject IGameMessagePublisher MessagePublisher
 @inject GameActionService GameActionService
-@using Microsoft.EntityFrameworkCore
-@using Mordecai.Web.Data
+@inject ICharacterService CharacterService
+@inject IWorldService WorldService
 @implements IDisposable
 
 <PageTitle>Play Mordecai MUD</PageTitle>
@@ -25,7 +25,11 @@
             <div class="game-container h-100 d-flex flex-column">
                 <div class="game-header bg-dark text-white p-2">
                     <h4 class="m-0">Mordecai MUD - @characterName (@currentUserName)</h4>
-                    @if (currentRoomId.HasValue)
+                    @if (currentRoom != null)
+                    {
+                        <small class="text-muted">@currentRoom.Zone.Name - @currentRoom.Name (@currentRoom.X, @currentRoom.Y, @currentRoom.Z)</small>
+                    }
+                    else if (currentRoomId.HasValue)
                     {
                         <small class="text-muted">Room ID: @currentRoomId</small>
                     }
@@ -89,7 +93,8 @@
     private List<string> gameMessages = new();
     private List<string> commandHistory = new();
     private int historyIndex = -1;
-    private int? currentRoomId = 1; // Default starting room
+    private int? currentRoomId = null;
+    private Room? currentRoom = null;
     private bool isSubscribed = false;
 
     protected override async Task OnInitializedAsync()
@@ -108,22 +113,56 @@
 
         if (characterId != Guid.Empty)
         {
-            var character = await Db.Characters.AsNoTracking().FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == currentUserId);
-            if (character is not null)
+            // Verify character exists and belongs to current user
+            if (!await CharacterService.CharacterExistsAsync(characterId.Value, currentUserId))
+            {
+                characterName = "(Invalid Character)";
+                AddMessage("Error: Character not found or access denied.", "text-danger");
+                return;
+            }
+
+            var character = await CharacterService.GetCharacterByIdAsync(characterId.Value, currentUserId);
+            if (character != null)
             {
                 characterName = character.Name;
-                // TODO: Get current room from character data when implemented
-                currentRoomId = 1; // Starting room for now
+                
+                // Get character's current room (or starting room if none set)
+                currentRoomId = await CharacterService.GetCharacterCurrentRoomAsync(characterId.Value, currentUserId);
+                
+                if (currentRoomId.HasValue)
+                {
+                    currentRoom = await WorldService.GetRoomByIdAsync(currentRoomId.Value);
+                    if (currentRoom == null)
+                    {
+                        // Room doesn't exist, fall back to starting room
+                        currentRoom = await WorldService.GetStartingRoomAsync();
+                        currentRoomId = currentRoom?.Id;
+                    }
+                }
+                else
+                {
+                    // No current room, use starting room
+                    currentRoom = await WorldService.GetStartingRoomAsync();
+                    currentRoomId = currentRoom?.Id;
+                }
+
+                if (currentRoom == null)
+                {
+                    AddMessage("Error: No starting room found! The world may not be properly configured.", "text-danger");
+                    AddMessage("Please contact an administrator.", "text-warning");
+                    return;
+                }
             }
             else
             {
                 characterName = "(Invalid Character)";
+                AddMessage("Error: Unable to load character data.", "text-danger");
                 return;
             }
         }
 
         // Subscribe to messages for this character
-        if (characterId.HasValue)
+        if (characterId.HasValue && currentRoomId.HasValue)
         {
             MessageBroadcastService.MessageReceived += OnMessageReceived;
             await MessageBroadcastService.RegisterCharacterListenerAsync(characterId.Value, currentRoomId);
@@ -136,14 +175,27 @@
         if (firstRender)
         {
             await commandInput.FocusAsync();
-            AddMessage("You find yourself in the starting area of Mordecai.", "text-info");
-            AddMessage("Type 'look' to examine your surroundings.", "text-muted");
+
+            if (currentRoom != null)
+            {
+                AddMessage($"Welcome to {currentRoom.Zone.Name}!", "text-success");
+                AddMessage("Type 'look' to examine your surroundings.", "text-muted");
+                
+                // Show initial room description
+                var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
+                AddMessage(roomDescription, "text-info");
+            }
+            else
+            {
+                AddMessage("Welcome to Mordecai MUD!", "text-success");
+                AddMessage("Error: Unable to determine your location.", "text-danger");
+            }
             
             // Announce player joining
-            if (characterId.HasValue)
+            if (characterId.HasValue && currentRoomId.HasValue)
             {
-                var joinMessage = new PlayerJoined(characterId.Value, characterName, currentRoomId ?? 1);
-                await MessagePublisher.PublishAsync(joinMessage);
+                var joinMessage = new PlayerJoined(characterId.Value, characterName, currentRoomId.Value);
+                _ = MessagePublisher.PublishAsync(joinMessage);
             }
             
             StateHasChanged();
@@ -235,7 +287,11 @@
 
     private async Task ProcessGameCommand(string command)
     {
-        if (!characterId.HasValue || !currentRoomId.HasValue) return;
+        if (!characterId.HasValue || !currentRoomId.HasValue || currentRoom == null) 
+        {
+            AddMessage("Error: Character or room data not properly loaded.", "text-danger");
+            return;
+        }
 
         // Simulate processing delay
         await Task.Delay(100);
@@ -249,9 +305,8 @@
             {
                 case "look":
                 case "l":
-                    AddMessage("You are in the Tutorial Area.", "text-success");
-                    AddMessage("This is a safe starting location for new adventurers. The area is well-lit and peaceful.");
-                    AddMessage("Obvious exits: north, south, east, west");
+                    var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
+                    AddMessage(roomDescription, "text-success");
                     break;
                     
                 case "help":
@@ -264,6 +319,8 @@
                     AddMessage("who - See who else is online");
                     AddMessage("targets - List all possible targets in the room");
                     AddMessage("north/n, south/s, east/e, west/w - Move in those directions");
+                    AddMessage("northeast/ne, northwest/nw, southeast/se, southwest/sw - Move diagonally");
+                    AddMessage("up/u, down/d, in, out - Move vertically or through openings");
                     AddMessage("quit - Leave the game");
                     break;
                     
@@ -282,56 +339,19 @@
                     await MessagePublisher.PublishAsync(disconnectMessage);
                     break;
                     
-                case "north":
-                case "n":
-                case "south":
-                case "s":
-                case "east":
-                case "e":
-                case "west":
-                case "w":
-                    // Simulate movement (this would be replaced with actual room navigation)
-                    var direction = cmd switch
-                    {
-                        "n" => "north",
-                        "s" => "south", 
-                        "e" => "east",
-                        "w" => "west",
-                        _ => cmd
-                    };
-                    
-                    // For demo purposes, simulate moving to a different room
-                    var oldRoomId = currentRoomId.Value;
-                    var newRoomId = direction switch
-                    {
-                        "north" => oldRoomId + 1,
-                        "south" => Math.Max(1, oldRoomId - 1),
-                        "east" => oldRoomId + 10,
-                        "west" => Math.Max(1, oldRoomId - 10),
-                        _ => oldRoomId
-                    };
-
-                    if (newRoomId != oldRoomId)
-                    {
-                        // Announce leaving current room
-                        var leftMessage = new PlayerLeft(characterId.Value, characterName, oldRoomId, direction);
-                        await MessagePublisher.PublishAsync(leftMessage);
-
-                        // Update room
-                        currentRoomId = newRoomId;
-                        MessageBroadcastService.UpdateCharacterRoom(characterId.Value, currentRoomId);
-
-                        // Announce arriving in new room
-                        var movedMessage = new PlayerMoved(characterId.Value, characterName, oldRoomId, newRoomId, direction);
-                        await MessagePublisher.PublishAsync(movedMessage);
-
-                        AddMessage($"You go {direction}.", "text-info");
-                        AddMessage($"You are now in room {newRoomId}.", "text-muted");
-                    }
-                    else
-                    {
-                        AddMessage("You cannot go that way.", "text-danger");
-                    }
+                case "north": case "n":
+                case "south": case "s":
+                case "east": case "e":
+                case "west": case "w":
+                case "northeast": case "ne":
+                case "northwest": case "nw":
+                case "southeast": case "se":
+                case "southwest": case "sw":
+                case "up": case "u":
+                case "down": case "d":
+                case "in":
+                case "out":
+                    await HandleMovementCommand(cmd);
                     break;
                     
                 case "targets":
@@ -361,85 +381,15 @@
                 default:
                     if (cmd.StartsWith("say ") && parts.Length > 1)
                     {
-                        string targetName = null;
-                        string message;
-                        
-                        // Check if this might be a targeted say command
-                        if (parts.Length > 2)
-                        {
-                            // Try to parse as "say [target] [message]"
-                            var potentialTarget = parts[1];
-                            var remainingMessage = string.Join(" ", parts.Skip(2));
-                            
-                            // Check if the potential target exists
-                            var target = await GameActionService.GetAvailableTargetsAsync(currentRoomId.Value, characterId);
-                            var foundTarget = target.FirstOrDefault(t => 
-                                t.Name.Equals(potentialTarget, StringComparison.OrdinalIgnoreCase) ||
-                                t.Name.ToLowerInvariant().StartsWith(potentialTarget.ToLowerInvariant()));
-                            
-                            if (foundTarget != null)
-                            {
-                                targetName = potentialTarget;
-                                message = remainingMessage;
-                            }
-                            else
-                            {
-                                // Not a valid target, treat as regular say with full message
-                                message = string.Join(" ", parts.Skip(1));
-                            }
-                        }
-                        else
-                        {
-                            // Regular say command
-                            message = string.Join(" ", parts.Skip(1));
-                        }
-
-                        if (!string.IsNullOrEmpty(message))
-                        {
-                            var result = await GameActionService.HandleChatMessageAsync(
-                                characterId.Value, 
-                                characterName, 
-                                currentRoomId.Value, 
-                                message, 
-                                ChatType.Say, 
-                                targetName);
-                            
-                            AddMessage(result, "text-success");
-                        }
-                        else
-                        {
-                            AddMessage("Say what?", "text-warning");
-                        }
+                        await HandleSayCommand(parts);
                     }
                     else if (cmd.StartsWith("ooc ") && parts.Length > 1)
                     {
-                        var message = string.Join(" ", parts.Skip(1));
-                        if (!string.IsNullOrEmpty(message))
-                        {
-                            var globalChatMessage = new GlobalChatMessage(characterId.Value, characterName, message, "ooc");
-                            await MessagePublisher.PublishAsync(globalChatMessage);
-                            
-                            AddMessage($"[OOC] You: {message}", "text-info");
-                        }
-                        else
-                        {
-                            AddMessage("Say what on OOC?", "text-warning");
-                        }
+                        await HandleOocCommand(parts);
                     }
                     else if (cmd.StartsWith("emote ") && parts.Length > 1)
                     {
-                        var emoteText = string.Join(" ", parts.Skip(1));
-                        if (!string.IsNullOrEmpty(emoteText))
-                        {
-                            var emoteMessage = new EmoteMessage(characterId.Value, characterName, currentRoomId.Value, emoteText);
-                            await MessagePublisher.PublishAsync(emoteMessage);
-                            
-                            AddMessage($"{characterName} {emoteText}.", "text-cyan");
-                        }
-                        else
-                        {
-                            AddMessage("Emote what?", "text-warning");
-                        }
+                        await HandleEmoteCommand(parts);
                     }
                     else
                     {
@@ -451,6 +401,150 @@
         catch (Exception ex)
         {
             AddMessage($"Error processing command: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleMovementCommand(string direction)
+    {
+        // Normalize direction
+        var normalizedDirection = direction switch
+        {
+            "n" => "north",
+            "s" => "south", 
+            "e" => "east",
+            "w" => "west",
+            "ne" => "northeast",
+            "nw" => "northwest",
+            "se" => "southeast",
+            "sw" => "southwest",
+            "u" => "up",
+            "d" => "down",
+            _ => direction
+        };
+
+        // Check if exit exists
+        var canMove = await WorldService.CanMoveFromRoomAsync(currentRoomId!.Value, normalizedDirection);
+        if (!canMove)
+        {
+            AddMessage("You cannot go that way.", "text-danger");
+            return;
+        }
+
+        // Get destination room
+        var destinationRoom = await WorldService.GetRoomByExitAsync(currentRoomId.Value, normalizedDirection);
+        if (destinationRoom == null)
+        {
+            AddMessage("That exit seems to lead nowhere.", "text-danger");
+            return;
+        }
+
+        // Announce leaving current room
+        var leftMessage = new PlayerLeft(characterId!.Value, characterName, currentRoomId.Value, normalizedDirection);
+        await MessagePublisher.PublishAsync(leftMessage);
+
+        // Update current room
+        var oldRoomId = currentRoomId.Value;
+        currentRoomId = destinationRoom.Id;
+        currentRoom = destinationRoom;
+
+        // Update character's room in the database (when CurrentRoomId field is added)
+        await CharacterService.SetCharacterRoomAsync(characterId.Value, currentUserId, currentRoomId.Value);
+
+        // Update message subscription
+        MessageBroadcastService.UpdateCharacterRoom(characterId.Value, currentRoomId);
+
+        // Announce arriving in new room
+        var movedMessage = new PlayerMoved(characterId.Value, characterName, oldRoomId, currentRoomId.Value, normalizedDirection);
+        await MessagePublisher.PublishAsync(movedMessage);
+
+        // Show movement and new room description
+        AddMessage($"You go {normalizedDirection}.", "text-info");
+        var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoomId.Value);
+        AddMessage(roomDescription, "text-success");
+    }
+
+    private async Task HandleSayCommand(string[] parts)
+    {
+        string? targetName = null;
+        string message;
+        
+        // Check if this might be a targeted say command
+        if (parts.Length > 2)
+        {
+            // Try to parse as "say [target] [message]"
+            var potentialTarget = parts[1];
+            var remainingMessage = string.Join(" ", parts.Skip(2));
+            
+            // Check if the potential target exists
+            var availableTargets = await GameActionService.GetAvailableTargetsAsync(currentRoomId!.Value, characterId);
+            var foundTarget = availableTargets.FirstOrDefault(t => 
+                t.Name.Equals(potentialTarget, StringComparison.OrdinalIgnoreCase) ||
+                t.Name.ToLowerInvariant().StartsWith(potentialTarget.ToLowerInvariant()));
+            
+            if (foundTarget != null)
+            {
+                targetName = potentialTarget;
+                message = remainingMessage;
+            }
+            else
+            {
+                // Not a valid target, treat as regular say with full message
+                message = string.Join(" ", parts.Skip(1));
+            }
+        }
+        else
+        {
+            // Regular say command
+            message = string.Join(" ", parts.Skip(1));
+        }
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            var result = await GameActionService.HandleChatMessageAsync(
+                characterId!.Value, 
+                characterName, 
+                currentRoomId!.Value, 
+                message, 
+                ChatType.Say, 
+                targetName);
+            
+            AddMessage(result, "text-success");
+        }
+        else
+        {
+            AddMessage("Say what?", "text-warning");
+        }
+    }
+
+    private async Task HandleOocCommand(string[] parts)
+    {
+        var message = string.Join(" ", parts.Skip(1));
+        if (!string.IsNullOrEmpty(message))
+        {
+            var globalChatMessage = new GlobalChatMessage(characterId!.Value, characterName, message, "ooc");
+            await MessagePublisher.PublishAsync(globalChatMessage);
+            
+            AddMessage($"[OOC] You: {message}", "text-info");
+        }
+        else
+        {
+            AddMessage("Say what on OOC?", "text-warning");
+        }
+    }
+
+    private async Task HandleEmoteCommand(string[] parts)
+    {
+        var emoteText = string.Join(" ", parts.Skip(1));
+        if (!string.IsNullOrEmpty(emoteText))
+        {
+            var emoteMessage = new EmoteMessage(characterId!.Value, characterName, currentRoomId!.Value, emoteText);
+            await MessagePublisher.PublishAsync(emoteMessage);
+            
+            AddMessage($"{characterName} {emoteText}.", "text-cyan");
+        }
+        else
+        {
+            AddMessage("Emote what?", "text-warning");
         }
     }
 

@@ -95,12 +95,14 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
         }
     }
 
-    public async Task PublishBatchAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default) where T : GameMessage
+    public Task PublishBatchAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default) where T : GameMessage
     {
         foreach (var message in messages)
         {
-            await PublishAsync(message, cancellationToken);
+            PublishAsync(message, cancellationToken).GetAwaiter().GetResult();
         }
+        
+        return Task.CompletedTask;
     }
 
     private static string GetRoutingKey<T>(T message) where T : GameMessage

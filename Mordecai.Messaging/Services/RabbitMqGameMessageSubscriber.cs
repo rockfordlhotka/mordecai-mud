@@ -142,7 +142,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         _channel.QueueBind(_queueName, _exchangeName, "*.*.global");
     }
 
-    private async Task BindToRoomMessagesAsync(int roomId)
+    private Task BindToRoomMessagesAsync(int roomId)
     {
         var roomRoutingKeys = new[]
         {
@@ -158,9 +158,10 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         }
 
         _logger.LogDebug("Bound character {CharacterId} to room {RoomId} messages", CharacterId, roomId);
+        return Task.CompletedTask;
     }
 
-    private async Task UnbindFromRoomMessagesAsync(int roomId)
+    private Task UnbindFromRoomMessagesAsync(int roomId)
     {
         var roomRoutingKeys = new[]
         {
@@ -181,6 +182,8 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
                 _logger.LogWarning(ex, "Failed to unbind from routing key {RoutingKey}", routingKey);
             }
         }
+        
+        return Task.CompletedTask;
     }
 
     private async Task OnMessageReceivedAsync(object sender, BasicDeliverEventArgs eventArgs)
@@ -262,7 +265,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         return true;
     }
 
-    public async void UpdateRoomAsync(int? newRoomId)
+    public void UpdateRoomAsync(int? newRoomId)
     {
         if (CurrentRoomId == newRoomId || !_started)
             return;
@@ -272,13 +275,13 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             // Unbind from old room if we were in one
             if (CurrentRoomId.HasValue)
             {
-                await UnbindFromRoomMessagesAsync(CurrentRoomId.Value);
+                UnbindFromRoomMessagesAsync(CurrentRoomId.Value);
             }
 
             // Bind to new room if we're entering one
             if (newRoomId.HasValue)
             {
-                await BindToRoomMessagesAsync(newRoomId.Value);
+                BindToRoomMessagesAsync(newRoomId.Value);
             }
 
             CurrentRoomId = newRoomId;

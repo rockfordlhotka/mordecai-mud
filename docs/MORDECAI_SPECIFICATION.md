@@ -95,16 +95,25 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
   - Social features (friends, guilds)
 
 ### 2. World System
-- **Room-Based World**
-  - Interconnected rooms with descriptions
-  - Multiple zones with different themes and difficulty levels
-  - Dynamic weather and time-of-day effects
-  - Hidden areas and secret passages
+- **Zone-Based World Organization**
+  - World is organized into distinct zones, each containing multiple interconnected rooms
+  - Zones represent thematic areas (towns, dungeons, wilderness, etc.) with consistent themes and difficulty levels
+  - Each zone has configurable properties: name, description, level range, PvP flags, and special rules
+  - Zone boundaries may have travel restrictions or require specific conditions to cross
+
+- **Room-Based Navigation**
+  - Individual rooms within zones contain detailed descriptions and interactive elements
+  - Rooms connect to other rooms via exits (north, south, east, west, up, down, and custom directions)
+  - Room connections can span zone boundaries for world continuity
+  - Hidden areas and secret passages discoverable through exploration or specific conditions
+  - Dynamic weather and time-of-day effects affect room descriptions and gameplay
 
 - **World Persistence**
-  - Player actions affect the world state
-  - Items can be dropped and picked up by other players
-  - Room modifications persist between sessions
+  - Player actions affect the world state within rooms and zones
+  - Items can be dropped and picked up by other players in specific rooms
+  - Room modifications and zone events persist between sessions
+  - Zone-wide events and changes can affect all rooms within that zone
+  - Resurrection system for player characters in specific zones
 
 ### 3. Combat System
 - **Real-Time Combat with Cooldowns**

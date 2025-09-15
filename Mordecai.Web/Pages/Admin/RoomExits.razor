@@ -1,0 +1,515 @@
+@page "/admin/rooms/exits/{RoomId:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@using Mordecai.Web.Data
+@inject Mordecai.Web.Services.IRoomService RoomService
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Manage Room Exits - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-resize-both text-info me-2"></i>
+                    Manage Room Exits
+                    @if (room != null)
+                    {
+                        <small class="text-muted">- @room.Name</small>
+                    }
+                </h1>
+                <div>
+                    @if (room != null)
+                    {
+                        <a href="/admin/rooms/edit/@room.Id" class="btn btn-outline-primary">
+                            <i class="oi oi-pencil me-1"></i>
+                            Edit Room
+                        </a>
+                        <a href="/admin/rooms?zone=@room.ZoneId" class="btn btn-secondary ms-2">
+                            <i class="oi oi-arrow-left me-1"></i>
+                            Back to Zone Rooms
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/admin/rooms" class="btn btn-secondary">
+                            <i class="oi oi-arrow-left me-1"></i>
+                            Back to Rooms
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading room and exits...</p>
+        </div>
+    }
+    else if (room == null)
+    {
+        <div class="alert alert-danger">
+            <h4>Room Not Found</h4>
+            <p>The room with ID @RoomId was not found.</p>
+            <a href="/admin/rooms" class="btn btn-secondary">
+                <i class="oi oi-arrow-left me-1"></i>
+                Back to Rooms
+            </a>
+        </div>
+    }
+    else
+    {
+        <!-- Room Information -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">@room.Name</h5>
+                        <p class="card-text">@room.Description</p>
+                        <div class="small text-muted">
+                            <strong>Zone:</strong> @room.Zone.Name | 
+                            <strong>Type:</strong> @room.RoomType.Name | 
+                            <strong>Coordinates:</strong> X:@room.X, Y:@room.Y, Z:@room.Z
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Exits From This Room -->
+            <div class="col-12 col-lg-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="oi oi-arrow-right me-1"></i>
+                            Exits From This Room (@room.ExitsFromHere.Count(e => e.IsActive))
+                        </h5>
+                        <button class="btn btn-sm btn-success" @onclick="ShowAddExitModal">
+                            <i class="oi oi-plus me-1"></i>
+                            Add Exit
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (!room.ExitsFromHere.Where(e => e.IsActive).Any())
+                        {
+                            <div class="text-muted text-center py-3">
+                                <p>No exits from this room.</p>
+                                <button class="btn btn-sm btn-outline-success" @onclick="ShowAddExitModal">
+                                    <i class="oi oi-plus me-1"></i>
+                                    Add First Exit
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Direction</th>
+                                            <th>To Room</th>
+                                            <th>Description</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var exit in room.ExitsFromHere.Where(e => e.IsActive).OrderBy(e => e.Direction))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <strong>@exit.Direction</strong>
+                                                    @if (exit.IsHidden)
+                                                    {
+                                                        <span class="badge bg-warning ms-1">Hidden</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <a href="/admin/rooms/edit/@exit.ToRoomId" class="text-decoration-none">
+                                                        @exit.ToRoom.Name
+                                                    </a>
+                                                    <div class="small text-muted">@exit.ToRoom.Zone.Name</div>
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(exit.ExitDescription))
+                                                    {
+                                                        <div class="text-truncate" style="max-width: 150px;" title="@exit.ExitDescription">
+                                                            @exit.ExitDescription
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">No description</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group btn-group-sm">
+                                                        <button class="btn btn-outline-primary" @onclick="() => EditExit(exit)" title="Edit Exit">
+                                                            <i class="oi oi-pencil"></i>
+                                                        </button>
+                                                        <button class="btn btn-outline-danger" @onclick="() => ConfirmDeleteExit(exit)" title="Delete Exit">
+                                                            <i class="oi oi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Exits To This Room -->
+            <div class="col-12 col-lg-6">
+                <div class="card mt-4 mt-lg-0">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-arrow-left me-1"></i>
+                            Exits To This Room (@room.ExitsToHere.Count(e => e.IsActive))
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        @if (!room.ExitsToHere.Where(e => e.IsActive).Any())
+                        {
+                            <div class="text-muted text-center py-3">
+                                <p>No exits lead to this room.</p>
+                                <small>Other rooms need to create exits that point here.</small>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>From Room</th>
+                                            <th>Direction</th>
+                                            <th>Description</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var exit in room.ExitsToHere.Where(e => e.IsActive).OrderBy(e => e.FromRoom.Name))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <a href="/admin/rooms/edit/@exit.FromRoomId" class="text-decoration-none">
+                                                        @exit.FromRoom.Name
+                                                    </a>
+                                                    <div class="small text-muted">@exit.FromRoom.Zone.Name</div>
+                                                </td>
+                                                <td>
+                                                    <strong>@exit.Direction</strong>
+                                                    @if (exit.IsHidden)
+                                                    {
+                                                        <span class="badge bg-warning ms-1">Hidden</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(exit.ExitDescription))
+                                                    {
+                                                        <div class="text-truncate" style="max-width: 150px;" title="@exit.ExitDescription">
+                                                            @exit.ExitDescription
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">No description</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <a href="/admin/rooms/exits/@exit.FromRoomId" class="btn btn-sm btn-outline-info" title="Manage from source room">
+                                                        <i class="oi oi-external-link"></i>
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Exit Modal -->
+@if (showExitModal && editingExit != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @if (editingExit.Id > 0)
+                        {
+                            <text>Edit Exit</text>
+                        }
+                        else
+                        {
+                            <text>Add New Exit</text>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseExitModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@editingExit" OnValidSubmit="@SaveExit">
+                        <DataAnnotationsValidator />
+                        
+                        <!-- Direction -->
+                        <div class="mb-3">
+                            <label class="form-label">Direction *</label>
+                            <select class="form-select" @bind="editingExit.Direction">
+                                <option value="">Select direction...</option>
+                                <option value="north">North</option>
+                                <option value="south">South</option>
+                                <option value="east">East</option>
+                                <option value="west">West</option>
+                                <option value="northeast">Northeast</option>
+                                <option value="northwest">Northwest</option>
+                                <option value="southeast">Southeast</option>
+                                <option value="southwest">Southwest</option>
+                                <option value="up">Up</option>
+                                <option value="down">Down</option>
+                                <option value="in">In</option>
+                                <option value="out">Out</option>
+                            </select>
+                            <ValidationMessage For="() => editingExit.Direction" />
+                        </div>
+
+                        <!-- Destination Room -->
+                        <div class="mb-3">
+                            <label class="form-label">Destination Room *</label>
+                            <select class="form-select" @bind="editingExit.ToRoomId">
+                                <option value="0">Select destination room...</option>
+                                @foreach (var availableRoom in availableRooms.OrderBy(r => r.Zone.Name).ThenBy(r => r.Name))
+                                {
+                                    <option value="@availableRoom.Id">
+                                        [@availableRoom.Zone.Name] @availableRoom.Name
+                                    </option>
+                                }
+                            </select>
+                            <ValidationMessage For="() => editingExit.ToRoomId" />
+                        </div>
+
+                        <!-- Exit Description -->
+                        <div class="mb-3">
+                            <label class="form-label">Exit Description (Optional)</label>
+                            <input type="text" class="form-control" @bind="editingExit.ExitDescription" 
+                                   placeholder="e.g., a wooden door, a narrow path..." maxlength="200" />
+                            <div class="form-text">Brief description of what the exit looks like.</div>
+                        </div>
+
+                        <!-- Night Exit Description -->
+                        <div class="mb-3">
+                            <label class="form-label">Night Exit Description (Optional)</label>
+                            <input type="text" class="form-control" @bind="editingExit.NightExitDescription" 
+                                   placeholder="Alternative description for nighttime..." maxlength="200" />
+                            <div class="form-text">Alternative description for night time (if different).</div>
+                        </div>
+
+                        <!-- Hidden -->
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="isHidden" @bind="editingExit.IsHidden" />
+                                <label class="form-check-label" for="isHidden">
+                                    Hidden Exit
+                                </label>
+                            </div>
+                            <div class="form-text">Hidden exits require special detection by players.</div>
+                        </div>
+
+                        <!-- Modal Footer -->
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseExitModal">Cancel</button>
+                            <button type="submit" class="btn btn-primary" disabled="@savingExit">
+                                @if (savingExit)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                @if (editingExit.Id > 0)
+                                {
+                                    <text>Update Exit</text>
+                                }
+                                else
+                                {
+                                    <text>Create Exit</text>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int RoomId { get; set; }
+
+    private Room? room;
+    private List<Room> availableRooms = new();
+    private RoomExit? editingExit;
+    private bool loading = true;
+    private bool savingExit = false;
+    private bool showExitModal = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoom();
+        await LoadAvailableRooms();
+    }
+
+    private async Task LoadRoom()
+    {
+        loading = true;
+        try
+        {
+            room = await RoomService.GetRoomByIdAsync(RoomId);
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading room: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadAvailableRooms()
+    {
+        try
+        {
+            // Get all active rooms for destination selection
+            availableRooms = (await RoomService.GetActiveRoomsAsync())
+                .Where(r => r.Id != RoomId) // Exclude current room
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading available rooms: {ex.Message}");
+        }
+    }
+
+    private void ShowAddExitModal()
+    {
+        editingExit = new RoomExit
+        {
+            FromRoomId = RoomId,
+            ToRoomId = 0,
+            Direction = string.Empty,
+            IsActive = true
+        };
+        
+        showExitModal = true;
+    }
+
+    private void EditExit(RoomExit exit)
+    {
+        editingExit = new RoomExit
+        {
+            Id = exit.Id,
+            FromRoomId = exit.FromRoomId,
+            ToRoomId = exit.ToRoomId,
+            Direction = exit.Direction,
+            ExitDescription = exit.ExitDescription,
+            NightExitDescription = exit.NightExitDescription,
+            IsHidden = exit.IsHidden,
+            SkillRequired = exit.SkillRequired,
+            SkillLevelRequired = exit.SkillLevelRequired,
+            IsActive = exit.IsActive
+        };
+        
+        showExitModal = true;
+    }
+
+    private void CloseExitModal()
+    {
+        showExitModal = false;
+        editingExit = null;
+    }
+
+    private async Task SaveExit()
+    {
+        if (editingExit == null) return;
+
+        savingExit = true;
+        try
+        {
+            if (editingExit.Id > 0)
+            {
+                // Update existing exit
+                DbContext.RoomExits.Update(editingExit);
+            }
+            else
+            {
+                // Create new exit
+                DbContext.RoomExits.Add(editingExit);
+            }
+            
+            await DbContext.SaveChangesAsync();
+            CloseExitModal();
+            
+            // Reload room data
+            await LoadRoom();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving exit: {ex.Message}");
+        }
+        finally
+        {
+            savingExit = false;
+        }
+    }
+
+    private async Task ConfirmDeleteExit(RoomExit exit)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm", 
+            $"Are you sure you want to delete the exit '{exit.Direction}' to '{exit.ToRoom.Name}'? This action cannot be undone.");
+        
+        if (confirmed)
+        {
+            await DeleteExit(exit);
+        }
+    }
+
+    private async Task DeleteExit(RoomExit exit)
+    {
+        try
+        {
+            var exitToDelete = await DbContext.RoomExits.FindAsync(exit.Id);
+            if (exitToDelete != null)
+            {
+                DbContext.RoomExits.Remove(exitToDelete);
+                await DbContext.SaveChangesAsync();
+                
+                // Reload room data
+                await LoadRoom();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting exit: {ex.Message}");
+        }
+    }
+}

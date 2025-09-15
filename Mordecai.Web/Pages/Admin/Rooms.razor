@@ -1,15 +1,328 @@
 @page "/admin/rooms"
 @using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject Mordecai.Web.Services.IRoomService RoomService
+@inject Mordecai.Web.Services.IZoneService ZoneService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
 @attribute [Authorize(Policy = "AdminOnly")]
 
-<h1>Room Management</h1>
-<p>This is a placeholder for the room management interface.</p>
-<p>Features to implement:</p>
-<ul>
-    <li>Create new rooms</li>
-    <li>Edit existing rooms</li>
-    <li>Connect rooms with exits</li>
-    <li>Set room descriptions and properties</li>
-</ul>
+<PageTitle>Room Management - Admin</PageTitle>
 
-<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-map-marker text-primary me-2"></i>
+                    Room Management
+                    @if (selectedZone != null)
+                    {
+                        <small class="text-muted">- @selectedZone.Name</small>
+                    }
+                </h1>
+                <div>
+                    @if (selectedZone != null)
+                    {
+                        <a href="/admin/rooms/create?zone=@selectedZone.Id" class="btn btn-success">
+                            <i class="oi oi-plus me-1"></i>
+                            Create New Room
+                        </a>
+                        <a href="/admin/rooms" class="btn btn-outline-secondary ms-2">
+                            <i class="oi oi-list me-1"></i>
+                            All Rooms
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/admin/rooms/create" class="btn btn-success">
+                            <i class="oi oi-plus me-1"></i>
+                            Create New Room
+                        </a>
+                    }
+                    <a href="/admin" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zone Filter -->
+    <div class="row mb-3">
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="oi oi-location me-1"></i>
+                        Filter by Zone
+                    </h6>
+                    <select class="form-select" @onchange="OnZoneChanged">
+                        <option value="">All Zones (@rooms.Count() rooms)</option>
+                        @foreach (var zone in zones)
+                        {
+                            <option value="@zone.Id" selected="@(selectedZoneId == zone.Id)">
+                                @zone.Name (@roomCountsByZone.GetValueOrDefault(zone.Id, 0) rooms)
+                            </option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading rooms...</span>
+            </div>
+            <p class="mt-2">Loading rooms...</p>
+        </div>
+    }
+    else if (!rooms.Any())
+    {
+        <div class="alert alert-info text-center">
+            @if (selectedZone != null)
+            {
+                <h4>No Rooms Found in @selectedZone.Name</h4>
+                <p>This zone doesn't have any rooms yet. Create the first room to get started.</p>
+                <a href="/admin/rooms/create?zone=@selectedZone.Id" class="btn btn-success">
+                    <i class="oi oi-plus me-1"></i>
+                    Create First Room
+                </a>
+            }
+            else
+            {
+                <h4>No Rooms Found</h4>
+                <p>No rooms have been created yet. Get started by creating your first room.</p>
+                <a href="/admin/rooms/create" class="btn btn-success">
+                    <i class="oi oi-plus me-1"></i>
+                    Create First Room
+                </a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-list me-2"></i>
+                            @if (selectedZone != null)
+                            {
+                                <text>Rooms in @selectedZone.Name (@rooms.Count())</text>
+                            }
+                            else
+                            {
+                                <text>All Rooms (@rooms.Count())</text>
+                            }
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Zone</th>
+                                        <th>Type</th>
+                                        <th>Description</th>
+                                        <th>Coordinates</th>
+                                        <th>Exits</th>
+                                        <th>Created</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var room in rooms)
+                                    {
+                                        <tr class="@(!room.IsActive ? "table-warning" : "")">
+                                            <td>
+                                                <strong>@room.Name</strong>
+                                            </td>
+                                            <td>
+                                                <a href="/admin/rooms?zone=@room.Zone.Id" class="text-decoration-none">
+                                                    @room.Zone.Name
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-secondary">@room.RoomType.Name</span>
+                                            </td>
+                                            <td>
+                                                <div class="text-truncate" style="max-width: 250px;" title="@room.Description">
+                                                    @room.Description
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">
+                                                    X:@room.X, Y:@room.Y
+                                                    @if (room.Z != 0)
+                                                    {
+                                                        <text>, Z:@room.Z</text>
+                                                    }
+                                                </small>
+                                            </td>
+                                            <td>
+                                                @{
+                                                    var exitInfo = exitCounts.GetValueOrDefault(room.Id, (false, 0));
+                                                }
+                                                @if (exitInfo.Item1)
+                                                {
+                                                    <span class="badge bg-info">@exitInfo.Item2</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning">None</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                <small>
+                                                    @room.CreatedAt.ToString("MMM dd, yyyy")<br/>
+                                                    <span class="text-muted">by @room.CreatedBy</span>
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@(room.IsActive ? "success" : "warning")">
+                                                    @(room.IsActive ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="/admin/rooms/edit/@room.Id" class="btn btn-outline-primary" title="Edit Room">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </a>
+                                                    <a href="/admin/rooms/exits/@room.Id" class="btn btn-outline-info" title="Manage Exits">
+                                                        <i class="oi oi-resize-both"></i>
+                                                    </a>
+                                                    <button class="btn btn-outline-danger" title="Delete Room" 
+                                                            @onclick="() => ConfirmDeleteRoom(room)">
+                                                        <i class="oi oi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery] public int? Zone { get; set; }
+
+    private List<Room> rooms = new();
+    private List<Zone> zones = new();
+    private Zone? selectedZone;
+    private int? selectedZoneId;
+    private Dictionary<int, int> roomCountsByZone = new();
+    private Dictionary<int, (bool HasExits, int ExitCount)> exitCounts = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        selectedZoneId = Zone;
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            // Load zones
+            zones = (await ZoneService.GetAllZonesAsync()).ToList();
+
+            // Set selected zone if specified
+            if (selectedZoneId.HasValue)
+            {
+                selectedZone = zones.FirstOrDefault(z => z.Id == selectedZoneId.Value);
+            }
+
+            // Load rooms
+            if (selectedZone != null)
+            {
+                rooms = (await RoomService.GetRoomsByZoneAsync(selectedZone.Id)).ToList();
+            }
+            else
+            {
+                rooms = (await RoomService.GetAllRoomsAsync()).ToList();
+            }
+
+            // Load room counts by zone
+            foreach (var zone in zones)
+            {
+                roomCountsByZone[zone.Id] = await RoomService.GetRoomCountByZoneAsync(zone.Id);
+            }
+
+            // Load exit counts for displayed rooms
+            foreach (var room in rooms)
+            {
+                exitCounts[room.Id] = await RoomService.HasExitsAsync(room.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading rooms: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private Task OnZoneChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var zoneId))
+        {
+            Navigation.NavigateTo($"/admin/rooms?zone={zoneId}");
+        }
+        else
+        {
+            Navigation.NavigateTo("/admin/rooms");
+        }
+        
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmDeleteRoom(Room room)
+    {
+        var exitInfo = exitCounts.GetValueOrDefault(room.Id, (false, 0));
+        var warningMessage = exitInfo.Item1
+            ? $"This room has {exitInfo.Item2} exit(s) that will also be deleted. " 
+            : "";
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm", 
+            $"Are you sure you want to delete the room '{room.Name}'? {warningMessage}This action cannot be undone.");
+        
+        if (confirmed)
+        {
+            await DeleteRoom(room);
+        }
+    }
+
+    private async Task DeleteRoom(Room room)
+    {
+        try
+        {
+            await RoomService.DeleteRoomAsync(room.Id);
+            await LoadData(); // Refresh the list
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting room: {ex.Message}");
+        }
+    }
+}
