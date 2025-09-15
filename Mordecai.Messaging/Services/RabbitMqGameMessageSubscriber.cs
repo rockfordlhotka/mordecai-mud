@@ -83,7 +83,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         try
         {
             // Bind to all relevant routing keys
-            BindToRoutingKeysAsync();
+            await BindToRoutingKeysAsync().ConfigureAwait(false);
 
             // Set up consumer
             _consumer = new AsyncEventingBasicConsumer(_channel);
@@ -119,6 +119,8 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
             _started = false;
             _logger.LogInformation("Stopped message subscription for character {CharacterId}", CharacterId);
+            
+            await Task.CompletedTask.ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -200,7 +202,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             {
                 if (MessageReceived != null)
                 {
-                    await MessageReceived(gameMessage);
+                    await MessageReceived(gameMessage).ConfigureAwait(false);
                 }
             }
 
@@ -267,7 +269,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         return true;
     }
 
-    public void UpdateRoomAsync(int? newRoomId)
+    public async Task UpdateRoomAsync(int? newRoomId, CancellationToken cancellationToken = default)
     {
         if (CurrentRoomId == newRoomId || !_started)
             return;
@@ -277,13 +279,13 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             // Unbind from old room if we were in one
             if (CurrentRoomId.HasValue)
             {
-                UnbindFromRoomMessagesAsync(CurrentRoomId.Value);
+                await UnbindFromRoomMessagesAsync(CurrentRoomId.Value).ConfigureAwait(false);
             }
 
             // Bind to new room if we're entering one
             if (newRoomId.HasValue)
             {
-                BindToRoomMessagesAsync(newRoomId.Value);
+                await BindToRoomMessagesAsync(newRoomId.Value).ConfigureAwait(false);
             }
 
             CurrentRoomId = newRoomId;
@@ -303,7 +305,16 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
         try
         {
-            StopAsync().GetAwaiter().GetResult();
+            if (_started)
+            {
+                // Use synchronous version in Dispose to avoid blocking
+                _started = false;
+                if (_consumer != null)
+                {
+                    _consumer.Received -= OnMessageReceivedAsync;
+                }
+            }
+            
             _channel?.Dispose();
             _connection?.Dispose();
         }

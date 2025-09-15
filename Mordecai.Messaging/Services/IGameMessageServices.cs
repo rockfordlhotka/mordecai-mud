@@ -36,7 +36,7 @@ public interface IGameMessageSubscriber : IDisposable
     /// <summary>
     /// Event fired when a relevant message is received
     /// </summary>
-    event Func<GameMessage, Task> MessageReceived;
+    event Func<GameMessage, Task>? MessageReceived;
     
     /// <summary>
     /// Starts the subscription
@@ -47,6 +47,11 @@ public interface IGameMessageSubscriber : IDisposable
     /// Stops the subscription
     /// </summary>
     Task StopAsync(CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Updates the room subscriptions when a character moves
+    /// </summary>
+    Task UpdateRoomAsync(int? newRoomId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

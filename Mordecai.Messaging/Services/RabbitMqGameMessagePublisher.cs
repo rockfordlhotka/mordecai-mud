@@ -87,6 +87,9 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
 
             _logger.LogDebug("Published message {MessageType} with routing key {RoutingKey}", 
                 typeof(T).Name, routingKey);
+
+            // RabbitMQ.Client operations are sync, but we add a Task.Yield to be properly async
+            await Task.Yield();
         }
         catch (Exception ex)
         {
@@ -95,14 +98,25 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
         }
     }
 
-    public Task PublishBatchAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default) where T : GameMessage
+    public async Task PublishBatchAsync<T>(IEnumerable<T> messages, CancellationToken cancellationToken = default) where T : GameMessage
     {
-        foreach (var message in messages)
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(RabbitMqGameMessagePublisher));
+
+        try
         {
-            PublishAsync(message, cancellationToken).GetAwaiter().GetResult();
+            // Process all messages in the batch
+            foreach (var message in messages)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await PublishAsync(message, cancellationToken).ConfigureAwait(false);
+            }
         }
-        
-        return Task.CompletedTask;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish message batch");
+            throw;
+        }
     }
 
     private static string GetRoutingKey<T>(T message) where T : GameMessage
