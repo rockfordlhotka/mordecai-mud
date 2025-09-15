@@ -1,0 +1,263 @@
+@page "/admin/zones/edit/{zoneId:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject IZoneService ZoneService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Edit Zone - Admin</PageTitle>
+
+<div class="container-fluid">
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading zone...</span>
+            </div>
+            <p class="mt-2">Loading zone details...</p>
+        </div>
+    }
+    else if (zone == null)
+    {
+        <div class="alert alert-warning">
+            <h4>Zone Not Found</h4>
+            <p>The requested zone could not be found.</p>
+            <a href="/admin/zones" class="btn btn-primary">Back to Zones</a>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12 col-lg-8 col-xl-6">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1>
+                        <i class="oi oi-pencil text-primary me-2"></i>
+                        Edit Zone: @zone.Name
+                    </h1>
+                    <a href="/admin/zones" class="btn btn-secondary">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Zones
+                    </a>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Zone Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="zone" OnValidSubmit="UpdateZone">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="name" class="form-label">Zone Name *</label>
+                                    <InputText id="name" class="form-control" @bind-Value="zone.Name" 
+                                              placeholder="Enter zone name" />
+                                    <ValidationMessage For="@(() => zone.Name)" class="text-danger" />
+                                    @if (!string.IsNullOrEmpty(nameExistsError))
+                                    {
+                                        <div class="text-danger small">@nameExistsError</div>
+                                    }
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label for="difficulty" class="form-label">Difficulty Level</label>
+                                    <InputNumber id="difficulty" class="form-control" @bind-Value="zone.DifficultyLevel" 
+                                               min="1" max="10" />
+                                    <ValidationMessage For="@(() => zone.DifficultyLevel)" class="text-danger" />
+                                    <div class="form-text">
+                                        1 = Beginner, 2-3 = Intermediate, 4-5 = Advanced, 6+ = Expert
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Description *</label>
+                                <InputTextArea id="description" class="form-control" @bind-Value="zone.Description" 
+                                             rows="4" placeholder="Describe this zone and its atmosphere..." />
+                                <ValidationMessage For="@(() => zone.Description)" class="text-danger" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="weatherType" class="form-label">Weather Type</label>
+                                    <InputSelect id="weatherType" class="form-select" @bind-Value="zone.WeatherType">
+                                        <option value="Clear">Clear</option>
+                                        <option value="Cloudy">Cloudy</option>
+                                        <option value="Rainy">Rainy</option>
+                                        <option value="Stormy">Stormy</option>
+                                        <option value="Snowy">Snowy</option>
+                                        <option value="Foggy">Foggy</option>
+                                        <option value="Windy">Windy</option>
+                                        <option value="Hot">Hot</option>
+                                        <option value="Cold">Cold</option>
+                                        <option value="Humid">Humid</option>
+                                        <option value="Dry">Dry</option>
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check mt-4">
+                                        <InputCheckbox id="isOutdoor" class="form-check-input" @bind-Value="zone.IsOutdoor" />
+                                        <label class="form-check-label" for="isOutdoor">
+                                            Outdoor Zone
+                                        </label>
+                                        <div class="form-text">
+                                            Outdoor zones are affected by day/night cycles and weather
+                                        </div>
+                                    </div>
+
+                                    <div class="form-check mt-2">
+                                        <InputCheckbox id="isActive" class="form-check-input" @bind-Value="zone.IsActive" />
+                                        <label class="form-check-label" for="isActive">
+                                            Active Zone
+                                        </label>
+                                        <div class="form-text">
+                                            Only active zones are available for gameplay
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <strong>Zone Information:</strong><br/>
+                                <small>
+                                    Created: @zone.CreatedAt.ToString("MMMM dd, yyyy 'at' h:mm tt") by @zone.CreatedBy<br/>
+                                    Rooms in this zone: @roomCount
+                                </small>
+                            </div>
+
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="button" class="btn btn-outline-secondary me-md-2" 
+                                        @onclick="@(() => Navigation.NavigateTo("/admin/zones"))">
+                                    <i class="oi oi-x me-1"></i>
+                                    Cancel
+                                </button>
+                                <a href="/admin/rooms?zone=@zone.Id" class="btn btn-outline-info me-md-2">
+                                    <i class="oi oi-map-marker me-1"></i>
+                                    Manage Rooms
+                                </a>
+                                <button type="submit" class="btn btn-primary" disabled="@saving">
+                                    @if (saving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="oi oi-check me-1"></i>
+                                    }
+                                    Update Zone
+                                </button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-4 col-xl-6">
+                <div class="card mt-4 mt-lg-0">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="oi oi-warning me-1"></i>
+                            Important Notes
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <h6>Changing Zone Settings</h6>
+                        <ul class="small">
+                            <li>Changes affect all rooms in this zone</li>
+                            <li>Day/night settings impact room descriptions</li>
+                            <li>Weather changes affect atmospheric events</li>
+                            <li>Difficulty affects NPC spawns and encounters</li>
+                        </ul>
+
+                        @if (roomCount > 0)
+                        {
+                            <div class="alert alert-warning small">
+                                <strong>Zone has @roomCount room(s)</strong><br/>
+                                Some changes may require updating individual rooms
+                                to maintain consistency.
+                            </div>
+                        }
+
+                        <h6>Zone Management</h6>
+                        <ul class="small">
+                            <li>Use "Manage Rooms" to add/edit rooms</li>
+                            <li>Deactivating makes zone inaccessible to players</li>
+                            <li>Cannot delete zones that contain rooms</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int ZoneId { get; set; }
+    
+    private Zone? zone;
+    private int roomCount = 0;
+    private bool loading = true;
+    private bool saving = false;
+    private string nameExistsError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadZone();
+    }
+
+    private async Task LoadZone()
+    {
+        loading = true;
+        try
+        {
+            zone = await ZoneService.GetZoneByIdAsync(ZoneId);
+            if (zone != null)
+            {
+                roomCount = await ZoneService.GetRoomCountForZoneAsync(zone.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading zone: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task UpdateZone()
+    {
+        if (zone == null) return;
+        
+        nameExistsError = string.Empty;
+        
+        // Validate zone name doesn't already exist (excluding current zone)
+        if (await ZoneService.ZoneNameExistsAsync(zone.Name, zone.Id))
+        {
+            nameExistsError = "A zone with this name already exists.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            await ZoneService.UpdateZoneAsync(zone);
+            await JSRuntime.InvokeVoidAsync("alert", $"Zone '{zone.Name}' updated successfully!");
+            Navigation.NavigateTo("/admin/zones");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error updating zone: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

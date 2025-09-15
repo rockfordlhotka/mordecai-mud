@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Mordecai.Web.Data;
 using Mordecai.Messaging.Extensions;
 using Mordecai.Web.Services;
+using Mordecai.Game.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,11 @@ builder.AddRabbitMQClient("messaging");
 
 // Add game messaging services
 builder.Services.AddGameMessaging();
+
+// Add game services
+builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
+builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<Mordecai.Web.Services.IZoneService, Mordecai.Web.Services.ZoneService>();
 
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();

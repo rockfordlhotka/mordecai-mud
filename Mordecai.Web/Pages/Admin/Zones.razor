@@ -1,0 +1,229 @@
+@page "/admin/zones"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject IZoneService ZoneService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Zone Management - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-map text-primary me-2"></i>
+                    Zone Management
+                </h1>
+                <div>
+                    <a href="/admin/zones/create" class="btn btn-success">
+                        <i class="oi oi-plus me-1"></i>
+                        Create New Zone
+                    </a>
+                    <a href="/admin" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading zones...</span>
+            </div>
+            <p class="mt-2">Loading zones...</p>
+        </div>
+    }
+    else if (!zones.Any())
+    {
+        <div class="alert alert-info text-center">
+            <h4>No Zones Found</h4>
+            <p>Get started by creating your first zone for the game world.</p>
+            <a href="/admin/zones/create" class="btn btn-success">
+                <i class="oi oi-plus me-1"></i>
+                Create First Zone
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-list me-2"></i>
+                            Zones (@zones.Count())
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Difficulty</th>
+                                        <th>Environment</th>
+                                        <th>Weather</th>
+                                        <th>Rooms</th>
+                                        <th>Created</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var zone in zones)
+                                    {
+                                        <tr class="@(!zone.IsActive ? "table-warning" : "")">
+                                            <td>
+                                                <strong>@zone.Name</strong>
+                                            </td>
+                                            <td>
+                                                <div class="text-truncate" style="max-width: 200px;" title="@zone.Description">
+                                                    @zone.Description
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@GetDifficultyBadgeClass(zone.DifficultyLevel)">
+                                                    Level @zone.DifficultyLevel
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@(zone.IsOutdoor ? "success" : "secondary")">
+                                                    @(zone.IsOutdoor ? "Outdoor" : "Indoor")
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-info">@zone.WeatherType</span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-primary">@(roomCounts.GetValueOrDefault(zone.Id, 0))</span>
+                                            </td>
+                                            <td>
+                                                <small>
+                                                    @zone.CreatedAt.ToString("MMM dd, yyyy")<br/>
+                                                    <span class="text-muted">by @zone.CreatedBy</span>
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@(zone.IsActive ? "success" : "warning")">
+                                                    @(zone.IsActive ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="/admin/zones/edit/@zone.Id" class="btn btn-outline-primary" title="Edit Zone">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </a>
+                                                    <a href="/admin/rooms?zone=@zone.Id" class="btn btn-outline-info" title="Manage Rooms">
+                                                        <i class="oi oi-map-marker"></i>
+                                                    </a>
+                                                    @if (roomCounts.GetValueOrDefault(zone.Id, 0) == 0)
+                                                    {
+                                                        <button class="btn btn-outline-danger" title="Delete Zone" 
+                                                                @onclick="() => ConfirmDeleteZone(zone)">
+                                                            <i class="oi oi-trash"></i>
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="btn btn-outline-secondary" disabled title="Cannot delete zone with rooms">
+                                                            <i class="oi oi-lock-locked"></i>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Zone> zones = new();
+    private Dictionary<int, int> roomCounts = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadZones();
+    }
+
+    private async Task LoadZones()
+    {
+        loading = true;
+        try
+        {
+            zones = (await ZoneService.GetAllZonesAsync()).ToList();
+            
+            // Load room counts for each zone
+            foreach (var zone in zones)
+            {
+                roomCounts[zone.Id] = await ZoneService.GetRoomCountForZoneAsync(zone.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            // TODO: Add proper error handling/logging
+            Console.WriteLine($"Error loading zones: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ConfirmDeleteZone(Zone zone)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm", 
+            $"Are you sure you want to delete the zone '{zone.Name}'? This action cannot be undone.");
+        
+        if (confirmed)
+        {
+            await DeleteZone(zone);
+        }
+    }
+
+    private async Task DeleteZone(Zone zone)
+    {
+        try
+        {
+            await ZoneService.DeleteZoneAsync(zone.Id);
+            await LoadZones(); // Refresh the list
+        }
+        catch (InvalidOperationException ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting zone: {ex.Message}");
+        }
+    }
+
+    private string GetDifficultyBadgeClass(int difficulty)
+    {
+        return difficulty switch
+        {
+            1 => "success",      // Easy
+            2 => "warning",      // Medium
+            3 => "danger",       // Hard
+            >= 4 => "dark",      // Extreme
+            _ => "secondary"
+        };
+    }
+}

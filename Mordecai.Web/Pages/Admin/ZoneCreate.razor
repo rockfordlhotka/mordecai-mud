@@ -1,0 +1,232 @@
+@page "/admin/zones/create"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject IZoneService ZoneService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Create Zone - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12 col-lg-8 col-xl-6">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-plus text-success me-2"></i>
+                    Create New Zone
+                </h1>
+                <a href="/admin/zones" class="btn btn-secondary">
+                    <i class="oi oi-arrow-left me-1"></i>
+                    Back to Zones
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Zone Details</h5>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="newZone" OnValidSubmit="CreateZone">
+                        <DataAnnotationsValidator />
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="name" class="form-label">Zone Name *</label>
+                                <InputText id="name" class="form-control" @bind-Value="newZone.Name" 
+                                          placeholder="Enter zone name" />
+                                <ValidationMessage For="@(() => newZone.Name)" class="text-danger" />
+                                @if (!string.IsNullOrEmpty(nameExistsError))
+                                {
+                                    <div class="text-danger small">@nameExistsError</div>
+                                }
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="difficulty" class="form-label">Difficulty Level</label>
+                                <InputNumber id="difficulty" class="form-control" @bind-Value="newZone.DifficultyLevel" 
+                                           min="1" max="10" />
+                                <ValidationMessage For="@(() => newZone.DifficultyLevel)" class="text-danger" />
+                                <div class="form-text">
+                                    1 = Beginner, 2-3 = Intermediate, 4-5 = Advanced, 6+ = Expert
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description *</label>
+                            <InputTextArea id="description" class="form-control" @bind-Value="newZone.Description" 
+                                         rows="4" placeholder="Describe this zone and its atmosphere..." />
+                            <ValidationMessage For="@(() => newZone.Description)" class="text-danger" />
+                            <div class="form-text">
+                                This description will be used for administrative purposes and may be shown to players.
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="weatherType" class="form-label">Weather Type</label>
+                                <InputSelect id="weatherType" class="form-select" @bind-Value="newZone.WeatherType">
+                                    <option value="Clear">Clear</option>
+                                    <option value="Cloudy">Cloudy</option>
+                                    <option value="Rainy">Rainy</option>
+                                    <option value="Stormy">Stormy</option>
+                                    <option value="Snowy">Snowy</option>
+                                    <option value="Foggy">Foggy</option>
+                                    <option value="Windy">Windy</option>
+                                    <option value="Hot">Hot</option>
+                                    <option value="Cold">Cold</option>
+                                    <option value="Humid">Humid</option>
+                                    <option value="Dry">Dry</option>
+                                </InputSelect>
+                                <div class="form-text">
+                                    Default weather pattern for this zone
+                                </div>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check mt-4">
+                                    <InputCheckbox id="isOutdoor" class="form-check-input" @bind-Value="newZone.IsOutdoor" />
+                                    <label class="form-check-label" for="isOutdoor">
+                                        Outdoor Zone
+                                    </label>
+                                    <div class="form-text">
+                                        Outdoor zones are affected by day/night cycles and weather
+                                    </div>
+                                </div>
+
+                                <div class="form-check mt-2">
+                                    <InputCheckbox id="isActive" class="form-check-input" @bind-Value="newZone.IsActive" />
+                                    <label class="form-check-label" for="isActive">
+                                        Active Zone
+                                    </label>
+                                    <div class="form-text">
+                                        Only active zones are available for gameplay
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-outline-secondary me-md-2" 
+                                    @onclick="@(() => Navigation.NavigateTo("/admin/zones"))">
+                                <i class="oi oi-x me-1"></i>
+                                Cancel
+                            </button>
+                            <button type="submit" class="btn btn-success" disabled="@saving">
+                                @if (saving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                else
+                                {
+                                    <i class="oi oi-check me-1"></i>
+                                }
+                                Create Zone
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-lg-4 col-xl-6">
+            <div class="card mt-4 mt-lg-0">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="oi oi-info me-1"></i>
+                        Zone Creation Guidelines
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <h6>Zone Naming</h6>
+                    <ul class="small">
+                        <li>Use descriptive, unique names</li>
+                        <li>Consider the zone's purpose and theme</li>
+                        <li>Examples: "Whispering Woods", "Dragon's Lair", "Market Square"</li>
+                    </ul>
+
+                    <h6>Difficulty Guidelines</h6>
+                    <ul class="small">
+                        <li><strong>Level 1:</strong> Safe areas, training grounds</li>
+                        <li><strong>Level 2-3:</strong> Beginning adventure areas</li>
+                        <li><strong>Level 4-5:</strong> Intermediate challenges</li>
+                        <li><strong>Level 6+:</strong> High-risk, high-reward areas</li>
+                    </ul>
+
+                    <h6>Environment Types</h6>
+                    <ul class="small">
+                        <li><strong>Outdoor:</strong> Forests, plains, mountains, caves with entrances</li>
+                        <li><strong>Indoor:</strong> Dungeons, buildings, underground complexes</li>
+                    </ul>
+
+                    <h6>Next Steps</h6>
+                    <p class="small">
+                        After creating a zone, you'll be able to add rooms, configure room types, 
+                        and set up connections between areas.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? authenticationState { get; set; }
+    
+    private Zone newZone = new()
+    {
+        DifficultyLevel = 1,
+        IsOutdoor = true,
+        IsActive = true,
+        WeatherType = "Clear"
+    };
+    
+    private bool saving = false;
+    private string nameExistsError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (authenticationState != null)
+        {
+            var authState = await authenticationState;
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                newZone.CreatedBy = user.Identity.Name ?? "Unknown";
+            }
+        }
+    }
+
+    private async Task CreateZone()
+    {
+        nameExistsError = string.Empty;
+        
+        // Validate zone name doesn't already exist
+        if (await ZoneService.ZoneNameExistsAsync(newZone.Name))
+        {
+            nameExistsError = "A zone with this name already exists.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var createdZone = await ZoneService.CreateZoneAsync(newZone);
+            await JSRuntime.InvokeVoidAsync("alert", $"Zone '{createdZone.Name}' created successfully!");
+            Navigation.NavigateTo("/admin/zones");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error creating zone: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}
