@@ -14,6 +14,157 @@
 
 Mordecai is a modern, web-accessible text-based MUD that combines the classic feel of traditional MUDs with contemporary web technologies. Players will explore a persistent fantasy world, interact with other players, combat monsters, complete quests, and develop their characters through a rich text-based interface.
 
+## Core Dice Mechanics
+
+Mordecai uses a **4dF (Fudge/Fate Dice)** system as the foundation for all skill checks, combat resolution, and random events. This provides consistent, predictable probability curves that favor average results while still allowing for dramatic successes and failures.
+
+### Fudge Dice (dF) Properties
+- **6-sided dice** with special faces:
+  - **2 "+" sides**: Positive result (+1 each)
+  - **2 "-" sides**: Negative result (-1 each)  
+  - **2 blank sides**: Neutral result (0 each)
+- **4dF roll range**: -4 to +4 (bell curve distribution)
+- **Average result**: 0 (most common outcome)
+- **Probability distribution**: Heavily weighted toward 0, with decreasing probability for extreme results
+
+### Standard 4dF Resolution
+- **Skill Check Formula**: `Character Skill + 4dF vs. Target Number or Opposing Skill + 4dF`
+- **Combat Resolution**: `Attack Skill + 4dF vs. Defense Skill + 4dF`
+- **Difficulty Modifiers**: Applied as bonuses/penalties to the target number
+- **Margin of Success**: Difference between final results determines outcome quality
+
+### Dice Roll Notation
+- **4dF**: Standard fudge dice roll (no exploding mechanics)
+- **4dF+**: Exploding fudge dice roll (uses exploding mechanics described below)
+
+### Exploding Dice Mechanics
+For dramatic moments and critical situations, some rolls use **exploding dice** rules (denoted as **4dF+**):
+
+- **+4 Result (Maximum Success)**: 
+  - Roll 4dF again, but **only count the "+" results**
+  - Add these additional "+" results to the total
+  - Continue rolling if another +4 is achieved (rare but possible)
+  
+- **-4 Result (Critical Failure)**:
+  - Roll 4dF again, but **only count the "-" results** 
+  - Add these additional "-" results to the total (making failure worse)
+  - Continue rolling if another -4 is achieved
+
+### When Exploding Dice Apply
+- **Combat**: Critical hits and fumbles use **4dF+** exploding mechanics
+- **High-Stakes Skill Checks**: Important story moments, dangerous actions use **4dF+**
+- **Spell Casting**: Particularly powerful or risky magic uses **4dF+**
+- **Crafting**: When attempting masterwork items or using rare materials uses **4dF+**
+- **Social Encounters**: Dramatic persuasion, intimidation, or deception attempts use **4dF+**
+- **Standard Actions**: Most routine actions use standard **4dF** without exploding
+
+### Examples
+- **Standard Combat**: Sword skill 12 + **4dF** (+1) = 13 vs. Dodge skill 10 + **4dF** (-1) = 9. Attack succeeds by 4.
+- **Exploding Success**: Fire Bolt skill 8 + **4dF+** (+4) = 12, then exploding roll 4dF yields 2 more "+" = 14 total. Devastating magical attack!
+- **Exploding Failure**: Lockpicking skill 6 + **4dF+** (-4) = 2, then exploding roll 4dF yields 2 more "-" = 0 total. Lock mechanism jams permanently.
+
+This dice system provides consistent mechanics across all game systems while maintaining excitement through the possibility of extraordinary results during critical moments.
+
+## Attribute System and Species Modifiers
+
+### Base Attribute Calculation
+
+All characters start with seven core attributes that serve as the foundation for all derived skills and secondary statistics. These attributes are calculated using the 4dF system combined with species-specific modifiers.
+
+#### Human Baseline (Default Species)
+For Humans, all seven attributes are calculated as:
+**Attribute Value = 4dF + 10**
+
+This gives each Human attribute an average value of **10**, with the following probability distribution:
+- **Range**: 6-14 (possible values)
+- **Average**: 10 (most common result)
+- **Distribution**: Bell curve weighted toward 10, with decreasing probability for extreme values
+
+#### Core Attributes
+All characters possess these seven core attributes:
+1. **Physicality (STR)** - Physical strength and power
+2. **Dodge (DEX)** - Agility and evasion ability  
+3. **Drive (END)** - Endurance and stamina
+4. **Reasoning (INT)** - Intelligence and logical thinking
+5. **Awareness (ITT)** - Intuition and perception
+6. **Focus (WIL)** - Willpower and mental concentration
+7. **Bearing (PHY)** - Physical beauty and social presence
+
+### Species Attribute Modifiers
+
+Each non-Human species applies specific modifiers to the base Human attribute calculation, creating distinct racial advantages and disadvantages:
+
+#### Available Species and Modifiers
+
+- **Human**: No modifiers (baseline)
+  - All attributes: 4dF + 10
+
+- **Elf**: Intellectual and agile, but physically delicate
+  - **Reasoning (INT)**: 4dF + 11 (+1 modifier)
+  - **Physicality (STR)**: 4dF + 9 (-1 modifier)
+  - All other attributes: 4dF + 10
+
+- **Dwarf**: Strong and resilient, but less agile
+  - **Physicality (STR)**: 4dF + 11 (+1 modifier)
+  - **Dodge (DEX)**: 4dF + 9 (-1 modifier)
+  - All other attributes: 4dF + 10
+
+- **Halfling**: Quick and perceptive, but physically weak
+  - **Dodge (DEX)**: 4dF + 11 (+1 modifier)
+  - **Awareness (ITT)**: 4dF + 11 (+1 modifier)
+  - **Physicality (STR)**: 4dF + 8 (-2 modifier)
+  - All other attributes: 4dF + 10
+
+- **Orc**: Physically powerful and enduring, but less intelligent and social
+  - **Physicality (STR)**: 4dF + 12 (+2 modifier)
+  - **Drive (END)**: 4dF + 11 (+1 modifier)
+  - **Reasoning (INT)**: 4dF + 9 (-1 modifier)
+  - **Bearing (PHY)**: 4dF + 9 (-1 modifier)
+  - All other attributes: 4dF + 10
+
+### Attribute Usage and Relationships
+
+#### Direct Attribute Effects
+While all action resolution uses skills rather than raw attributes, attributes serve several critical functions:
+
+1. **Skill Starting Values**: Many skills begin with a base value derived from related attributes
+2. **Health Calculations**: Primary and secondary health pools are calculated from attributes
+3. **Skill Advancement Modifiers**: Higher attributes may provide learning bonuses for related skills
+4. **Equipment Requirements**: Some items may require minimum attribute thresholds
+5. **Skill Caps**: Attributes may influence the maximum potential of related skills
+
+#### Health Pool Calculations
+- **Fatigue (FAT)**: (Drive × 2) - 5
+  - Represents stamina, exhaustion, and non-lethal damage capacity
+- **Vitality (VIT)**: (Physicality + Drive) - 5  
+  - Represents life force and lethal damage capacity
+
+#### Skill Relationship Examples
+- **Weapon Skills**: May use Physicality for damage bonuses and weapon requirements
+- **Dodge Skill**: Starts with base value influenced by Dodge attribute
+- **Spell Skills**: Different spells may have attribute relationships (Fire Bolt with Focus, etc.)
+- **Social Skills**: Bearing influences persuasion, intimidation, and leadership abilities
+- **Crafting Skills**: Reasoning affects complex crafting and blueprint understanding
+
+### Character Creation Impact
+
+During character creation:
+1. **Species Selection**: Player chooses species, which determines attribute modifiers
+2. **Attribute Rolling**: System rolls 4dF for each attribute and applies species modifiers
+3. **Health Calculation**: Fatigue and Vitality are automatically calculated from final attributes
+4. **Starting Skills**: Core attribute skills are set to their calculated attribute values
+5. **Skill Point Allocation**: Player receives bonus skill points to distribute among learned skills
+
+### Balancing Considerations
+
+- **No "Dump Stats"**: All attributes provide meaningful benefits to avoid useless attributes
+- **Species Trade-offs**: Each species has both advantages and disadvantages
+- **Skill-Based Resolution**: Attributes influence but never directly resolve actions
+- **Long-term Growth**: Skills can advance far beyond starting attribute limitations through practice
+- **Meaningful Choices**: Species selection creates distinct playstyle opportunities without hard restrictions
+
+This attribute system provides character diversity at creation while maintaining the skill-based progression focus throughout gameplay.
+
 ## Technical Architecture
 
 

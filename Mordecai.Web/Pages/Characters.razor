@@ -1,12 +1,16 @@
 @page "/characters"
 @attribute [Authorize]
 @using Mordecai.Web.Data
+@using Mordecai.Web.Models
+@using Mordecai.Web.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @inject ApplicationDbContext Db
 @inject AuthenticationStateProvider Auth
 @inject NavigationManager Nav
+@inject IDiceService DiceService
+@inject ICharacterCreationService CharacterCreationService
 
 <PageTitle>Your Characters</PageTitle>
 
@@ -33,7 +37,18 @@ else
                             <h5 class="card-title mb-1">@c.Name</h5>
                             <div class="text-muted small mb-2">@c.Species</div>
                             <div class="small mb-2">Created: @c.CreatedAt.UtcDateTime.ToShortDateString()</div>
-                            <div class="small mb-3">Last Played: @(c.LastPlayedAt?.UtcDateTime.ToString("g") ?? "Never")</div>
+                            <div class="small mb-2">Last Played: @(c.LastPlayedAt?.UtcDateTime.ToString("g") ?? "Never")</div>
+                            
+                            <!-- Character Attributes Summary -->
+                            <div class="small mb-2">
+                                <strong>Attributes (Total: @c.AttributeTotal):</strong><br/>
+                                STR: @c.Physicality, DEX: @c.Dodge, END: @c.Drive<br/>
+                                INT: @c.Reasoning, ITT: @c.Awareness, WIL: @c.Focus, PHY: @c.Bearing
+                            </div>
+                            <div class="small mb-3">
+                                <strong>Health:</strong> FAT: @c.CalculatedFatigue, VIT: @c.CalculatedVitality
+                            </div>
+                            
                             <div class="mt-auto">
                                 <button class="btn btn-sm btn-primary me-2" @onclick="() => EnterWorld(c.Id)">Enter World</button>
                                 <button class="btn btn-sm btn-outline-danger" disabled>Delete</button>
@@ -45,20 +60,125 @@ else
         </div>
     }
 
-    <EditForm Model="this" OnValidSubmit="CreateCharacter">
-        <DataAnnotationsValidator />
-        <ValidationSummary />
-        <div class="input-group mb-3" style="max-width:400px;">
-            <input class="form-control" placeholder="Character Name" @bind="newCharacterName" maxlength="40" />
-            <select class="form-select" @bind="newCharacterSpecies">
-                @foreach (var s in speciesOptions)
-                {
-                    <option value="@s">@s</option>
-                }
-            </select>
-            <button class="btn btn-success" type="submit" disabled="@isCreating">@((isCreating?"Creating...":"Create"))</button>
+    <!-- Character Creation Form -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Create New Character</h5>
         </div>
-    </EditForm>
+        <div class="card-body">
+            <EditForm Model="this" OnValidSubmit="CreateCharacter">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                
+                <!-- Basic Info -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Character Name</label>
+                        <input class="form-control" placeholder="Enter character name" @bind="newCharacterName" maxlength="40" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Species</label>
+                        <select class="form-select" @bind="newCharacterSpecies" @bind:after="OnSpeciesChanged">
+                            @foreach (var s in speciesOptions)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Species Information -->
+                @if (!string.IsNullOrEmpty(newCharacterSpecies) && newCharacterSpecies != "Human")
+                {
+                    <div class="alert alert-info mb-3">
+                        <strong>@newCharacterSpecies Modifiers:</strong>
+                        @{
+                            var modifiers = SpeciesModifiers.GetAllModifiers(newCharacterSpecies)
+                                .Where(kvp => kvp.Value != 0)
+                                .Select(kvp => $"{kvp.Key}: {(kvp.Value > 0 ? "+" : "")}{kvp.Value}")
+                                .ToArray();
+                        }
+                        @if (modifiers.Any())
+                        {
+                            @string.Join(", ", modifiers)
+                        }
+                        else
+                        {
+                            <text>No modifiers</text>
+                        }
+                    </div>
+                }
+
+                <!-- Attribute Generation -->
+                @if (generatedAttributes != null)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Attributes (Total: @generatedAttributes.Total)</h6>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="GenerateNewAttributes">
+                                ?? Reroll All
+                            </button>
+                        </div>
+                        
+                        <div class="row g-2">
+                            @foreach (var attrInfo in GetAttributeInfo())
+                            {
+                                <div class="col-md-6 col-lg-4">
+                                    <div class="card">
+                                        <div class="card-body p-2">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">@attrInfo.displayName</small>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button type="button" class="btn btn-outline-secondary" 
+                                                            @onclick="() => DecreaseAttribute(attrInfo.name)"
+                                                            disabled="@(!CanDecreaseAttribute(attrInfo.name))">-</button>
+                                                    <span class="btn btn-outline-primary disabled">@attrInfo.value</span>
+                                                    <button type="button" class="btn btn-outline-secondary" 
+                                                            @onclick="() => IncreaseAttribute(attrInfo.name)"
+                                                            disabled="@(!CanIncreaseAttribute(attrInfo.name))">+</button>
+                                                </div>
+                                            </div>
+                                            @{
+                                                var (min, max) = CharacterCreationService.GetAttributeBounds(newCharacterSpecies, attrInfo.name);
+                                            }
+                                            <small class="text-muted">Range: @min - @max</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Health Preview -->
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="alert alert-light mb-2">
+                                    <strong>Calculated Health:</strong><br/>
+                                    Fatigue (FAT): @generatedAttributes.CalculatedFatigue<br/>
+                                    Vitality (VIT): @generatedAttributes.CalculatedVitality
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" @onclick="GenerateNewAttributes">
+                            ?? Generate Attributes
+                        </button>
+                    </div>
+                }
+
+                <!-- Create Button -->
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-success" type="submit" 
+                            disabled="@(isCreating || generatedAttributes == null || string.IsNullOrWhiteSpace(newCharacterName))">
+                        @(isCreating ? "Creating..." : "Create Character")
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
 }
 
 @code {
@@ -71,6 +191,9 @@ else
     private string newCharacterSpecies = "Human";
     private readonly string[] speciesOptions = new[] { "Human", "Elf", "Dwarf", "Halfling", "Orc" };
     private const int CharacterLimit = 3; // configurable later
+
+    private CharacterAttributes? generatedAttributes;
+    private int originalAttributeTotal = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -86,10 +209,111 @@ else
         isLoading = false;
     }
 
+    private void OnSpeciesChanged()
+    {
+        // Reset attributes when species changes
+        generatedAttributes = null;
+        originalAttributeTotal = 0;
+    }
+
+    private void GenerateNewAttributes()
+    {
+        generatedAttributes = CharacterCreationService.GenerateRandomAttributes(newCharacterSpecies);
+        originalAttributeTotal = generatedAttributes.Total;
+        StateHasChanged();
+    }
+
+    private List<(string name, string displayName, int value, Action<int> setter)> GetAttributeInfo()
+    {
+        if (generatedAttributes == null) return new List<(string, string, int, Action<int>)>();
+
+        return new List<(string, string, int, Action<int>)>
+        {
+            ("Physicality", "STR", generatedAttributes.Physicality, v => generatedAttributes.Physicality = v),
+            ("Dodge", "DEX", generatedAttributes.Dodge, v => generatedAttributes.Dodge = v),
+            ("Drive", "END", generatedAttributes.Drive, v => generatedAttributes.Drive = v),
+            ("Reasoning", "INT", generatedAttributes.Reasoning, v => generatedAttributes.Reasoning = v),
+            ("Awareness", "ITT", generatedAttributes.Awareness, v => generatedAttributes.Awareness = v),
+            ("Focus", "WIL", generatedAttributes.Focus, v => generatedAttributes.Focus = v),
+            ("Bearing", "PHY", generatedAttributes.Bearing, v => generatedAttributes.Bearing = v)
+        };
+    }
+
+    private bool CanIncreaseAttribute(string attributeName)
+    {
+        if (generatedAttributes == null) return false;
+
+        var targetAttr = GetAttributeInfo().FirstOrDefault(x => x.name == attributeName);
+        if (targetAttr.setter == null) return false;
+
+        var (min, max) = CharacterCreationService.GetAttributeBounds(newCharacterSpecies, attributeName);
+        
+        // Can increase if: current value < max AND there are points to distribute from other attributes
+        return targetAttr.value < max && GetAttributeInfo().Any(x => x.name != attributeName && x.value > CharacterCreationService.GetAttributeBounds(newCharacterSpecies, x.name).min);
+    }
+
+    private bool CanDecreaseAttribute(string attributeName)
+    {
+        if (generatedAttributes == null) return false;
+
+        var sourceAttr = GetAttributeInfo().FirstOrDefault(x => x.name == attributeName);
+        if (sourceAttr.setter == null) return false;
+
+        var (min, max) = CharacterCreationService.GetAttributeBounds(newCharacterSpecies, attributeName);
+        
+        // Can decrease if: current value > min AND there are attributes that can be increased
+        return sourceAttr.value > min && GetAttributeInfo().Any(x => x.name != attributeName && x.value < CharacterCreationService.GetAttributeBounds(newCharacterSpecies, x.name).max);
+    }
+
+    private void IncreaseAttribute(string attributeName)
+    {
+        if (!CanIncreaseAttribute(attributeName)) return;
+
+        var attributeInfoList = GetAttributeInfo();
+        var targetAttr = attributeInfoList.FirstOrDefault(x => x.name == attributeName);
+        var sourceAttr = attributeInfoList
+            .Where(x => x.name != attributeName)
+            .Where(x => x.value > CharacterCreationService.GetAttributeBounds(newCharacterSpecies, x.name).min)
+            .FirstOrDefault();
+
+        if (targetAttr.setter != null && sourceAttr.setter != null)
+        {
+            targetAttr.setter(targetAttr.value + 1);
+            sourceAttr.setter(sourceAttr.value - 1);
+            StateHasChanged();
+        }
+    }
+
+    private void DecreaseAttribute(string attributeName)
+    {
+        if (!CanDecreaseAttribute(attributeName)) return;
+
+        var attributeInfoList = GetAttributeInfo();
+        var sourceAttr = attributeInfoList.FirstOrDefault(x => x.name == attributeName);
+        var targetAttr = attributeInfoList
+            .Where(x => x.name != attributeName)
+            .Where(x => x.value < CharacterCreationService.GetAttributeBounds(newCharacterSpecies, x.name).max)
+            .FirstOrDefault();
+
+        if (sourceAttr.setter != null && targetAttr.setter != null)
+        {
+            sourceAttr.setter(sourceAttr.value - 1);
+            targetAttr.setter(targetAttr.value + 1);
+            StateHasChanged();
+        }
+    }
+
     private async Task CreateCharacter()
     {
-        if (string.IsNullOrWhiteSpace(newCharacterName)) return;
+        if (string.IsNullOrWhiteSpace(newCharacterName) || generatedAttributes == null) return;
         if (characters.Count >= CharacterLimit) return; // silently ignore for now
+
+        // Validate attributes before creating
+        if (!CharacterCreationService.ValidateAttributeAdjustments(generatedAttributes, originalAttributeTotal, newCharacterSpecies))
+        {
+            // TODO: Show validation error
+            return;
+        }
 
         isCreating = true;
 
@@ -105,12 +329,25 @@ else
             Name = newCharacterName.Trim(),
             Species = newCharacterSpecies,
             UserId = currentUserId,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            // Set generated attributes
+            Physicality = generatedAttributes.Physicality,
+            Dodge = generatedAttributes.Dodge,
+            Drive = generatedAttributes.Drive,
+            Reasoning = generatedAttributes.Reasoning,
+            Awareness = generatedAttributes.Awareness,
+            Focus = generatedAttributes.Focus,
+            Bearing = generatedAttributes.Bearing
         };
+        
         Db.Characters.Add(character);
         await Db.SaveChangesAsync();
 
+        // Reset form
         newCharacterName = string.Empty;
+        generatedAttributes = null;
+        originalAttributeTotal = 0;
+        
         await LoadCharacters();
         isCreating = false;
     }

@@ -7,6 +7,7 @@
 @using Mordecai.Messaging.Services
 @using Mordecai.Messaging.Messages
 @using Mordecai.Game.Entities
+@using Mordecai.Web.Data
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -216,13 +217,16 @@
     private bool isSubscribed = false;
     private bool shouldFocusInput = false;
 
-    // Character vital stats (placeholder values - these should come from your character service)
-    private int currentFat = 85;
-    private int maxFat = 100;
-    private int pendingFat = 85;
-    private int currentVit = 92;
-    private int maxVit = 100;
-    private int pendingVit = 95;
+    // Character vital stats - now loads from actual character data
+    private int currentFat = 0;
+    private int maxFat = 0;
+    private int pendingFat = 0;
+    private int currentVit = 0;
+    private int maxVit = 0;
+    private int pendingVit = 0;
+
+    // Store the loaded character for health calculations
+    private Character? loadedCharacter = null;
 
     // Active effects (placeholder - should come from your character service)
     private List<ActiveEffect> activeEffects = new();
@@ -263,9 +267,10 @@
             var character = await CharacterService.GetCharacterByIdAsync(characterId.Value, currentUserId);
             if (character != null)
             {
+                loadedCharacter = character;
                 characterName = character.Name;
                 
-                // Load character vitals (placeholder - implement in your character service)
+                // Load character vitals using actual character data
                 await LoadCharacterVitals();
                 
                 // Load active effects (placeholder - implement in your character service)
@@ -317,14 +322,27 @@
 
     private async Task LoadCharacterVitals()
     {
-        // TODO: Implement actual character vital loading from your character service
-        // This is placeholder data
-        currentFat = 85;
-        maxFat = 100;
-        pendingFat = 85;
-        currentVit = 92;
-        maxVit = 100;
-        pendingVit = 95;
+        if (loadedCharacter == null)
+        {
+            // Fallback to safe defaults if character not loaded
+            currentFat = maxFat = pendingFat = 15;
+            currentVit = maxVit = pendingVit = 15;
+            return;
+        }
+
+        // Calculate max health values from character's actual attributes
+        // FAT = (Drive × 2) - 5
+        maxFat = loadedCharacter.CalculatedFatigue;
+        
+        // VIT = (Physicality + Drive) - 5  
+        maxVit = loadedCharacter.CalculatedVitality;
+
+        // TODO: In the future, load current and pending values from the database
+        // For now, assume character is at full health
+        currentFat = maxFat;
+        currentVit = maxVit;
+        pendingFat = currentFat;
+        pendingVit = currentVit;
         
         await Task.CompletedTask;
     }
@@ -333,12 +351,7 @@
     {
         // TODO: Implement actual active effects loading from your character service
         // This is placeholder data
-        activeEffects = new List<ActiveEffect>
-        {
-            // Example effects - remove when implementing real data
-            // new ActiveEffect { Name = "Blessed", Description = "Divine protection", Duration = TimeSpan.FromMinutes(5) },
-            // new ActiveEffect { Name = "Well Fed", Description = "Recently ate a good meal", Duration = TimeSpan.FromHours(2) }
-        };
+        activeEffects = new List<ActiveEffect>();
         
         await Task.CompletedTask;
     }
@@ -975,7 +988,7 @@
     }
     
     /* Mobile adjustments */
-    @@media (max-width: 767.98px) {
+    media (max-width: 767.98px) {
         .character-panel {
             display: none !important;
         }
@@ -1000,7 +1013,7 @@
     }
     
     /* Responsive character panel toggle for smaller screens */
-    @@media (max-width: 991.98px) {
+    media (max-width: 991.98px) {
         .character-panel {
             position: fixed;
             top: 50px; /* Account for header */

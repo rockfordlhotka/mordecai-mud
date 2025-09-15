@@ -33,6 +33,10 @@ builder.AddRabbitMQClient("messaging");
 // Add game messaging services
 builder.Services.AddGameMessaging();
 
+// Add character creation services
+builder.Services.AddScoped<IDiceService, DiceService>();
+builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>();
+
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
 builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
