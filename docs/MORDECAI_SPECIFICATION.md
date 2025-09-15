@@ -5,7 +5,7 @@
 **Project Name:** Mordecai  
 **Type:** Text-based Multi-User Dungeon (MUD)  
 **Platform:** Web-based application  
-**Technology Stack:** .NET 8+, Blazor Web App, SQLite  
+**Technology Stack:** .NET 9, Blazor Web App, SQLite  
 **Target Scale:** 10-50 concurrent players (intimate community focus)  
 **Target Audience:** Classic MUD enthusiasts and new players interested in text-based RPG experiences  
 **Vision Scope:** Comprehensive MUD with extensive features (this document covers core features with room for expansion)
@@ -27,7 +27,7 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 
 ### Backend
-- **.NET 8+ Blazor Server**: All game logic and state managed server-side
+- **.NET 9 Blazor Server**: All game logic and state managed server-side
 - **Entity Framework Core** with SQLite for data persistence
 - **RabbitMQ** for async messaging between users, NPCs, and system events
 - **OpenTelemetry** for distributed tracing, logging, and metrics
@@ -67,6 +67,18 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
     - Focus (WIL) - willpower and concentration
     - Bearing (PHY) - physical beauty and presence
   
+  - **Health System**:
+    - **Fatigue (FAT)**: Calculated as (END × 2) - 5, represents stamina and exhaustion
+    - **Vitality (VIT)**: Calculated as (STR + END) - 5, represents physical health and life force
+    - Both FAT and VIT track current values that can be reduced by damage and restored by rest/healing
+    - Death occurs when VIT reaches 0; unconsciousness when FAT reaches 0
+    - **Pending Damage/Healing System**:
+      - Each character and NPC has pending FAT and VIT pools that accumulate damage/healing
+      - Positive pending values represent damage to be applied over time
+      - Negative pending values represent healing to be applied over time
+      - Every 10 seconds, half the pending pool value is applied to current health (rounded to ensure pools reach zero)
+      - This creates a gradual damage/healing effect rather than instant application
+  
   - **Weapon Skills** (learned through practice):
     - Swords, Axes, Maces, Polearms, Bows, Crossbows, Throwing, etc.
   
@@ -90,6 +102,8 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 - **Player Profile**
   - Individual skill ratings and progression history
+  - Current health status (Fatigue and Vitality levels)
+  - Pending damage and healing pools (visible to show incoming effects)
   - Achievement system based on skill milestones
   - Play time tracking and character statistics
   - Social features (friends, guilds)
@@ -122,10 +136,26 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
   - Higher skill levels reduce cooldown times and improve effectiveness
   - Combat actions resolved through skill checks vs. target's defensive skills
 
+- **Health and Damage System**
+  - **Fatigue (FAT)** damage represents exhaustion, stunning, and non-lethal harm
+  - **Vitality (VIT)** damage represents serious injury and life-threatening wounds
+  - Combat actions can target either or both health pools depending on attack type
+  - **Pending Damage Pools**: Damage is not applied instantly but goes into pending pools
+    - Damage accumulates in pending FAT and VIT pools (positive values)
+    - Every 10 seconds, half the pending damage is applied to current health values
+    - Multiple attacks can accumulate in pending pools before being applied
+    - This creates realistic "bleeding out" or gradual injury effects
+  - **Healing System**: Works through the same pending pool mechanism
+    - Healing adds negative values to pending pools (representing recovery)
+    - Negative pending values gradually restore current health over time
+    - Allows for "healing over time" effects and prevents instant full healing
+  - Damage calculations based on weapon type, skill levels, and armor protection
+  - Recovery systems for both health types (rest, healing, medical treatment)
+
 - **PvE Combat**
   - Diverse monster types with unique abilities
   - Boss encounters in special areas
-  - Loot drops and experience rewards
+  - Loot drops and skill advancement opportunities
 
 - **PvP Combat**
   - Optional player vs player in designated areas
@@ -189,6 +219,9 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
   - Merchant and trainer NPCs
   - Quest givers and story characters
   - AI-driven NPC behaviors
+  - **Health tracking** with same Fatigue and Vitality system as player characters
+  - **Pending damage/healing pools** identical to player system for consistent combat mechanics
+  - NPCs use attribute skills for health calculations and combat resolution
 
 ### 8. Economy
 - **Currency System**
@@ -227,6 +260,10 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 - **RabbitMQ** handles all async, cross-user, and NPC/system messaging
   - Decouples game logic, enables scalable event-driven architecture
   - All chat, combat, and world events flow through RabbitMQ
+- **Background Services** for timed game mechanics
+  - Health application timer (10-second intervals for pending pool processing)
+  - World simulation and NPC behavior processing
+  - Scheduled events and maintenance tasks
 
 ### 2. Data Management
 - **Entity Framework Core**
@@ -299,6 +336,11 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 ### Phase 2: Character Systems (Weeks 5-8)
 - **Priority 2: Character creation system**
   - Multi-character per account selection UI (list + create)
+- **Health tracking implementation**
+  - Fatigue and Vitality calculation and persistence
+  - Pending damage and healing pool system
+  - Health application timer (10-second intervals)
+  - Current health status display in character interface
 - **Skill-based progression and advancement**
 - **Attribute system implementation**
 - Character persistence and save/load
@@ -306,6 +348,11 @@ Mordecai is a modern, web-accessible text-based MUD that combines the classic fe
 
 ### Phase 3: Combat Foundation (Weeks 9-12)
 - **Priority 3: Basic combat mechanics**
+- **Health and damage system implementation**
+  - Pending pool damage accumulation and application
+  - Gradual damage and healing effects over time
+  - Combat damage routing to pending pools
+  - Healing spell and rest mechanics using pending pools
 - **Melee combat system**
 - **Ranged combat (bows, throwing)**
 - **Spell casting system**
