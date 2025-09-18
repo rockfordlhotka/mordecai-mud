@@ -1,0 +1,204 @@
+@page "/character/{CharacterId:guid}/skills"
+@attribute [Authorize]
+@using Mordecai.Web.Data
+@using Mordecai.Web.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject AuthenticationStateProvider Auth
+@inject ISkillService SkillService
+@inject NavigationManager Nav
+
+<PageTitle>Character Skills - @(character?.Name ?? "Loading...")</PageTitle>
+
+@if (isLoading)
+{
+    <p><em>Loading character skills...</em></p>
+}
+else if (character == null)
+{
+    <div class="alert alert-danger">Character not found or you don't have permission to view it.</div>
+    <a href="/characters" class="btn btn-primary">Back to Characters</a>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>@character.Name - Skills</h2>
+        <a href="/characters" class="btn btn-secondary">Back to Characters</a>
+    </div>
+
+    <!-- Character Summary -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Character Summary</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Species:</strong> @character.Species</p>
+                    <p><strong>Health:</strong> 
+                        FAT: @character.RemainingFatigue/@character.MaxFatigue, 
+                        VIT: @character.RemainingVitality/@character.MaxVitality
+                    </p>
+                    @if (character.PendingFatigueDamage != 0 || character.PendingVitalityDamage != 0)
+                    {
+                        <p><strong>Pending:</strong> 
+                            @if (character.PendingFatigueDamage != 0)
+                            {
+                                <span class="text-@(character.PendingFatigueDamage > 0 ? "danger" : "success")">
+                                    FAT: @(character.PendingFatigueDamage > 0 ? "+" : "")@character.PendingFatigueDamage
+                                </span>
+                            }
+                            @if (character.PendingVitalityDamage != 0)
+                            {
+                                <span class="text-@(character.PendingVitalityDamage > 0 ? "danger" : "success")">
+                                    VIT: @(character.PendingVitalityDamage > 0 ? "+" : "")@character.PendingVitalityDamage
+                                </span>
+                            }
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Base Attributes</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <small>STR: @character.Physicality</small><br/>
+                            <small>DEX: @character.Dodge</small><br/>
+                            <small>END: @character.Drive</small><br/>
+                            <small>INT: @character.Reasoning</small>
+                        </div>
+                        <div class="col-6">
+                            <small>ITT: @character.Awareness</small><br/>
+                            <small>WIL: @character.Focus</small><br/>
+                            <small>PHY: @character.Bearing</small><br/>
+                            <small><strong>Total: @character.AttributeTotal</strong></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skills Section -->
+    @if (skills.Any())
+    {
+        var groupedSkills = skills.GroupBy(s => s.SkillDefinition.SkillType).OrderBy(g => g.Key);
+        
+        @foreach (var skillGroup in groupedSkills)
+        {
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="mb-0">@skillGroup.Key Skills</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach (var skill in skillGroup.OrderBy(s => s.SkillDefinition.Name))
+                        {
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card">
+                                    <div class="card-body p-3">
+                                        <h6 class="card-title mb-1">@skill.SkillDefinition.Name</h6>
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <small class="text-muted">Level:</small><br/>
+                                                <strong>@skill.Level</strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted">Ability Score:</small><br/>
+                                                <strong>@skill.CalculateAbilityScore()</strong>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">Experience:</small><br/>
+                                            <div class="progress" style="height: 10px;">
+                                                @{
+                                                    var currentLevelExp = skill.Level > 0 ? skill.SkillDefinition.CalculateExperienceRequired(skill.Level) : 0;
+                                                    var nextLevelExp = skill.SkillDefinition.CalculateExperienceRequired(skill.Level + 1);
+                                                    var progressExp = skill.Experience - currentLevelExp;
+                                                    var neededExp = nextLevelExp - currentLevelExp;
+                                                    var progressPercent = neededExp > 0 ? (progressExp * 100.0 / neededExp) : 0;
+                                                }
+                                                <div class="progress-bar" role="progressbar" 
+                                                     style="width: @progressPercent.ToString("F1")%"
+                                                     aria-valuenow="@progressExp" aria-valuemin="0" aria-valuemax="@neededExp">
+                                                </div>
+                                            </div>
+                                            <small class="text-muted">@skill.Experience / @nextLevelExp</small>
+                                            @if (skill.ExperienceToNextLevel() > 0)
+                                            {
+                                                <small class="text-muted"> (@skill.ExperienceToNextLevel() to next)</small>
+                                            }
+                                        </div>
+                                        @if (skill.UsageCount > 0)
+                                        {
+                                            <div class="mt-2">
+                                                <small class="text-muted">
+                                                    Used @skill.UsageCount time@(skill.UsageCount == 1 ? "" : "s")
+                                                    @if (skill.LastUsedAt.HasValue)
+                                                    {
+                                                        <text><br/>Last: @skill.LastUsedAt.Value.ToString("g")</text>
+                                                    }
+                                                </small>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(skill.SkillDefinition.Description))
+                                        {
+                                            <div class="mt-2">
+                                                <small class="text-muted">@skill.SkillDefinition.Description</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="alert alert-info">This character has no skills yet.</div>
+    }
+}
+
+@code {
+    [Parameter] public Guid CharacterId { get; set; }
+
+    private bool isLoading = true;
+    private string currentUserId = string.Empty;
+    private Character? character;
+    private List<CharacterSkill> skills = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await Auth.GetAuthenticationStateAsync();
+        currentUserId = authState.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        await LoadCharacterAndSkills();
+    }
+
+    private async Task LoadCharacterAndSkills()
+    {
+        isLoading = true;
+        
+        // Load character
+        character = await Db.Characters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == CharacterId && c.UserId == currentUserId);
+
+        if (character != null)
+        {
+            // Load skills
+            skills = await SkillService.GetCharacterSkillsAsync(CharacterId);
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+}

@@ -11,6 +11,7 @@
 @inject NavigationManager Nav
 @inject IDiceService DiceService
 @inject ICharacterCreationService CharacterCreationService
+@inject ISkillService SkillService
 
 <PageTitle>Your Characters</PageTitle>
 
@@ -46,11 +47,12 @@ else
                                 INT: @c.Reasoning, ITT: @c.Awareness, WIL: @c.Focus, PHY: @c.Bearing
                             </div>
                             <div class="small mb-3">
-                                <strong>Health:</strong> FAT: @c.CalculatedFatigue, VIT: @c.CalculatedVitality
+                                <strong>Health:</strong> FAT: @c.MaxFatigue, VIT: @c.MaxVitality
                             </div>
                             
                             <div class="mt-auto">
                                 <button class="btn btn-sm btn-primary me-2" @onclick="() => EnterWorld(c.Id)">Enter World</button>
+                                <a href="/character/@c.Id/skills" class="btn btn-sm btn-outline-info me-2">View Skills</a>
                                 <button class="btn btn-sm btn-outline-danger" disabled>Delete</button>
                             </div>
                         </div>
@@ -155,6 +157,24 @@ else
                                     <strong>Calculated Health:</strong><br/>
                                     Fatigue (FAT): @generatedAttributes.CalculatedFatigue<br/>
                                     Vitality (VIT): @generatedAttributes.CalculatedVitality
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Base Attribute Skills Preview -->
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="alert alert-light mb-2">
+                                    <strong>Starting Attribute Skills (Ability Score = Attribute - 5 + Level 0):</strong><br/>
+                                    <div class="row">
+                                        @foreach (var attrInfo in GetAttributeInfo())
+                                        {
+                                            var abilityScore = attrInfo.value - 5 + 0; // Level 0 initially
+                                            <div class="col-md-6 col-lg-4">
+                                                <small>@attrInfo.displayName: @abilityScore</small>
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -337,11 +357,19 @@ else
             Reasoning = generatedAttributes.Reasoning,
             Awareness = generatedAttributes.Awareness,
             Focus = generatedAttributes.Focus,
-            Bearing = generatedAttributes.Bearing
+            Bearing = generatedAttributes.Bearing,
+            // Initialize health values to 0 (no damage taken)
+            CurrentFatigue = 0,
+            CurrentVitality = 0,
+            PendingFatigueDamage = 0,
+            PendingVitalityDamage = 0
         };
         
         Db.Characters.Add(character);
         await Db.SaveChangesAsync();
+
+        // Create the 7 base attribute skills for this character
+        await SkillService.CreateAttributeSkillsForCharacterAsync(character);
 
         // Reset form
         newCharacterName = string.Empty;

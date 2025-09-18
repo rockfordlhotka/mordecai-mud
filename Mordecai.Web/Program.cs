@@ -37,6 +37,9 @@ builder.Services.AddGameMessaging();
 builder.Services.AddScoped<IDiceService, DiceService>();
 builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>();
 
+// Add skill services
+builder.Services.AddScoped<ISkillService, SkillService>();
+
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
 builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
@@ -71,7 +74,52 @@ app.MapDefaultEndpoints();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    context.Database.Migrate();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        // Try to migrate first
+        logger.LogInformation("Applying database migrations...");
+        context.Database.Migrate();
+        logger.LogInformation("Database migrations applied successfully.");
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("PendingModelChangesWarning"))
+    {
+        // If there are pending model changes, recreate the database
+        logger.LogWarning("Pending model changes detected. Recreating database...");
+        context.Database.EnsureDeleted();
+        context.Database.EnsureCreated();
+        logger.LogInformation("Database recreated successfully.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error during database migration. Attempting to recreate database...");
+        try
+        {
+            context.Database.EnsureDeleted();
+            context.Database.EnsureCreated();
+            logger.LogInformation("Database recreated successfully after migration error.");
+        }
+        catch (Exception recreateEx)
+        {
+            logger.LogError(recreateEx, "Failed to recreate database. Application may not function correctly.");
+            throw;
+        }
+    }
+    
+    // Initialize base attribute skills
+    try
+    {
+        logger.LogInformation("Initializing base attribute skills...");
+        var skillService = scope.ServiceProvider.GetRequiredService<ISkillService>();
+        await skillService.InitializeBaseAttributeSkillsAsync();
+        logger.LogInformation("Base attribute skills initialized successfully.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error initializing base attribute skills.");
+        throw;
+    }
 }
 
 // Configure the HTTP request pipeline.

@@ -222,6 +222,72 @@ RoomAtmosphericEventLog
 - EventSource (Zone, RoomType)
 - LastTriggered
 - TriggerCount
+
+-- Room effect definitions (templates for effects that can be applied to rooms)
+RoomEffectDefinitions
+- Id (Primary Key)
+- Name (e.g., "Wall of Fire", "Fog Cloud", "Entangle", "Blessed Ground")
+- Description
+- EffectType (Environmental, Elemental, Magical, Movement, Combat, Sensory)
+- Category (Fire, Ice, Poison, Blessing, Curse, Illusion, Physical)
+- IconName (for UI display)
+- EffectColor (for UI theming)
+- IsVisible (true if players can see the effect, false if hidden)
+- DetectionSkillId (Foreign Key -> SkillDefinitions.Id, nullable - skill needed to detect hidden effects)
+- DetectionDifficulty (skill check difficulty to detect hidden effects)
+- DefaultDuration (seconds, 0 = permanent until removed)
+- DefaultIntensity (default strength level, 1.0 = normal)
+- IsStackable (can multiple instances exist in same room)
+- MaxStacks (if stackable, maximum number)
+- TickInterval (seconds between effect applications, 0 = no periodic effects)
+- RemovalMethods (JSON: ["time", "dispel", "manual", "zone_reset"])
+- CreatedBy (Foreign Key -> Users.Id)
+- IsActive
+
+-- Room effect impacts on gameplay mechanics
+RoomEffectImpacts
+- Id (Primary Key)
+- RoomEffectDefinitionId (Foreign Key -> RoomEffectDefinitions.Id)
+- ImpactType (MovementPrevention, MovementPenalty, PeriodicDamage, PeriodicHealing, SkillBonus, SkillPenalty, CombatBonus, CombatPenalty, SpellcastingPrevention, SpellcastingPenalty, VisibilityReduction, CommunicationPenalty)
+- TargetType (AllOccupants, EntryTrigger, ExitTrigger, PeriodicTrigger, ActionTrigger)
+- TargetSkillId (Foreign Key -> SkillDefinitions.Id, nullable - specific skill affected)
+- TargetAttribute (nullable: Health, Mana, MovementSpeed, Vision, Communication)
+- ImpactValue (numeric value of the effect)
+- ImpactFormula (nullable: formula for complex calculations like "intensity * 5")
+- IsPercentage (true for percentage-based, false for flat values)
+- DamageType (nullable: Fire, Ice, Poison, Physical, etc. for damage effects)
+- ResistanceSkillId (Foreign Key -> SkillDefinitions.Id, nullable - skill that provides resistance)
+
+-- Active room effects (instances of effects currently affecting rooms)
+RoomEffects
+- Id (Primary Key)
+- RoomId (Foreign Key -> Rooms.Id)
+- RoomEffectDefinitionId (Foreign Key -> RoomEffectDefinitions.Id)
+- SourceType (Spell, Item, NPC, Environmental, System, Admin)
+- SourceId (ID of the source: character who cast spell, item, NPC, etc.)
+- SourceName (display name of source for UI)
+- CasterCharacterId (Foreign Key -> Characters.Id, nullable - who created this effect)
+- StackCount (current number of stacks if stackable, default 1)
+- Intensity (multiplier for effect strength, default 1.0)
+- StartTime
+- EndTime (nullable for permanent effects)
+- LastTickTime (for effects that tick periodically)
+- RemainingDuration (calculated field for UI, in seconds)
+- CustomData (JSON for effect-specific data and parameters)
+- IsActive
+
+-- Log of room effect applications (for debugging and statistics)
+RoomEffectApplicationLog
+- Id (Primary Key)
+- RoomEffectId (Foreign Key -> RoomEffects.Id)
+- CharacterId (Foreign Key -> Characters.Id, nullable - affected character)
+- ApplicationType (Entry, Exit, Periodic, Action, Resistance)
+- ImpactType (matches RoomEffectImpacts.ImpactType)
+- ImpactValue (actual value applied after calculations)
+- ResistanceRoll (dice roll result if resistance was attempted)
+- ResistanceSuccess (boolean, if resistance check succeeded)
+- Timestamp
+- Details (JSON for additional context)
 ```
 
 ### Items & Equipment
@@ -451,6 +517,19 @@ CREATE INDEX IX_CombatActions_EncounterId ON CombatActions(EncounterId);
 CREATE INDEX IX_CombatActions_ScheduledTime ON CombatActions(ScheduledTime);
 
 CREATE INDEX IX_ChatMessages_ChannelId_Timestamp ON ChatMessages(ChannelId, Timestamp);
+
+-- Room Effects System indexes
+CREATE INDEX IX_RoomEffectDefinitions_IsActive ON RoomEffectDefinitions(IsActive);
+CREATE INDEX IX_RoomEffectDefinitions_EffectType ON RoomEffectDefinitions(EffectType);
+CREATE INDEX IX_RoomEffectImpacts_RoomEffectDefinitionId ON RoomEffectImpacts(RoomEffectDefinitionId);
+CREATE INDEX IX_RoomEffects_RoomId ON RoomEffects(RoomId);
+CREATE INDEX IX_RoomEffects_RoomEffectDefinitionId ON RoomEffects(RoomEffectDefinitionId);
+CREATE INDEX IX_RoomEffects_EndTime ON RoomEffects(EndTime);
+CREATE INDEX IX_RoomEffects_IsActive ON RoomEffects(IsActive);
+CREATE INDEX IX_RoomEffects_CasterCharacterId ON RoomEffects(CasterCharacterId);
+CREATE INDEX IX_RoomEffectApplicationLog_RoomEffectId ON RoomEffectApplicationLog(RoomEffectId);
+CREATE INDEX IX_RoomEffectApplicationLog_CharacterId ON RoomEffectApplicationLog(CharacterId);
+CREATE INDEX IX_RoomEffectApplicationLog_Timestamp ON RoomEffectApplicationLog(Timestamp);
 ```
 
 ## Key Design Decisions
@@ -501,6 +580,18 @@ CREATE INDEX IX_ChatMessages_ChannelId_Timestamp ON ChatMessages(ChannelId, Time
 - **Spawn Management**: Cooldowns and limits prevent overcrowding
 - **Room Type Restrictions**: Certain NPCs only spawn in appropriate room types
 - **Time-Based Spawning**: Day/night cycles affect which creatures appear
+
+### Room Effects System
+- **Environmental Gameplay**: Rooms can have active effects that modify player interactions and combat
+- **Spell-Created Effects**: Magic spells can create persistent environmental effects (Wall of Fire, Fog Cloud, etc.)
+- **Multiple Effect Types**: Environmental, Elemental, Magical, Movement, Combat, and Sensory effects
+- **Flexible Duration**: Effects can be temporary with timers or permanent until manually removed
+- **Effect Stacking**: Some effects can stack for increased intensity, others are mutually exclusive
+- **Hidden Effects**: Some effects can be invisible and require skill checks to detect
+- **Resistance Mechanics**: Players can use skills to resist or mitigate effect impacts
+- **Multiple Triggers**: Effects can apply on room entry, exit, periodically, or during specific actions
+- **Complex Impacts**: Effects can prevent movement, modify skills, cause damage/healing, or alter visibility
+- **Source Tracking**: Effects remember their creator and source for proper attribution and dispelling
 
 ### Performance Considerations
 - **Optimized Queries**: Indexes on frequently-accessed columns
