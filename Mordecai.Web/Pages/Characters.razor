@@ -3,6 +3,7 @@
 @using Mordecai.Web.Data
 @using Mordecai.Web.Models
 @using Mordecai.Web.Services
+@using Mordecai.Web.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
@@ -12,6 +13,7 @@
 @inject IDiceService DiceService
 @inject ICharacterCreationService CharacterCreationService
 @inject ISkillService SkillService
+@inject ICharacterService CharacterService
 
 <PageTitle>Your Characters</PageTitle>
 
@@ -53,7 +55,7 @@ else
                             <div class="mt-auto">
                                 <button class="btn btn-sm btn-primary me-2" @onclick="() => EnterWorld(c.Id)">Enter World</button>
                                 <a href="/character/@c.Id/skills" class="btn btn-sm btn-outline-info me-2">View Skills</a>
-                                <button class="btn btn-sm btn-outline-danger" disabled>Delete</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowDeleteConfirmation(c)">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -201,9 +203,30 @@ else
     </div>
 }
 
+<!-- Delete Confirmation Dialog -->
+@if (showDeleteConfirmation)
+{
+    <ConfirmDeleteDialog 
+        Title="Delete Character"
+        ConfirmText="Delete"
+        ProcessingText="Deleting..."
+        IsProcessing="isDeleting"
+        OnConfirm="ConfirmDelete"
+        OnCancel="CancelDelete">
+        <p>Are you sure you want to delete <strong>@characterToDelete?.Name</strong>?</p>
+        <p class="text-warning">
+            <i class="fas fa-exclamation-triangle"></i>
+            This action cannot be undone. All character data, skills, and progress will be permanently lost.
+        </p>
+    </ConfirmDeleteDialog>
+}
+
 @code {
     private bool isLoading = true;
     private bool isCreating = false;
+    private bool isDeleting = false;
+    private bool showDeleteConfirmation = false;
+    private Character? characterToDelete = null;
     private string currentUserId = string.Empty;
     private List<Character> characters = new();
 
@@ -389,5 +412,57 @@ else
         await Db.SaveChangesAsync();
 
         Nav.NavigateTo($"/play/{id}");
+    }
+
+    private void ShowDeleteConfirmation(Character character)
+    {
+        characterToDelete = character;
+        showDeleteConfirmation = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        characterToDelete = null;
+        showDeleteConfirmation = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (characterToDelete == null) return;
+
+        isDeleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await CharacterService.DeleteCharacterAsync(characterToDelete.Id, currentUserId);
+            
+            if (success)
+            {
+                // Remove from local list
+                characters.Remove(characterToDelete);
+            }
+            else
+            {
+                // TODO: Show error message to user
+                // For now, just reload characters to ensure consistency
+                await LoadCharacters();
+            }
+        }
+        catch (Exception)
+        {
+            // TODO: Show error message to user
+            // For now, just reload characters to ensure consistency
+            await LoadCharacters();
+        }
+        finally
+        {
+            isDeleting = false;
+            characterToDelete = null;
+            showDeleteConfirmation = false;
+            StateHasChanged();
+        }
     }
 }

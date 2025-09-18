@@ -9,6 +9,7 @@ public interface ICharacterService
     Task<int?> GetCharacterCurrentRoomAsync(Guid characterId, string userId);
     Task<bool> SetCharacterRoomAsync(Guid characterId, string userId, int roomId);
     Task<bool> CharacterExistsAsync(Guid characterId, string userId);
+    Task<bool> DeleteCharacterAsync(Guid characterId, string userId);
 }
 
 public class CharacterService : ICharacterService
@@ -99,6 +100,40 @@ public class CharacterService : ICharacterService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking if character {CharacterId} exists for user {UserId}", 
+                characterId, userId);
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteCharacterAsync(Guid characterId, string userId)
+    {
+        try
+        {
+            var character = await _context.Characters
+                .Where(c => c.Id == characterId && c.UserId == userId)
+                .FirstOrDefaultAsync();
+
+            if (character == null)
+            {
+                _logger.LogWarning("Attempted to delete non-existent character {CharacterId} for user {UserId}", 
+                    characterId, userId);
+                return false;
+            }
+
+            _logger.LogInformation("Deleting character {CharacterName} ({CharacterId}) for user {UserId}", 
+                character.Name, characterId, userId);
+
+            _context.Characters.Remove(character);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully deleted character {CharacterName} ({CharacterId})", 
+                character.Name, characterId);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting character {CharacterId} for user {UserId}", 
                 characterId, userId);
             return false;
         }
