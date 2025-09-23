@@ -10,21 +10,26 @@ public interface ICharacterService
     Task<int?> GetCharacterCurrentRoomAsync(Guid characterId, string userId);
     Task<bool> SetCharacterRoomAsync(Guid characterId, string userId, int roomId);
     Task<bool> CharacterExistsAsync(Guid characterId, string userId);
+    Task<bool> DeleteCharacterAsync(Guid characterId, string userId);
+    Task<bool> EnsureCharacterHasStartingSkillsAsync(Guid characterId, string userId);
 }
 
 public class CharacterService : ICharacterService
 {
     private readonly ApplicationDbContext _context;
     private readonly IWorldService _worldService;
+    private readonly SkillService _skillService;
     private readonly ILogger<CharacterService> _logger;
 
     public CharacterService(
         ApplicationDbContext context, 
         IWorldService worldService,
+        SkillService skillService,
         ILogger<CharacterService> logger)
     {
         _context = context;
         _worldService = worldService;
+        _skillService = skillService;
         _logger = logger;
     }
 
@@ -101,6 +106,111 @@ public class CharacterService : ICharacterService
         {
             _logger.LogError(ex, "Error checking if character {CharacterId} exists for user {UserId}", 
                 characterId, userId);
+            return false;
+        }
+    }
+
+    public async Task<bool> EnsureCharacterHasStartingSkillsAsync(Guid characterId, string userId)
+    {
+        try
+        {
+            // Verify the character belongs to the user
+            var character = await GetCharacterByIdAsync(characterId, userId);
+            if (character == null)
+            {
+                _logger.LogWarning("Attempted to initialize skills for non-existent character {CharacterId} for user {UserId}", 
+                    characterId, userId);
+                return false;
+            }
+
+            // Check if character already has skills
+            var existingSkillsCount = await _context.CharacterSkills
+                .Where(cs => cs.CharacterId == characterId)
+                .CountAsync();
+
+            if (existingSkillsCount > 0)
+            {
+                _logger.LogDebug("Character {CharacterId} already has {SkillCount} skills, skipping initialization", 
+                    characterId, existingSkillsCount);
+                return true; // Already has skills, nothing to do
+            }
+
+            // Character has no skills, initialize them
+            _logger.LogInformation("Initializing starting skills for existing character {CharacterId} ({CharacterName})", 
+                characterId, character.Name);
+            
+            await _skillService.InitializeCharacterSkillsAsync(characterId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ensuring character {CharacterId} has starting skills", characterId);
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteCharacterAsync(Guid characterId, string userId)
+    {
+        try
+        {
+            var character = await _context.Characters
+                .Where(c => c.Id == characterId && c.UserId == userId)
+                .FirstOrDefaultAsync();
+
+            if (character == null)
+            {
+                _logger.LogWarning("Attempted to delete non-existent character {CharacterId} for user {UserId}", 
+                    characterId, userId);
+                return false;
+            }
+
+            // Start a transaction to ensure all related data is deleted consistently
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                // Delete related character skills first (foreign key constraint)
+                var characterSkills = await _context.CharacterSkills
+                    .Where(cs => cs.CharacterId == characterId)
+                    .ToListAsync();
+                
+                if (characterSkills.Any())
+                {
+                    _context.CharacterSkills.RemoveRange(characterSkills);
+                    _logger.LogInformation("Deleting {Count} character skills for character {CharacterId}", 
+                        characterSkills.Count, characterId);
+                }
+
+                // TODO: Add other related data deletion as the game expands:
+                // - Character inventory items
+                // - Character active effects
+                // - Character quest progress
+                // - Character social relationships
+                // - Character achievements
+                // - etc.
+
+                // Delete the character itself
+                _context.Characters.Remove(character);
+                
+                // Save all changes
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                _logger.LogInformation("Successfully deleted character {CharacterName} ({CharacterId}) for user {UserId}", 
+                    character.Name, characterId, userId);
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error during character deletion transaction for {CharacterId}", characterId);
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting character {CharacterId} for user {UserId}", characterId, userId);
             return false;
         }
     }

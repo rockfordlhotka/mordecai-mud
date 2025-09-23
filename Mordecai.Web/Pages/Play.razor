@@ -16,6 +16,7 @@
 @inject GameActionService GameActionService
 @inject ICharacterService CharacterService
 @inject IWorldService WorldService
+@inject SkillService SkillService
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
@@ -168,6 +169,8 @@
                                 <ul>
                                     <li>Type <span class="text-warning">'look'</span> to examine your surroundings</li>
                                     <li>Type <span class="text-warning">'look [direction]'</span> to look in a specific direction (e.g., 'look north')</li>
+                                    <li>Type <span class="text-warning">'search'</span> to search for hidden things using your awareness</li>
+                                    <li>Type <span class="text-warning">'skills'</span> to view your character's skills and progress</li>
                                     <li>Type <span class="text-warning">'help'</span> to see available commands</li>
                                     <li>Type <span class="text-warning">'who'</span> to see other players online</li>
                                     <li>Type <span class="text-warning">'say [message]'</span> to talk to others in the room</li>
@@ -269,6 +272,17 @@
             {
                 loadedCharacter = character;
                 characterName = character.Name;
+                
+                // Ensure character has starting skills (for characters created before skill initialization was added)
+                try
+                {
+                    await CharacterService.EnsureCharacterHasStartingSkillsAsync(characterId.Value, currentUserId);
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't fail character loading
+                    AddMessage($"Warning: There was an issue ensuring character skills are initialized: {ex.Message}", "text-warning");
+                }
                 
                 // Load character vitals using actual character data
                 await LoadCharacterVitals();
@@ -526,11 +540,21 @@
                         AddMessage(roomDescription, "text-success");
                     }
                     break;
+
+                case "search":
+                    await HandleSearchCommand();
+                    break;
+
+                case "skills":
+                    await HandleSkillsCommand();
+                    break;
                     
                 case "help":
                     AddMessage("Available Commands:", "text-info");
                     AddMessage("look/l/examine/ex - Examine your surroundings");
                     AddMessage("look/l/examine/ex [direction] - Look in a specific direction (e.g., 'look north')");
+                    AddMessage("search - Search for hidden things using your awareness skill");
+                    AddMessage("skills - Display your character's skills and progress");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
                     AddMessage("ooc [message] - Speak on the out-of-character channel");
@@ -620,6 +644,257 @@
         catch (Exception ex)
         {
             AddMessage($"Error processing command: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleSearchCommand()
+    {
+        AddMessage("You carefully search the area for hidden things...", "text-info");
+        
+        try
+        {
+            // Get the Awareness skill ID dynamically
+            var awarenessSkillId = await GetAwarenessSkillIdAsync();
+            if (awarenessSkillId == null)
+            {
+                AddMessage("Your character doesn't seem to have developed awareness yet.", "text-warning");
+                return;
+            }
+
+            // Get the character's awareness skill to use for the search
+            var awarenessSkill = await SkillService.GetCharacterSkillAsync(characterId!.Value, awarenessSkillId.Value);
+            
+            if (awarenessSkill == null)
+            {
+                AddMessage("You don't seem to have developed your awareness skill yet.", "text-warning");
+                return;
+            }
+
+            // Perform a 4dF skill check using the character's awareness skill
+            var diceService = new DiceService();
+            var skillCheck = awarenessSkill.CalculateEffectiveLevel() + diceService.Roll4dF();
+            
+            // Determine what we find based on the skill check result
+            var foundHiddenThings = await PerformRoomSearch(skillCheck);
+            
+            // Track the skill usage for Awareness
+            var usageType = skillCheck >= 12 ? SkillUsageType.CriticalSuccess : SkillUsageType.RoutineUse;
+            var didAdvance = await SkillService.AddSkillUsageAsync(
+                characterId.Value, 
+                awarenessSkillId.Value, 
+                usageType,
+                baseUsagePoints: 1,
+                context: "Room Search",
+                details: $"Skill check result: {skillCheck}"
+            );
+
+            // Show results
+            if (foundHiddenThings.Any())
+            {
+                AddMessage("Your search reveals:", "text-success");
+                foreach (var thing in foundHiddenThings)
+                {
+                    AddMessage($"  {thing}", "text-warning");
+                }
+            }
+            else
+            {
+                AddMessage("You don't find anything hidden here.", "text-muted");
+            }
+            
+            // Notify if skill advanced
+            if (didAdvance)
+            {
+                var newSkill = await SkillService.GetCharacterSkillAsync(characterId.Value, awarenessSkillId.Value);
+                AddMessage($"Your awareness skill has improved to level {newSkill?.CurrentLevel}!", "text-success");
+            }
+            
+            // Announce to other players in the room that this character is searching
+            var searchMessage = new EmoteMessage(characterId.Value, characterName, currentRoomId!.Value, "searches the area carefully");
+            await MessagePublisher.PublishAsync(searchMessage);
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error performing search: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task<List<string>> PerformRoomSearch(int skillCheckResult)
+    {
+        var foundThings = new List<string>();
+        
+        // Get hidden exits in this room
+        var hiddenExits = await WorldService.GetHiddenExitsFromRoomAsync(currentRoomId!.Value);
+        
+        foreach (var exit in hiddenExits)
+        {
+            // Difficulty to find each hidden exit can be based on its properties
+            var difficulty = 10; // Base difficulty
+            
+            // Higher difficulty for exits requiring special skills
+            if (exit.SkillRequired.HasValue)
+            {
+                difficulty += (int)exit.SkillLevelRequired;
+            }
+            
+            // If skill check beats the difficulty, reveal the exit
+            if (skillCheckResult >= difficulty)
+            {
+                var description = exit.GetExitDescription() ?? $"a hidden passage {exit.Direction}";
+                foundThings.Add($"A hidden exit {exit.Direction}: {description}");
+            }
+        }
+        
+        // Add other searchable room features based on skill check
+        if (skillCheckResult >= 15)
+        {
+            // Exceptional search might reveal room details or items
+            foundThings.Add("subtle wear patterns on the floor suggesting hidden activity");
+        }
+        
+        if (skillCheckResult >= 18)
+        {
+            // Legendary search results
+            foundThings.Add("faint scratch marks near what might be a concealed mechanism");
+        }
+        
+        return foundThings;
+    }
+
+    private async Task<int?> GetAwarenessSkillIdAsync()
+    {
+        try
+        {
+            // Look up the Awareness skill definition from the seeded data
+            var skillCategories = await SkillService.GetSkillCategoriesAsync();
+            var coreSkillsCategory = skillCategories.FirstOrDefault(c => c.Name == "Core Skills");
+            if (coreSkillsCategory == null)
+            {
+                return null;
+            }
+
+            var awarenessSkill = coreSkillsCategory.Skills.FirstOrDefault(s => s.Name == "Awareness");
+            return awarenessSkill?.Id;
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error finding awareness skill: {ex.Message}", "text-danger");
+            return null;
+        }
+    }
+
+    private async Task HandleSkillsCommand()
+    {
+        try
+        {
+            AddMessage("=== Your Character Skills ===", "text-info");
+            
+            // Get all character skills organized by category
+            var characterSkills = await SkillService.GetCharacterSkillsAsync(characterId!.Value);
+            
+            if (!characterSkills.Any())
+            {
+                AddMessage("You haven't developed any skills yet.", "text-warning");
+                AddMessage("This shouldn't happen for properly initialized characters.", "text-muted");
+                AddMessage("Try creating a new character or contact an administrator.", "text-muted");
+                return;
+            }
+
+            // Group skills by category for organized display
+            var skillsByCategory = characterSkills
+                .GroupBy(cs => cs.SkillDefinition.Category.Name)
+                .OrderBy(g => g.First().SkillDefinition.Category.DisplayOrder);
+
+            foreach (var categoryGroup in skillsByCategory)
+            {
+                // Display category name
+                AddMessage($"\n--- {categoryGroup.Key} ---", "text-warning");
+                
+                var skillsInCategory = categoryGroup
+                    .OrderBy(cs => cs.SkillDefinition.DisplayOrder)
+                    .ThenBy(cs => cs.SkillDefinition.Name);
+
+                foreach (var characterSkill in skillsInCategory)
+                {
+                    var skill = characterSkill.SkillDefinition;
+                    var currentLevel = characterSkill.CurrentLevel;
+                    var totalUsage = characterSkill.TotalUsagePoints;
+                    var usageCount = characterSkill.UsageCount;
+                    
+                    // Calculate progress to next level (not the final level)
+                    var usageForCurrentLevel = skill.CalculateTotalUsageForLevel(currentLevel);
+                    var usageForNextLevel = skill.CalculateTotalUsageForLevel(currentLevel + 1);
+                    var progressPoints = totalUsage - usageForCurrentLevel;
+                    var requiredPointsForNextLevel = usageForNextLevel - usageForCurrentLevel;
+                    var progressPercent = requiredPointsForNextLevel > 0 ? (progressPoints * 100.0m / requiredPointsForNextLevel) : 100.0m;
+                    
+                    // Create progress bar visualization
+                    var progressBarLength = 20;
+                    var filledBars = (int)(progressPercent / 100.0m * progressBarLength);
+                    var progressBar = new string('?', filledBars) + new string('?', progressBarLength - filledBars);
+                    
+                    // Format the skill line
+                    var skillLine = $"{skill.Name,-18} Level {currentLevel,2} [{progressBar}] {progressPercent:F1}%";
+                    AddMessage($"  {skillLine}", "text-light");
+                    
+                    // Add usage information for detailed tracking - show progress to NEXT level, not final level
+                    var usageInfo = $"    Usage: {progressPoints}/{requiredPointsForNextLevel} points ({usageCount} total uses)";
+                    AddMessage(usageInfo, "text-muted");
+                    
+                    // Show last used information if available
+                    if (characterSkill.LastUsedAt.HasValue)
+                    {
+                        var timeSinceLastUse = DateTimeOffset.UtcNow - characterSkill.LastUsedAt.Value;
+                        var lastUsedText = timeSinceLastUse.TotalDays >= 1 
+                            ? $"{timeSinceLastUse.Days} days ago"
+                            : timeSinceLastUse.TotalHours >= 1 
+                                ? $"{timeSinceLastUse.Hours} hours ago"
+                                : "Recently";
+                        AddMessage($"    Last used: {lastUsedText}", "text-muted");
+                    }
+                }
+            }
+            
+            // Add summary statistics
+            var totalSkills = characterSkills.Count;
+            var averageLevel = characterSkills.Average(cs => cs.CurrentLevel);
+            var totalUsages = characterSkills.Sum(cs => cs.UsageCount);
+            
+            AddMessage($"\nSkill Summary:", "text-info");
+            AddMessage($"  Total Skills: {totalSkills}", "text-light");
+            AddMessage($"  Average Level: {averageLevel:F1}", "text-light");
+            AddMessage($"  Total Skill Uses: {totalUsages:N0}", "text-light");
+            
+            // Show highest skill
+            var highestSkill = characterSkills.OrderByDescending(cs => cs.CurrentLevel).First();
+            AddMessage($"  Highest Skill: {highestSkill.SkillDefinition.Name} (Level {highestSkill.CurrentLevel})", "text-success");
+            
+            // Show available skill categories that the character doesn't have skills in yet
+            var allCategories = await SkillService.GetSkillCategoriesAsync();
+            var characterSkillCategoryNames = skillsByCategory.Select(g => g.Key).ToHashSet();
+            var unusedCategories = allCategories
+                .Where(c => !characterSkillCategoryNames.Contains(c.Name))
+                .OrderBy(c => c.DisplayOrder)
+                .ToList();
+            
+            if (unusedCategories.Any())
+            {
+                AddMessage($"\nSkill Categories Available for Learning:", "text-info");
+                foreach (var category in unusedCategories)
+                {
+                    var skillCount = category.Skills.Count(s => s.IsActive && !s.IsStartingSkill);
+                    if (skillCount > 0)
+                    {
+                        AddMessage($"  {category.Name}: {skillCount} skills available", "text-muted");
+                    }
+                }
+                AddMessage("  (Skills in these categories can be learned through practice or training)", "text-muted");
+            }
+            
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error displaying skills: {ex.Message}", "text-danger");
         }
     }
 

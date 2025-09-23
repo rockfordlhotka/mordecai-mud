@@ -4,6 +4,7 @@
 @using Mordecai.Web.Data
 @using Mordecai.Web.Models
 @using Mordecai.Web.Services
+@using Mordecai.Web.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
@@ -12,6 +13,8 @@
 @inject NavigationManager Nav
 @inject IDiceService DiceService
 @inject ICharacterCreationService CharacterCreationService
+@inject ICharacterService CharacterService
+@inject SkillService SkillService
 
 <PageTitle>Your Characters</PageTitle>
 
@@ -52,7 +55,15 @@ else
                             
                             <div class="mt-auto">
                                 <button class="btn btn-sm btn-primary me-2" @onclick="() => EnterWorld(c.Id)">Enter World</button>
-                                <button class="btn btn-sm btn-outline-danger" disabled>Delete</button>
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        @onclick="() => ShowDeleteConfirmation(c.Id, c.Name)"
+                                        disabled="@isDeletingCharacter">
+                                    @if (isDeletingCharacter && characterToDelete?.Id == c.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Delete
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -182,9 +193,36 @@ else
     </div>
 }
 
+<!-- Delete Confirmation Modal -->
+<ConfirmationModal @ref="deleteConfirmationModal"
+                   Title="Delete Character"
+                   Message="@deleteConfirmationMessage"
+                   ConfirmText="Delete"
+                   CancelText="Cancel"
+                   ConfirmButtonClass="btn-danger"
+                   OnConfirm="ConfirmDeleteCharacter"
+                   OnCancel="CancelDeleteCharacter" />
+
+<!-- Success/Error Messages -->
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 11">
+        <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto">@(isStatusError ? "Error" : "Success")</strong>
+                <button type="button" class="btn-close" @onclick="ClearStatusMessage" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                @statusMessage
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool isLoading = true;
     private bool isCreating = false;
+    private bool isDeletingCharacter = false;
     private string currentUserId = string.Empty;
     private List<Character> characters = new();
 
@@ -195,6 +233,15 @@ else
 
     private CharacterAttributes? generatedAttributes;
     private int originalAttributeTotal = 0;
+
+    // Delete confirmation modal state
+    private ConfirmationModal? deleteConfirmationModal;
+    private Character? characterToDelete;
+    private string deleteConfirmationMessage = string.Empty;
+
+    // Status messaging
+    private string statusMessage = string.Empty;
+    private bool isStatusError = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -312,7 +359,7 @@ else
         // Validate attributes before creating
         if (!CharacterCreationService.ValidateAttributeAdjustments(generatedAttributes, originalAttributeTotal, newCharacterSpecies))
         {
-            // TODO: Show validation error
+            ShowStatusMessage("Invalid attribute configuration. Please regenerate attributes.", true);
             return;
         }
 
@@ -321,36 +368,69 @@ else
         var exists = await Db.Characters.AnyAsync(c => c.UserId == currentUserId && c.Name == newCharacterName);
         if (exists)
         {
-            isCreating = false; // TODO: show validation message
+            ShowStatusMessage("A character with that name already exists.", true);
+            isCreating = false;
             return;
         }
 
-        var character = new Character
+        try
         {
-            Name = newCharacterName.Trim(),
-            Species = newCharacterSpecies,
-            UserId = currentUserId,
-            CreatedAt = DateTimeOffset.UtcNow,
-            // Set generated attributes
-            Physicality = generatedAttributes.Physicality,
-            Dodge = generatedAttributes.Dodge,
-            Drive = generatedAttributes.Drive,
-            Reasoning = generatedAttributes.Reasoning,
-            Awareness = generatedAttributes.Awareness,
-            Focus = generatedAttributes.Focus,
-            Bearing = generatedAttributes.Bearing
-        };
-        
-        Db.Characters.Add(character);
-        await Db.SaveChangesAsync();
+            var character = new Character
+            {
+                Name = newCharacterName.Trim(),
+                Species = newCharacterSpecies,
+                UserId = currentUserId,
+                CreatedAt = DateTimeOffset.UtcNow,
+                // Set generated attributes
+                Physicality = generatedAttributes.Physicality,
+                Dodge = generatedAttributes.Dodge,
+                Drive = generatedAttributes.Drive,
+                Reasoning = generatedAttributes.Reasoning,
+                Awareness = generatedAttributes.Awareness,
+                Focus = generatedAttributes.Focus,
+                Bearing = generatedAttributes.Bearing
+            };
+            
+            // Initialize health pools based on attributes
+            character.InitializeHealth();
+            
+            Db.Characters.Add(character);
+            await Db.SaveChangesAsync();
 
-        // Reset form
-        newCharacterName = string.Empty;
-        generatedAttributes = null;
-        originalAttributeTotal = 0;
-        
-        await LoadCharacters();
-        isCreating = false;
+            // Initialize the character's starting skills (core attribute skills)
+            try
+            {
+                await SkillService.InitializeCharacterSkillsAsync(character.Id);
+            }
+            catch (Exception ex)
+            {
+                // Log the error but don't fail character creation
+                ShowStatusMessage($"Character created but there was an issue initializing skills: {ex.Message}", true);
+                // Reset form and reload anyway
+                newCharacterName = string.Empty;
+                generatedAttributes = null;
+                originalAttributeTotal = 0;
+                await LoadCharacters();
+                isCreating = false;
+                return;
+            }
+
+            // Reset form
+            newCharacterName = string.Empty;
+            generatedAttributes = null;
+            originalAttributeTotal = 0;
+            
+            await LoadCharacters();
+            ShowStatusMessage($"Character '{character.Name}' created successfully with starting skills!", false);
+        }
+        catch (Exception ex)
+        {
+            ShowStatusMessage("Failed to create character. Please try again.", true);
+        }
+        finally
+        {
+            isCreating = false;
+        }
     }
 
     private async Task EnterWorld(Guid id)
@@ -362,5 +442,88 @@ else
         await Db.SaveChangesAsync();
 
         Nav.NavigateTo($"/play/{id}");
+    }
+
+    private async Task ShowDeleteConfirmation(Guid characterId, string characterName)
+    {
+        var character = characters.FirstOrDefault(c => c.Id == characterId);
+        if (character == null) return;
+
+        characterToDelete = character;
+        deleteConfirmationMessage = $"Are you sure you want to permanently delete '{characterName}'?\n\n" +
+                                   "This action cannot be undone. All character data, including skills and progress, will be lost forever.";
+
+        if (deleteConfirmationModal != null)
+        {
+            await deleteConfirmationModal.ShowAsync();
+        }
+    }
+
+    private async Task ConfirmDeleteCharacter()
+    {
+        if (characterToDelete == null) return;
+
+        isDeletingCharacter = true;
+        var characterName = characterToDelete.Name;
+        var characterId = characterToDelete.Id;
+
+        try
+        {
+            var success = await CharacterService.DeleteCharacterAsync(characterId, currentUserId);
+            
+            if (success)
+            {
+                await LoadCharacters();
+                ShowStatusMessage($"Character '{characterName}' has been deleted.", false);
+            }
+            else
+            {
+                ShowStatusMessage("Failed to delete character. The character may not exist or you may not have permission.", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatusMessage("An error occurred while deleting the character. Please try again.", true);
+        }
+        finally
+        {
+            characterToDelete = null;
+            isDeletingCharacter = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CancelDeleteCharacter()
+    {
+        characterToDelete = null;
+        await Task.CompletedTask;
+    }
+
+    private void ShowStatusMessage(string message, bool isError)
+    {
+        statusMessage = message;
+        isStatusError = isError;
+        StateHasChanged();
+
+        // Auto-hide success messages after 5 seconds
+        if (!isError)
+        {
+            _ = Task.Delay(5000).ContinueWith(_ =>
+            {
+                InvokeAsync(() =>
+                {
+                    if (statusMessage == message) // Only clear if it's the same message
+                    {
+                        ClearStatusMessage();
+                    }
+                });
+            });
+        }
+    }
+
+    private void ClearStatusMessage()
+    {
+        statusMessage = string.Empty;
+        StateHasChanged();
     }
 }

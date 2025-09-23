@@ -1,0 +1,132 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="modal fade @(IsVisible ? "show" : "")" 
+     style="display: @(IsVisible ? "block" : "none")" 
+     tabindex="-1" 
+     role="dialog"
+     aria-labelledby="confirmationModalLabel"
+     aria-hidden="@(!IsVisible)">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmationModalLabel">@Title</h5>
+                <button type="button" class="btn-close" @onclick="Cancel" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(Message))
+                {
+                    @foreach (var line in Message.Split('\n'))
+                    {
+                        <p class="mb-2">@line</p>
+                    }
+                }
+                @ChildContent
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="Cancel">@CancelText</button>
+                <button type="button" class="btn @ConfirmButtonClass" @onclick="Confirm">@ConfirmText</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (IsVisible)
+{
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = "Confirm Action";
+    [Parameter] public string Message { get; set; } = string.Empty;
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+    [Parameter] public string ConfirmButtonClass { get; set; } = "btn-primary";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private bool IsVisible { get; set; } = false;
+
+    public async Task ShowAsync()
+    {
+        IsVisible = true;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    public async Task HideAsync()
+    {
+        IsVisible = false;
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private async Task Confirm()
+    {
+        await HideAsync();
+        await OnConfirm.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        await HideAsync();
+        await OnCancel.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsVisible)
+        {
+            // Focus management for accessibility
+            await Task.Delay(100); // Small delay to ensure modal is rendered
+        }
+    }
+}
+
+<style>
+    .modal {
+        z-index: 1055;
+    }
+    
+    .modal-backdrop {
+        z-index: 1050;
+    }
+    
+    .modal.show {
+        display: block !important;
+    }
+    
+    .modal-content {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+    
+    .modal-header {
+        border-bottom: 1px solid #dee2e6;
+        padding: 1rem 1.25rem;
+    }
+    
+    .modal-body {
+        padding: 1.25rem;
+    }
+    
+    .modal-footer {
+        border-top: 1px solid #dee2e6;
+        padding: 1rem 1.25rem;
+    }
+    
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1;
+        color: #000;
+        text-shadow: 0 1px 0 #fff;
+        opacity: 0.5;
+        cursor: pointer;
+    }
+    
+    .btn-close:hover {
+        opacity: 0.75;
+    }
+</style>

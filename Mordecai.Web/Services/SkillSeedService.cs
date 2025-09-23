@@ -37,7 +37,7 @@ public class SkillSeedService
         {
             new() 
             {
-                Name = "Core Attributes",
+                Name = "Core Skills",
                 Description = "Fundamental abilities that all characters possess",
                 DefaultBaseCost = 15,
                 DefaultMultiplier = 2.5m,
@@ -119,7 +119,7 @@ public class SkillSeedService
 
     private async Task SeedCoreAttributeSkills()
     {
-        var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Core Attributes");
+        var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Core Skills");
 
         var coreSkills = new List<SkillDefinition>
         {

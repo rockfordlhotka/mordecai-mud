@@ -1,6 +1,6 @@
 # GitHub Copilot Project Instructions - Mordecai MUD
 
-This repository builds a skill-based, real-time, text MUD using .NET 8 (Blazor Server + Aspire for dev orchestration) with SQLite (later PostgreSQL), RabbitMQ for async messaging, and OpenTelemetry for observability.
+This repository builds a skill-based, real-time, text MUD using .NET 9 (Blazor Server + Aspire for dev orchestration) with SQLite (later PostgreSQL), RabbitMQ for async messaging, and OpenTelemetry for observability.
 
 ## High-Level Architecture
 - Blazor Server web front-end (interactive + server-side rendering)
@@ -12,7 +12,7 @@ This repository builds a skill-based, real-time, text MUD using .NET 8 (Blazor S
 
 ## Current Development Priorities (Early Phases)
 1. World foundation: rooms, movement, descriptions, look/examine commands, local/room chat
-2. Character system: creation, 7 core attribute skills (Physicality, Dodge, Drive, Reasoning, Awareness, Focus, Bearing), practice-based skill progression
+2. Character system: creation, 7 core skills (Physicality, Dodge, Drive, Reasoning, Awareness, Focus, Bearing), practice-based skill progression
 3. Combat foundation: melee, ranged, spell casting (each spell == its own skill), cooldowns, skill checks
 4. Admin content tools (builder interface): create/edit rooms, zones, NPCs, items, quests (scaffold after core world + character basics)
 
@@ -126,4 +126,4 @@ public interface ISkillProgressionService
 If adding new patterns, ensure they align with these principles before expanding.
 
 ---
-Last updated: 2025-09-12
+Last updated: 2025-01-23

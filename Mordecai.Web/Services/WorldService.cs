@@ -13,6 +13,7 @@ public interface IWorldService
     Task<Room?> GetRoomByExitAsync(int fromRoomId, string direction);
     Task<string> GetRoomDescriptionAsync(int roomId, bool isNight = false);
     Task<IReadOnlyList<RoomExit>> GetExitsFromRoomAsync(int roomId);
+    Task<IReadOnlyList<RoomExit>> GetHiddenExitsFromRoomAsync(int roomId);
     Task<bool> CanMoveFromRoomAsync(int fromRoomId, string direction);
 }
 
@@ -177,13 +178,15 @@ public class WorldService : IWorldService
 
             var description = room.GetDescription(isNight);
 
-            // Add exits information with descriptions
+            // Add exits information with descriptions (only non-hidden exits)
             var exits = await GetExitsFromRoomAsync(roomId);
-            if (exits.Any())
+            var visibleExits = exits.Where(e => !e.IsHidden).ToList();
+            
+            if (visibleExits.Any())
             {
                 var exitDescriptions = new List<string>();
                 
-                foreach (var exit in exits.OrderBy(e => e.Direction))
+                foreach (var exit in visibleExits.OrderBy(e => e.Direction))
                 {
                     var exitDesc = exit.GetExitDescription(isNight);
                     if (!string.IsNullOrEmpty(exitDesc))
@@ -231,6 +234,28 @@ public class WorldService : IWorldService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting exits from room {RoomId}", roomId);
+            return Array.Empty<RoomExit>();
+        }
+    }
+
+    public async Task<IReadOnlyList<RoomExit>> GetHiddenExitsFromRoomAsync(int roomId)
+    {
+        try
+        {
+            return await _context.RoomExits
+                .Include(e => e.ToRoom)
+                    .ThenInclude(r => r.Zone)
+                .Where(e => e.FromRoomId == roomId && 
+                           e.IsHidden && 
+                           e.IsActive && 
+                           e.ToRoom.IsActive && 
+                           e.ToRoom.Zone.IsActive)
+                .OrderBy(e => e.Direction)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting hidden exits from room {RoomId}", roomId);
             return Array.Empty<RoomExit>();
         }
     }
