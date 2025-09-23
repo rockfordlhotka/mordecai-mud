@@ -1,6 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using Mordecai.Game.Entities;
 using Mordecai.Messaging.Messages;
 using Mordecai.Web.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace Mordecai.Web.Services;
 

@@ -1,16 +1,883 @@
 @page "/admin/skills"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Data
+@using Mordecai.Web.Services
+@inject ApplicationDbContext DbContext
+@inject SkillService SkillService
+@inject DataMigrationService DataMigrationService
+@inject IJSRuntime JSRuntime
 @attribute [Authorize(Policy = "AdminOnly")]
 
-<h1>Skill Management</h1>
-<p>This is a placeholder for the skill management interface.</p>
-<p>Features to implement:</p>
-<ul>
-    <li>Configure the 7 core attribute skills</li>
-    <li>Define weapon skills and progression</li>
-    <li>Manage individual spell skills</li>
-    <li>Set mana recovery rates by magic school</li>
-    <li>Adjust skill advancement algorithms</li>
-</ul>
+<PageTitle>Skill Management - Admin - Mordecai MUD</PageTitle>
 
-<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Skill Management</h1>
+                <div>
+                    <button class="btn btn-success me-2" @onclick="ShowCreateCategoryModal">
+                        <i class="oi oi-plus"></i> New Category
+                    </button>
+                    <button class="btn btn-primary me-2" @onclick="() => ShowCreateSkillModal()">
+                        <i class="oi oi-plus"></i> New Skill
+                    </button>
+                    <button class="btn btn-warning me-2" @onclick="RunDataMigration" title="Fix legacy attribute references">
+                        <i class="oi oi-wrench"></i> Fix Data
+                    </button>
+                    <a href="/admin" class="btn btn-secondary">
+                        <i class="oi oi-arrow-left"></i> Back to Admin
+                    </a>
+                </div>
+            </div>
+
+            @if (loading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Loading skills...</p>
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Skill Categories</h5>
+                            </div>
+                            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                @if (skillCategories.Any())
+                                {
+                                    @foreach (var category in skillCategories.OrderBy(c => c.DisplayOrder))
+                                    {
+                                        <div class="border rounded p-2 mb-2 @(selectedCategoryId == category.Id ? "border-primary bg-light" : "border-secondary")"
+                                             style="cursor: pointer;"
+                                             @onclick="() => SelectCategory(category.Id)">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <strong>@category.Name</strong>
+                                                    <br />
+                                                    <small class="text-muted">
+                                                        @category.Skills.Count(s => s.IsActive) skills
+                                                    </small>
+                                                </div>
+                                                <div class="btn-group-vertical btn-group-sm">
+                                                    <button class="btn btn-outline-primary btn-sm" 
+                                                            @onclick:stopPropagation="true"
+                                                            @onclick="() => EditCategory(category)">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-outline-danger btn-sm"
+                                                            @onclick:stopPropagation="true" 
+                                                            @onclick="() => ConfirmDeleteCategory(category)">
+                                                        <i class="oi oi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(category.Description))
+                                            {
+                                                <small class="text-muted d-block mt-1">@category.Description</small>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p class="text-muted">No skill categories found.</p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-8">
+                        @if (selectedCategory != null)
+                        {
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">Skills in "@selectedCategory.Name"</h5>
+                                        <button class="btn btn-sm btn-primary" @onclick="() => ShowCreateSkillModal(selectedCategoryId)">
+                                            <i class="oi oi-plus"></i> Add Skill
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                    @if (selectedCategory.Skills.Any(s => s.IsActive))
+                                    {
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Type</th>
+                                                        <th>Primary Attribute</th>
+                                                        <th>Base Cost</th>
+                                                        <th>Multiplier</th>
+                                                        <th>Starting?</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var skill in selectedCategory.Skills.Where(s => s.IsActive).OrderBy(s => s.DisplayOrder).ThenBy(s => s.Name))
+                                                    {
+                                                        <tr>
+                                                            <td>
+                                                                <strong>@skill.Name</strong>
+                                                                @if (!string.IsNullOrEmpty(skill.MagicSchool))
+                                                                {
+                                                                    <br><small class="text-info">@skill.MagicSchool</small>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-secondary">@skill.SkillType</span>
+                                                            </td>
+                                                            <td>
+                                                                <span class="badge bg-primary" title="@GetAttributeDescription(skill.RelatedAttribute)">@GetAttributeDisplayName(skill.RelatedAttribute)</span>
+                                                            </td>
+                                                            <td>@skill.BaseCost</td>
+                                                            <td>@skill.Multiplier.ToString("F1")</td>
+                                                            <td>
+                                                                @if (skill.IsStartingSkill)
+                                                                {
+                                                                    <span class="badge bg-success">Yes</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="badge bg-secondary">No</span>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                <div class="btn-group btn-group-sm">
+                                                                    <button class="btn btn-outline-primary" @onclick="() => EditSkill(skill)">
+                                                                        <i class="oi oi-pencil"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-outline-info" @onclick="() => ViewSkillDetails(skill)">
+                                                                        <i class="oi oi-eye"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-outline-danger" @onclick="() => ConfirmDeleteSkill(skill)">
+                                                                        <i class="oi oi-trash"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="text-muted">No skills in this category.</p>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <i class="oi oi-arrow-left display-4 text-muted"></i>
+                                    <h5 class="mt-3">Select a Category</h5>
+                                    <p class="text-muted">Choose a skill category from the left to view and manage its skills.</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Category Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@(editingCategory != null ? "Edit Category" : "Create Category")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="categoryName" class="form-label">Name *</label>
+                    <input type="text" class="form-control" id="categoryName" @bind="categoryForm.Name" maxlength="50" required />
+                </div>
+                <div class="mb-3">
+                    <label for="categoryDescription" class="form-label">Description</label>
+                    <textarea class="form-control" id="categoryDescription" @bind="categoryForm.Description" maxlength="500" rows="3"></textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="categoryBaseCost" class="form-label">Default Base Cost</label>
+                        <input type="number" class="form-control" id="categoryBaseCost" @bind="categoryForm.DefaultBaseCost" min="1" max="1000" />
+                    </div>
+                    <div class="col-md-6">
+                        <label for="categoryMultiplier" class="form-label">Default Multiplier</label>
+                        <input type="number" class="form-control" id="categoryMultiplier" @bind="categoryForm.DefaultMultiplier" min="1.1" max="5.0" step="0.1" />
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <label for="categoryDisplayOrder" class="form-label">Display Order</label>
+                        <input type="number" class="form-control" id="categoryDisplayOrder" @bind="categoryForm.DisplayOrder" min="0" max="1000" />
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="categoryPassiveAdvancement" @bind="categoryForm.AllowsPassiveAdvancement" />
+                            <label class="form-check-label" for="categoryPassiveAdvancement">
+                                Allows Passive Advancement
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="categoryTeaching" @bind="categoryForm.AllowsTeaching" />
+                            <label class="form-check-label" for="categoryTeaching">
+                                Allows Teaching
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveCategory">
+                    @(editingCategory != null ? "Update" : "Create")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Skill Modal -->
+<div class="modal fade" id="skillModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@(editingSkill != null ? "Edit Skill" : "Create Skill")</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="skillName" class="form-label">Name *</label>
+                        <input type="text" class="form-control" id="skillName" @bind="skillForm.Name" maxlength="100" required />
+                    </div>
+                    <div class="col-md-6">
+                        <label for="skillCategory" class="form-label">Category *</label>
+                        <select class="form-select" id="skillCategory" @bind="skillForm.CategoryId" required>
+                            <option value="0">-- Select Category --</option>
+                            @foreach (var category in skillCategories.Where(c => c.IsActive))
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="skillDescription" class="form-label">Description</label>
+                    <textarea class="form-control" id="skillDescription" @bind="skillForm.Description" maxlength="1000" rows="3"></textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="skillType" class="form-label">Skill Type *</label>
+                        <select class="form-select" id="skillType" @bind="skillForm.SkillType" required>
+                            <option value="">-- Select Type --</option>
+                            <option value="CoreAttribute">Core Attribute</option>
+                            <option value="WeaponSkill">Weapon Skill</option>
+                            <option value="SpellSkill">Spell Skill</option>
+                            <option value="ManaRecoverySkill">Mana Recovery</option>
+                            <option value="CraftingSkill">Crafting Skill</option>
+                            <option value="SocialSkill">Social Skill</option>
+                            <option value="MovementSkill">Movement Skill</option>
+                            <option value="UtilitySkill">Utility Skill</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="skillRelatedAttribute" class="form-label">Primary Attribute *</label>
+                        <select class="form-select" id="skillRelatedAttribute" @bind="skillForm.RelatedAttribute" required>
+                            <option value="">-- Select Primary Attribute --</option>
+                            <option value="STR">STR (Strength) - Physical strength and power</option>
+                            <option value="DEX">DEX (Dexterity) - Agility and evasion ability</option>
+                            <option value="END">END (Endurance) - Endurance and stamina</option>
+                            <option value="INT">INT (Intelligence) - Intelligence and logical thinking</option>
+                            <option value="ITT">ITT (Intuition) - Intuition and perception</option>
+                            <option value="WIL">WIL (Willpower) - Willpower and mental concentration</option>
+                            <option value="PHY">PHY (Physical beauty) - Physical beauty and social presence</option>
+                        </select>
+                        <div class="form-text">
+                            <small class="text-muted">Every skill must be tied to one of the seven core attributes</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="skillBaseCost" class="form-label">Base Cost</label>
+                        <input type="number" class="form-control" id="skillBaseCost" @bind="skillForm.BaseCost" min="1" max="1000" />
+                    </div>
+                    <div class="col-md-4">
+                        <label for="skillMultiplier" class="form-label">Multiplier</label>
+                        <input type="number" class="form-control" id="skillMultiplier" @bind="skillForm.Multiplier" min="1.1" max="5.0" step="0.1" />
+                    </div>
+                    <div class="col-md-4">
+                        <label for="skillMaxLevel" class="form-label">Max Practical Level</label>
+                        <input type="number" class="form-control" id="skillMaxLevel" @bind="skillForm.MaxPracticalLevel" min="0" max="50" />
+                    </div>
+                </div>
+                @if (skillForm.SkillType == "SpellSkill")
+                {
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <label for="skillMagicSchool" class="form-label">Magic School</label>
+                            <input type="text" class="form-control" id="skillMagicSchool" @bind="skillForm.MagicSchool" maxlength="50" />
+                        </div>
+                        <div class="col-md-6">
+                            <label for="skillManaCost" class="form-label">Mana Cost</label>
+                            <input type="number" class="form-control" id="skillManaCost" @bind="skillForm.ManaCost" min="0" max="1000" />
+                        </div>
+                    </div>
+                }
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <label for="skillCooldown" class="form-label">Cooldown (seconds)</label>
+                        <input type="number" class="form-control" id="skillCooldown" @bind="skillForm.CooldownSeconds" min="0" max="3600" step="0.1" />
+                    </div>
+                    <div class="col-md-6">
+                        <label for="skillDisplayOrder" class="form-label">Display Order</label>
+                        <input type="number" class="form-control" id="skillDisplayOrder" @bind="skillForm.DisplayOrder" min="0" max="1000" />
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="skillStarting" @bind="skillForm.IsStartingSkill" />
+                            <label class="form-check-label" for="skillStarting">
+                                Starting Skill
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="skillExploding" @bind="skillForm.UsesExplodingDice" />
+                            <label class="form-check-label" for="skillExploding">
+                                Uses Exploding Dice
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="skillPassive" @bind="skillForm.AllowsPassiveAdvancement" />
+                            <label class="form-check-label" for="skillPassive">
+                                Passive Advancement
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveSkill">
+                    @(editingSkill != null ? "Update" : "Create")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Skill Details Modal -->
+<div class="modal fade" id="skillDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Skill Details: @viewingSkill?.Name</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (viewingSkill != null)
+                {
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Basic Information</h6>
+                            <table class="table table-sm">
+                                <tr><td><strong>Name:</strong></td><td>@viewingSkill.Name</td></tr>
+                                <tr><td><strong>Category:</strong></td><td>@viewingSkill.Category.Name</td></tr>
+                                <tr><td><strong>Type:</strong></td><td>@viewingSkill.SkillType</td></tr>
+                                <tr><td><strong>Primary Attribute:</strong></td><td><span class="badge bg-primary" title="@GetAttributeDescription(viewingSkill.RelatedAttribute)">@GetAttributeDisplayName(viewingSkill.RelatedAttribute)</span></td></tr>
+                                @if (!string.IsNullOrEmpty(viewingSkill.MagicSchool))
+                                {
+                                    <tr><td><strong>Magic School:</strong></td><td>@viewingSkill.MagicSchool</td></tr>
+                                }
+                                @if (viewingSkill.ManaCost.HasValue)
+                                {
+                                    <tr><td><strong>Mana Cost:</strong></td><td>@viewingSkill.ManaCost</td></tr>
+                                }
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Progression</h6>
+                            <table class="table table-sm">
+                                <tr><td><strong>Base Cost:</strong></td><td>@viewingSkill.BaseCost</td></tr>
+                                <tr><td><strong>Multiplier:</strong></td><td>@viewingSkill.Multiplier.ToString("F2")</td></tr>
+                                <tr><td><strong>Max Level:</strong></td><td>@viewingSkill.MaxPracticalLevel</td></tr>
+                                <tr><td><strong>Cooldown:</strong></td><td>@viewingSkill.CooldownSeconds.ToString("F1")s</td></tr>
+                                <tr><td><strong>Starting Skill:</strong></td><td>@(viewingSkill.IsStartingSkill ? "Yes" : "No")</td></tr>
+                                <tr><td><strong>Exploding Dice:</strong></td><td>@(viewingSkill.UsesExplodingDice ? "Yes" : "No")</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(viewingSkill.Description))
+                    {
+                        <div class="mt-3">
+                            <h6>Description</h6>
+                            <p>@viewingSkill.Description</p>
+                        </div>
+                    }
+                    
+                    <div class="mt-3">
+                        <h6>Level Progression Costs</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Level</th>
+                                        <th>Cost to Reach</th>
+                                        <th>Total Usage</th>
+                                        <th>Cumulative</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int level = 1; level <= Math.Min(10, viewingSkill.MaxPracticalLevel); level++)
+                                    {
+                                        var costForLevel = viewingSkill.CalculateUsageCostForLevel(level - 1);
+                                        var totalUsage = viewingSkill.CalculateTotalUsageForLevel(level);
+                                        <tr>
+                                            <td>@level</td>
+                                            <td>@costForLevel</td>
+                                            <td>@totalUsage</td>
+                                            <td>@totalUsage</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool loading = true;
+    private List<SkillCategory> skillCategories = new();
+    private int selectedCategoryId = 0;
+    private SkillCategory? selectedCategory = null;
+    
+    // Modals and forms
+    private SkillCategory? editingCategory = null;
+    private SkillDefinition? editingSkill = null;
+    private SkillDefinition? viewingSkill = null;
+    private CategoryForm categoryForm = new();
+    private SkillForm skillForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        loading = false;
+    }
+
+    private async Task LoadData()
+    {
+        skillCategories = await SkillService.GetSkillCategoriesAsync();
+    }
+
+    private void SelectCategory(int categoryId)
+    {
+        selectedCategoryId = categoryId;
+        selectedCategory = skillCategories.FirstOrDefault(c => c.Id == categoryId);
+    }
+
+    #region Category Management
+    
+    private void ShowCreateCategoryModal()
+    {
+        editingCategory = null;
+        categoryForm = new CategoryForm();
+        JSRuntime.InvokeVoidAsync("showModal", "categoryModal");
+    }
+
+    private void EditCategory(SkillCategory category)
+    {
+        editingCategory = category;
+        categoryForm = new CategoryForm
+        {
+            Name = category.Name,
+            Description = category.Description,
+            DefaultBaseCost = category.DefaultBaseCost,
+            DefaultMultiplier = category.DefaultMultiplier,
+            DisplayOrder = category.DisplayOrder,
+            AllowsPassiveAdvancement = category.AllowsPassiveAdvancement,
+            AllowsTeaching = category.AllowsTeaching
+        };
+        JSRuntime.InvokeVoidAsync("showModal", "categoryModal");
+    }
+
+    private async Task SaveCategory()
+    {
+        if (string.IsNullOrWhiteSpace(categoryForm.Name))
+            return;
+
+        try
+        {
+            if (editingCategory == null)
+            {
+                // Create new category
+                var category = new SkillCategory
+                {
+                    Name = categoryForm.Name.Trim(),
+                    Description = categoryForm.Description?.Trim() ?? string.Empty,
+                    DefaultBaseCost = categoryForm.DefaultBaseCost,
+                    DefaultMultiplier = categoryForm.DefaultMultiplier,
+                    DisplayOrder = categoryForm.DisplayOrder,
+                    AllowsPassiveAdvancement = categoryForm.AllowsPassiveAdvancement,
+                    AllowsTeaching = categoryForm.AllowsTeaching,
+                    IsActive = true
+                };
+
+                DbContext.SkillCategories.Add(category);
+            }
+            else
+            {
+                // Update existing category
+                editingCategory.Name = categoryForm.Name.Trim();
+                editingCategory.Description = categoryForm.Description?.Trim() ?? string.Empty;
+                editingCategory.DefaultBaseCost = categoryForm.DefaultBaseCost;
+                editingCategory.DefaultMultiplier = categoryForm.DefaultMultiplier;
+                editingCategory.DisplayOrder = categoryForm.DisplayOrder;
+                editingCategory.AllowsPassiveAdvancement = categoryForm.AllowsPassiveAdvancement;
+                editingCategory.AllowsTeaching = categoryForm.AllowsTeaching;
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            
+            await JSRuntime.InvokeVoidAsync("hideModal", "categoryModal");
+        }
+        catch (Exception ex)
+        {
+            // Log error and show user feedback
+            Console.WriteLine($"Error saving category: {ex.Message}");
+        }
+    }
+
+    private async Task ConfirmDeleteCategory(SkillCategory category)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the category '{category.Name}'? This will also delete all skills in this category."))
+        {
+            await DeleteCategory(category);
+        }
+    }
+
+    private async Task DeleteCategory(SkillCategory category)
+    {
+        try
+        {
+            category.IsActive = false;
+            
+            // Also deactivate all skills in this category
+            foreach (var skill in category.Skills)
+            {
+                skill.IsActive = false;
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            
+            if (selectedCategoryId == category.Id)
+            {
+                selectedCategoryId = 0;
+                selectedCategory = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting category: {ex.Message}");
+        }
+    }
+
+    #endregion
+
+    #region Skill Management
+
+    private void ShowCreateSkillModal(int? categoryId = null)
+    {
+        editingSkill = null;
+        skillForm = new SkillForm();
+        if (categoryId.HasValue)
+        {
+            skillForm.CategoryId = categoryId.Value;
+        }
+        JSRuntime.InvokeVoidAsync("showModal", "skillModal");
+    }
+
+    private void EditSkill(SkillDefinition skill)
+    {
+        editingSkill = skill;
+        skillForm = new SkillForm
+        {
+            CategoryId = skill.CategoryId,
+            Name = skill.Name,
+            Description = skill.Description,
+            SkillType = skill.SkillType,
+            BaseCost = skill.BaseCost,
+            Multiplier = skill.Multiplier,
+            RelatedAttribute = skill.RelatedAttribute,
+            MagicSchool = skill.MagicSchool,
+            ManaCost = skill.ManaCost,
+            CooldownSeconds = skill.CooldownSeconds,
+            AllowsPassiveAdvancement = skill.AllowsPassiveAdvancement,
+            AllowsTeaching = skill.AllowsTeaching,
+            UsesExplodingDice = skill.UsesExplodingDice,
+            MaxPracticalLevel = skill.MaxPracticalLevel,
+            IsStartingSkill = skill.IsStartingSkill,
+            DisplayOrder = skill.DisplayOrder
+        };
+        JSRuntime.InvokeVoidAsync("showModal", "skillModal");
+    }
+
+    private async Task SaveSkill()
+    {
+        if (string.IsNullOrWhiteSpace(skillForm.Name) || 
+            skillForm.CategoryId == 0 || 
+            string.IsNullOrWhiteSpace(skillForm.SkillType) ||
+            string.IsNullOrWhiteSpace(skillForm.RelatedAttribute))
+        {
+            // TODO: Add proper validation feedback to user
+            return;
+        }
+
+        try
+        {
+            if (editingSkill == null)
+            {
+                // Create new skill
+                var skill = new SkillDefinition
+                {
+                    CategoryId = skillForm.CategoryId,
+                    Name = skillForm.Name.Trim(),
+                    Description = skillForm.Description?.Trim() ?? string.Empty,
+                    SkillType = skillForm.SkillType,
+                    BaseCost = skillForm.BaseCost,
+                    Multiplier = skillForm.Multiplier,
+                    RelatedAttribute = skillForm.RelatedAttribute.Trim(), // Required field, no longer nullable
+                    MagicSchool = string.IsNullOrWhiteSpace(skillForm.MagicSchool) ? null : skillForm.MagicSchool,
+                    ManaCost = skillForm.ManaCost,
+                    CooldownSeconds = skillForm.CooldownSeconds,
+                    AllowsPassiveAdvancement = skillForm.AllowsPassiveAdvancement,
+                    AllowsTeaching = skillForm.AllowsTeaching,
+                    UsesExplodingDice = skillForm.UsesExplodingDice,
+                    MaxPracticalLevel = skillForm.MaxPracticalLevel,
+                    IsStartingSkill = skillForm.IsStartingSkill,
+                    DisplayOrder = skillForm.DisplayOrder,
+                    IsActive = true
+                };
+
+                DbContext.SkillDefinitions.Add(skill);
+            }
+            else
+            {
+                // Update existing skill
+                editingSkill.CategoryId = skillForm.CategoryId;
+                editingSkill.Name = skillForm.Name.Trim();
+                editingSkill.Description = skillForm.Description?.Trim() ?? string.Empty;
+                editingSkill.SkillType = skillForm.SkillType;
+                editingSkill.BaseCost = skillForm.BaseCost;
+                editingSkill.Multiplier = skillForm.Multiplier;
+                editingSkill.RelatedAttribute = skillForm.RelatedAttribute.Trim(); // Required field, no longer nullable
+                editingSkill.MagicSchool = string.IsNullOrWhiteSpace(skillForm.MagicSchool) ? null : skillForm.MagicSchool;
+                editingSkill.ManaCost = skillForm.ManaCost;
+                editingSkill.CooldownSeconds = skillForm.CooldownSeconds;
+                editingSkill.AllowsPassiveAdvancement = skillForm.AllowsPassiveAdvancement;
+                editingSkill.AllowsTeaching = skillForm.AllowsTeaching;
+                editingSkill.UsesExplodingDice = skillForm.UsesExplodingDice;
+                editingSkill.MaxPracticalLevel = skillForm.MaxPracticalLevel;
+                editingSkill.IsStartingSkill = skillForm.IsStartingSkill;
+                editingSkill.DisplayOrder = skillForm.DisplayOrder;
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            
+            // Refresh selected category
+            if (selectedCategoryId > 0)
+            {
+                selectedCategory = skillCategories.FirstOrDefault(c => c.Id == selectedCategoryId);
+            }
+            
+            await JSRuntime.InvokeVoidAsync("hideModal", "skillModal");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving skill: {ex.Message}");
+        }
+    }
+
+    private void ViewSkillDetails(SkillDefinition skill)
+    {
+        viewingSkill = skill;
+        JSRuntime.InvokeVoidAsync("showModal", "skillDetailsModal");
+    }
+
+    private async Task ConfirmDeleteSkill(SkillDefinition skill)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the skill '{skill.Name}'?"))
+        {
+            await DeleteSkill(skill);
+        }
+    }
+
+    private async Task DeleteSkill(SkillDefinition skill)
+    {
+        try
+        {
+            skill.IsActive = false;
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            
+            // Refresh selected category
+            if (selectedCategoryId > 0)
+            {
+                selectedCategory = skillCategories.FirstOrDefault(c => c.Id == selectedCategoryId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting skill: {ex.Message}");
+        }
+    }
+
+    #endregion
+
+    #region Form Models
+
+    private class CategoryForm
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public int DefaultBaseCost { get; set; } = 25;
+        public decimal DefaultMultiplier { get; set; } = 2.2m;
+        public int DisplayOrder { get; set; } = 0;
+        public bool AllowsPassiveAdvancement { get; set; } = false;
+        public bool AllowsTeaching { get; set; } = true;
+    }
+
+    private class SkillForm
+    {
+        public int CategoryId { get; set; } = 0;
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string SkillType { get; set; } = string.Empty;
+        public int BaseCost { get; set; } = 25;
+        public decimal Multiplier { get; set; } = 2.2m;
+        public string RelatedAttribute { get; set; } = string.Empty; // Required - every skill must have a primary attribute
+        public string? MagicSchool { get; set; }
+        public int? ManaCost { get; set; }
+        public decimal CooldownSeconds { get; set; } = 0;
+        public bool AllowsPassiveAdvancement { get; set; } = false;
+        public bool AllowsTeaching { get; set; } = true;
+        public bool UsesExplodingDice { get; set; } = false;
+        public int MaxPracticalLevel { get; set; } = 10;
+        public bool IsStartingSkill { get; set; } = false;
+        public int DisplayOrder { get; set; } = 0;
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Gets the display name for an attribute, handling legacy skill names if they exist in the database
+    /// </summary>
+    private string GetAttributeDisplayName(string? relatedAttribute)
+    {
+        if (string.IsNullOrEmpty(relatedAttribute))
+            return "None";
+
+        // Handle legacy data that might have skill names instead of attribute abbreviations
+        return relatedAttribute switch
+        {
+            // Current correct attribute abbreviations
+            "STR" => "STR",
+            "DEX" => "DEX", 
+            "END" => "END",
+            "INT" => "INT",
+            "ITT" => "ITT",
+            "WIL" => "WIL",
+            "PHY" => "PHY",
+            
+            // Legacy skill names (convert to attribute abbreviations for display)
+            "Physicality" => "STR",
+            "Dodge" => "DEX",
+            "Drive" => "END", 
+            "Reasoning" => "INT",
+            "Awareness" => "ITT",
+            "Focus" => "WIL",
+            "Bearing" => "PHY",
+            
+            // Unknown - return as-is but flag it
+            _ => $"{relatedAttribute}(?)"
+        };
+    }
+
+    /// <summary>
+    /// Gets the full description for an attribute abbreviation
+    /// </summary>
+    private string GetAttributeDescription(string? relatedAttribute)
+    {
+        var abbreviation = GetAttributeDisplayName(relatedAttribute);
+        return abbreviation switch
+        {
+            "STR" => "STR (Strength) - Physical strength and power",
+            "DEX" => "DEX (Dexterity) - Agility and evasion ability",
+            "END" => "END (Endurance) - Endurance and stamina", 
+            "INT" => "INT (Intelligence) - Intelligence and logical thinking",
+            "ITT" => "ITT (Intuition) - Intuition and perception",
+            "WIL" => "WIL (Willpower) - Willpower and mental concentration",
+            "PHY" => "PHY (Physical beauty) - Physical beauty and social presence",
+            "None" => "No primary attribute assigned",
+            _ => $"Unknown attribute: {relatedAttribute}"
+        };
+    }
+
+    #endregion
+
+    #region Data Migration
+
+    private async Task RunDataMigration()
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "This will fix any legacy skill attribute references. Are you sure you want to proceed?"))
+        {
+            try
+            {
+                await DataMigrationService.RunAllDataMigrationsAsync();
+                await LoadData(); // Refresh the UI
+                
+                await JSRuntime.InvokeVoidAsync("alert", "Data migration completed successfully!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error running data migration: {ex.Message}");
+                await JSRuntime.InvokeVoidAsync("alert", $"Data migration failed: {ex.Message}");
+            }
+        }
+    }
+
+    #endregion
+}

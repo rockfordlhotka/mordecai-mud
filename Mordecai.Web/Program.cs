@@ -37,6 +37,16 @@ builder.Services.AddGameMessaging();
 builder.Services.AddScoped<IDiceService, DiceService>();
 builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>();
 
+// Add skill services
+builder.Services.AddScoped<SkillService>();
+builder.Services.AddScoped<SkillSeedService>();
+
+// Add admin services
+builder.Services.AddScoped<AdminSeedService>();
+
+// Add data migration services
+builder.Services.AddScoped<DataMigrationService>();
+
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
 builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
@@ -72,6 +82,18 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     context.Database.Migrate();
+    
+    // Seed admin data first (roles and users)
+    var adminSeedService = scope.ServiceProvider.GetRequiredService<AdminSeedService>();
+    await adminSeedService.SeedAdminDataAsync();
+    
+    // Seed skill data if needed
+    var skillSeedService = scope.ServiceProvider.GetRequiredService<SkillSeedService>();
+    await skillSeedService.SeedSkillDataAsync();
+    
+    // Run any necessary data migrations
+    var dataMigrationService = scope.ServiceProvider.GetRequiredService<DataMigrationService>();
+    await dataMigrationService.RunAllDataMigrationsAsync();
 }
 
 // Configure the HTTP request pipeline.

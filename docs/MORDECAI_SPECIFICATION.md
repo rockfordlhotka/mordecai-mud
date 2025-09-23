@@ -167,15 +167,11 @@ This attribute system provides character diversity at creation while maintaining
 
 ## Technical Architecture
 
-
 ### Frontend
 - **Blazor Web App** (Server mode) with SSR and interactive pages
-- Real-time client-server communication via Blazor Server’s built-in SignalR
+- Real-time client-server communication via Blazor Server's built-in SignalR
 - Responsive web design for desktop and mobile
 - Terminal-style UI with configurable themes
-
-
-
 
 ### Backend
 - **.NET 9 Blazor Server**: All game logic and state managed server-side
@@ -188,7 +184,6 @@ This attribute system provides character diversity at creation while maintaining
   - Built-in OpenTelemetry and distributed tracing
   - Easily run RabbitMQ and other dependencies as containers
 - **Background Services** for world simulation, NPCs, and event processing
-
 
 ### Database
 - **SQLite** for local development and deployment simplicity
@@ -251,13 +246,176 @@ This attribute system provides character diversity at creation while maintaining
   - Actions are resolved through skill checks, never direct attribute use
   - Higher skills unlock advanced techniques and abilities
 
-- **Player Profile**
-  - Individual skill ratings and progression history
-  - Current health status (Fatigue and Vitality levels)
-  - Pending damage and healing pools (visible to show incoming effects)
-  - Achievement system based on skill milestones
-  - Play time tracking and character statistics
-  - Social features (friends, guilds)
+## Skill Progression Mechanics
+
+### Usage-Based Advancement System
+
+All skills in Mordecai advance through actual usage rather than traditional experience points. Each skill tracks usage events and converts them into skill level increases based on that skill's individual progression parameters.
+
+### Base Cost and Multiplier System
+
+Each skill is defined with two key progression parameters:
+
+1. **Base Cost**: The number of usage events required to advance from level 0 to level 1
+2. **Multiplier**: A real number that compounds the cost for each subsequent level
+
+#### Cost Calculation Formula
+The number of usage events required to advance from level N to level N+1 is calculated as:
+
+**Cost(N → N+1) = Base Cost × (Multiplier^N)**
+
+Where:
+- **Base Cost**: Skill-specific starting difficulty (typically 10-100 usage events)
+- **Multiplier**: Progression difficulty scaling (typically 2.0-3.5)
+- **N**: Current skill level
+
+### Skill Category Progression Parameters
+
+Different categories of skills have distinct progression parameters reflecting their learning difficulty. **Game Balance Note**: Skills are not intended to progress significantly beyond level 10, as each level represents a substantial improvement. Progression becomes prohibitively expensive after level 5 to maintain balanced gameplay.
+
+#### Core Attribute Skills
+- **Base Cost**: 15 (easy to improve early attributes)
+- **Multiplier**: 2.5 (becomes very expensive after level 5)
+- **Rationale**: Fundamental abilities that see frequent use but become exponentially harder to master
+
+#### Weapon Skills
+- **Base Cost**: 25 (moderate starting difficulty)
+- **Multiplier**: 2.2 (steep progression curve after early levels)
+- **Rationale**: Combat skills require practice but become extremely difficult to master beyond competent levels
+
+#### Individual Spell Skills
+- **Base Cost**: Variable by spell complexity
+  - **Cantrips** (Basic spells): 20, Multiplier 2.0
+  - **Standard spells**: 40, Multiplier 2.3
+  - **Advanced spells**: 80, Multiplier 2.8
+  - **Master spells**: 150, Multiplier 3.5
+- **Rationale**: Magic mastery scales dramatically with spell power and complexity; high-level spells should be extremely rare
+
+#### Mana Recovery Skills
+- **Base Cost**: 30 (moderate starting investment)
+- **Multiplier**: 2.1 (steady but steep improvement)
+- **Rationale**: Magical stamina training follows consistent progression patterns but plateaus quickly
+
+#### Crafting Skills
+- **Base Cost**: 35 (requires sustained practice)
+- **Multiplier**: 2.4 (becomes quite difficult to master)
+- **Rationale**: Craftsmanship demands both repetition and increasingly refined technique
+
+#### Social Skills
+- **Base Cost**: 20 (natural social interaction provides frequent practice)
+- **Multiplier**: 2.0 (personality development has diminishing returns)
+- **Rationale**: Basic social skills develop naturally but mastery requires dedicated effort
+
+### Example Progression Costs with Game Balance
+
+**Weapon Skill** (Base Cost: 25, Multiplier: 2.2):
+- Level 0→1: 25 uses
+- Level 1→2: 55 uses (25 × 2.2¹)
+- Level 2→3: 121 uses (25 × 2.2²)
+- Level 3→4: 266 uses (25 × 2.2³)
+- Level 4→5: 585 uses (25 × 2.2⁴)
+- Level 5→6: 1,287 uses (25 × 2.2⁵) - **Extremely expensive**
+- Level 6→7: 2,831 uses (25 × 2.2⁶) - **Prohibitively expensive**
+- Level 7→8: 6,228 uses (25 × 2.2⁷) - **Nearly impossible**
+
+**Core Attribute** (Base Cost: 15, Multiplier: 2.5):
+- Level 0→1: 15 uses
+- Level 1→2: 38 uses (15 × 2.5¹)
+- Level 2→3: 94 uses (15 × 2.5²)
+- Level 3→4: 234 uses (15 × 2.5³)
+- Level 4→5: 586 uses (15 × 2.5⁴)
+- Level 5→6: 1,465 uses (15 × 2.5⁵) - **Extremely expensive**
+- Level 6→7: 3,662 uses (15 × 2.5⁶) - **Prohibitively expensive**
+
+**Master Spell** (Base Cost: 150, Multiplier: 3.5):
+- Level 0→1: 150 uses
+- Level 1→2: 525 uses (150 × 3.5¹)
+- Level 2→3: 1,838 uses (150 × 3.5²)
+- Level 3→4: 6,431 uses (150 × 3.5³) - **Extremely expensive**
+- Level 4→5: 22,509 uses (150 × 3.5⁴) - **Nearly impossible**
+
+### Usage Event Types and Values
+
+Not all skill usage generates the same advancement potential. Usage events are categorized by type and provide different base advancement values:
+
+#### Usage Event Categories
+1. **Routine Use** (1.0x multiplier): Standard skill application under normal conditions
+2. **Challenging Use** (1.5x multiplier): Skill use under difficult circumstances or against higher-level opposition
+3. **Critical Success** (2.0x multiplier): Exceptional skill performance (natural 20 equivalent, exploding dice results)
+4. **Teaching Others** (0.8x multiplier): Instructing other players provides modest skill advancement
+5. **Training Practice** (0.5x multiplier): Deliberate practice in safe conditions (slower but guaranteed advancement)
+
+#### Examples
+- **Sword Skill**: Routine combat (1.0x), fighting stronger opponents (1.5x), critical hits (2.0x), sparring with players (0.5x)
+- **Fire Bolt Spell**: Standard casting (1.0x), casting under pressure (1.5x), critical magical success (2.0x), safe practice (0.5x)
+- **Blacksmithing**: Regular crafting (1.0x), crafting with rare materials (1.5x), creating masterwork items (2.0x), teaching apprentices (0.8x)
+
+### Advancement Notifications and Tracking
+
+#### Player Feedback System
+- **Usage Accumulation**: Players can view their current usage progress toward the next skill level
+- **Advancement Notifications**: Clear messages when skills increase, showing old and new levels
+- **Progress Indicators**: Visual representation of advancement progress (progress bars, percentages)
+- **Milestone Achievements**: Special recognition for reaching significant skill levels (10, 20, 30, etc.)
+
+#### Skill Level Ranges and Meaning
+- **Levels 1-3**: **Novice** - Learning fundamentals, frequent advancement possible
+- **Levels 4-5**: **Competent** - Reliable skill use, moderate advancement rate
+- **Levels 6-7**: **Expert** - Advanced techniques available, very slow advancement
+- **Levels 8-10**: **Master** - Exceptional ability, extremely rare to achieve
+- **Levels 11+**: **Legendary** - Mythical skill levels, virtually impossible without extraordinary circumstances
+
+### Game Balance Considerations
+
+#### Skill Level Impact
+Each skill level represents a significant improvement in capability:
+- **Level 5**: Represents a highly competent practitioner
+- **Level 8**: Represents regional mastery 
+- **Level 10**: Represents legendary status (perhaps 1 in 1000 characters)
+- **Level 15**: Reserved for historical figures or unique NPCs
+
+#### Practical Skill Caps
+- **Most Characters**: Will realistically reach levels 3-6 in their primary skills
+- **Dedicated Specialists**: May achieve levels 7-8 in 1-2 skills with significant time investment
+- **Legendary Masters**: Levels 9-10+ should be extremely rare and represent major character achievements
+- **NPCs and Unique Characters**: May have skills above level 10 for special story purposes
+
+#### Exponential Cost Benefits
+The high multipliers ensure that:
+- Players can quickly become competent (levels 1-4)
+- Specialization requires meaningful choice and time investment (levels 5-7)
+- True mastery represents exceptional dedication (levels 8-10)
+- Impossible levels remain truly rare and special (levels 11+)
+
+### Balancing Considerations
+
+#### Diminishing Returns
+The multiplier system ensures that achieving very high skill levels requires exponentially more effort, preventing runaway skill advancement and maintaining long-term progression goals.
+
+#### Multiple Advancement Paths
+Players can focus on broad skill development (many skills at moderate levels) or deep specialization (few skills at very high levels), both representing significant time investment with different strategic advantages.
+
+#### Skill Synergies
+Related skills may provide minor advancement bonuses to each other (e.g., Blacksmithing providing small bonuses to Weapon Maintenance skill advancement), encouraging thematic character builds.
+
+#### Active vs. Passive Skills
+Some skills (like Mana Recovery) may advance passively over time, while others require active use, balancing different playstyles and time investment patterns.
+
+### Technical Implementation Notes
+
+#### Database Storage
+- Track cumulative usage points per skill per character
+- Store skill definitions with Base Cost and Multiplier parameters
+- Log skill advancement events for analytics and validation
+- Calculate current level dynamically from cumulative usage and skill parameters
+
+#### Performance Considerations
+- Cache skill level calculations to avoid repeated database queries
+- Batch skill advancement notifications to prevent spam
+- Use background services for passive skill advancement processing
+- Implement skill advancement rate limiting to prevent exploitation
+
+This progression system ensures that skill advancement feels rewarding and meaningful while providing long-term character development goals that maintain player engagement over extended periods.
 
 ### 2. World System
 - **Zone-Based World Organization**
@@ -404,7 +562,6 @@ This attribute system provides character diversity at creation while maintaining
   - Backup and restore functionality
 
 ## Technical Features
-
 
 ### 1. Real-Time & Async Communication
 - **Blazor Server** provides real-time updates between browser and server

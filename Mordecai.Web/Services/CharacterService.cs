@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Mordecai.Game.Entities;
 using Mordecai.Web.Data;
 
 namespace Mordecai.Web.Services;
