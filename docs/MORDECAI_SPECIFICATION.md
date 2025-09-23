@@ -92,7 +92,7 @@ All characters possess these seven core attributes:
 
 ### Species Attribute Modifiers
 
-Each non-Human species applies specific modifiers to the base Human attribute calculation, creating distinct racial advantages and disadvantages:
+Each non-Human species applies specific modifiers to the base Human attribute calculation during character creation, creating distinct racial advantages and disadvantages:
 
 #### Available Species and Modifiers
 
@@ -100,26 +100,26 @@ Each non-Human species applies specific modifiers to the base Human attribute ca
   - All attributes: 4dF + 10
 
 - **Elf**: Intellectual and agile, but physically delicate
-  - **Reasoning (INT)**: 4dF + 11 (+1 modifier)
-  - **Physicality (STR)**: 4dF + 9 (-1 modifier)
+  - **Reasoning (INT)**: 4dF + 11 (+1 modifier to attribute)
+  - **Physicality (STR)**: 4dF + 9 (-1 modifier to attribute)
   - All other attributes: 4dF + 10
 
 - **Dwarf**: Strong and resilient, but less agile
-  - **Physicality (STR)**: 4dF + 11 (+1 modifier)
-  - **Dodge (DEX)**: 4dF + 9 (-1 modifier)
+  - **Physicality (STR)**: 4dF + 11 (+1 modifier to attribute)
+  - **Dodge (DEX)**: 4dF + 9 (-1 modifier to attribute)
   - All other attributes: 4dF + 10
 
 - **Halfling**: Quick and perceptive, but physically weak
-  - **Dodge (DEX)**: 4dF + 11 (+1 modifier)
-  - **Awareness (ITT)**: 4dF + 11 (+1 modifier)
-  - **Physicality (STR)**: 4dF + 8 (-2 modifier)
+  - **Dodge (DEX)**: 4dF + 11 (+1 modifier to attribute)
+  - **Awareness (ITT)**: 4dF + 11 (+1 modifier to attribute)
+  - **Physicality (STR)**: 4dF + 8 (-2 modifier to attribute)
   - All other attributes: 4dF + 10
 
 - **Orc**: Physically powerful and enduring, but less intelligent and social
-  - **Physicality (STR)**: 4dF + 12 (+2 modifier)
-  - **Drive (END)**: 4dF + 11 (+1 modifier)
-  - **Reasoning (INT)**: 4dF + 9 (-1 modifier)
-  - **Bearing (PHY)**: 4dF + 9 (-1 modifier)
+  - **Physicality (STR)**: 4dF + 12 (+2 modifier to attribute)
+  - **Drive (END)**: 4dF + 11 (+1 modifier to attribute)
+  - **Reasoning (INT)**: 4dF + 9 (-1 modifier to attribute)
+  - **Bearing (PHY)**: 4dF + 9 (-1 modifier to attribute)
   - All other attributes: 4dF + 10
 
 ### Attribute Usage and Relationships
@@ -150,20 +150,10 @@ While all action resolution uses skills rather than raw attributes, attributes s
 
 During character creation:
 1. **Species Selection**: Player chooses species, which determines attribute modifiers
-2. **Attribute Rolling**: System rolls 4dF for each attribute and applies species modifiers
-3. **Health Calculation**: Fatigue and Vitality are automatically calculated from final attributes
+2. **Attribute Rolling**: System rolls 4dF for each attribute and applies species modifiers to the base roll
+3. **Health Calculation**: Fatigue and Vitality are automatically calculated from final attribute values
 4. **Starting Skills**: Core attribute skills are set to their calculated attribute values
 5. **Skill Point Allocation**: Player receives bonus skill points to distribute among learned skills
-
-### Balancing Considerations
-
-- **No "Dump Stats"**: All attributes provide meaningful benefits to avoid useless attributes
-- **Species Trade-offs**: Each species has both advantages and disadvantages
-- **Skill-Based Resolution**: Attributes influence but never directly resolve actions
-- **Long-term Growth**: Skills can advance far beyond starting attribute limitations through practice
-- **Meaningful Choices**: Species selection creates distinct playstyle opportunities without hard restrictions
-
-This attribute system provides character diversity at creation while maintaining the skill-based progression focus throughout gameplay.
 
 ## Technical Architecture
 
@@ -431,11 +421,36 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Hidden areas and secret passages discoverable through exploration or specific conditions
   - Dynamic weather and time-of-day effects affect room descriptions and gameplay
 
+- **Room Effects System**
+  - Rooms can have active effects that modify gameplay, descriptions, and player interactions
+  - Effects can be temporary (with duration timers) or permanent (until manually removed)
+  - Multiple effects can be active simultaneously on a single room
+  - **Effect Types and Examples**:
+    - **Environmental Effects**: Fog (reduced visibility), darkness (limited vision), bright light (enhanced vision)
+    - **Elemental Effects**: Fire (periodic damage), ice (movement penalties), poison gas (ongoing poison damage)
+    - **Magical Effects**: Silence (prevents spellcasting), magic dampening (reduced spell effectiveness), enhanced magic (spell bonuses)
+    - **Movement Effects**: Vines/webs (prevents or slows movement), slippery surfaces (movement failures), quicksand (traps players)
+    - **Combat Effects**: Blessed ground (healing bonuses), cursed area (combat penalties), weapon enhancement zones
+    - **Sensory Effects**: Loud noises (communication difficulties), strong odors (perception changes), illusions (false descriptions)
+  - **Effect Properties**:
+    - **Duration**: Temporary effects have countdown timers; permanent effects require manual removal
+    - **Intensity**: Effects can have varying strength levels (light fog vs thick fog)
+    - **Stacking**: Some effects stack (multiple fire effects increase damage), others don't (only strongest fog applies)
+    - **Source Tracking**: Effects remember their source (spell, item, NPC action, environmental event)
+    - **Visibility**: Some effects are obvious to all players, others are hidden or require skill checks to detect
+  - **Effect Application**:
+    - Effects can target all occupants, specific players, or only affect certain actions
+    - Entry effects trigger when players enter the room
+    - Periodic effects apply damage, healing, or modifications at regular intervals
+    - Exit effects may prevent or modify movement attempts
+    - Action effects modify skill checks, combat, or spellcasting within the room
+
 - **World Persistence**
   - Player actions affect the world state within rooms and zones
   - Items can be dropped and picked up by other players in specific rooms
-  - Room modifications and zone events persist between sessions
+  - Room modifications, effects, and zone events persist between sessions
   - Zone-wide events and changes can affect all rooms within that zone
+  - Room effects persist through server restarts and are restored from database
   - Resurrection system for player characters in specific zones
 
 ### 3. Combat System
@@ -489,19 +504,33 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Each spell is a separate skill that must be learned and practiced
   - Spells organized into schools (Fire, Healing, Illusion, etc.)
   - Spell effectiveness increases with individual spell skill level
-  - Area of effect, targeted, and self-buff spell types
+  - Area of effect, targeted, self-buff, and room effect spell types
+
+- **Spell Effect Types**
+  - **Targeted Spells**: Affect specific players or NPCs (Fire Bolt, Heal, Lightning Strike)
+  - **Self-Buff Spells**: Enhance the caster's abilities (Strength, Invisibility, Shield)
+  - **Area Effect Spells**: Affect multiple targets in the same room (Fireball, Mass Heal, Earthquake)
+  - **Room Effect Spells**: Create persistent environmental effects in the room
+    - Wall of Fire (creates fire effect in room causing periodic damage)
+    - Fog Cloud (creates fog effect reducing visibility)
+    - Entangle (creates vine effect preventing movement)
+    - Consecrate (creates blessed ground effect providing healing bonuses)
+    - Darkness (creates darkness effect limiting vision)
+    - Silence (creates silence effect preventing spellcasting)
 
 - **Mana System**
   - Separate mana pools for each magic school
   - Mana recovery rate determined by school-specific recovery skills
   - Casting spells consumes mana from the appropriate school
   - Mana regeneration continues in real-time, even when offline
+  - Room effect spells typically consume more mana due to their persistent nature
 
 - **Magic Items**
   - Enchanted weapons and armor
   - Consumable magical items
   - Artifacts with unique properties
   - Items may provide bonuses to specific spell skills or mana recovery
+  - Some magical items can create room effects when activated
 
 ### 6. Social Features
 - **Communication**
@@ -567,9 +596,11 @@ This progression system ensures that skill advancement feels rewarding and meani
 - **Blazor Server** provides real-time updates between browser and server
 - **RabbitMQ** handles all async, cross-user, and NPC/system messaging
   - Decouples game logic, enables scalable event-driven architecture
-  - All chat, combat, and world events flow through RabbitMQ
+  - All chat, combat, world events, and room effects flow through RabbitMQ
+  - Room effect creation, expiration, and periodic application events
 - **Background Services** for timed game mechanics
   - Health application timer (10-second intervals for pending pool processing)
+  - Room effect processing (periodic damage, healing, and effect expiration)
   - World simulation and NPC behavior processing
   - Scheduled events and maintenance tasks
 
@@ -648,7 +679,7 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Fatigue and Vitality calculation and persistence
   - Pending damage and healing pool system
   - Health application timer (10-second intervals)
-  - Current health status display in character interface
+  - Current health status display in character interfacef
 - **Skill-based progression and advancement**
 - **Attribute system implementation**
 - Character persistence and save/load

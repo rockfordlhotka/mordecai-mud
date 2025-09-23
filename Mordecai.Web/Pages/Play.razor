@@ -346,10 +346,10 @@
 
         // Calculate max health values from character's actual attributes
         // FAT = (Drive × 2) - 5
-        maxFat = loadedCharacter.CalculatedFatigue;
+        maxFat = loadedCharacter.MaxFatigue;
         
         // VIT = (Physicality + Drive) - 5  
-        maxVit = loadedCharacter.CalculatedVitality;
+        maxVit = loadedCharacter.MaxVitality;
 
         // TODO: In the future, load current and pending values from the database
         // For now, assume character is at full health
