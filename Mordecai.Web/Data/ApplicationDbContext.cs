@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Mordecai.Game.Entities;
+using GameEntities = Mordecai.Game.Entities;
+using WebEntities = Mordecai.Web.Data;
 
 namespace Mordecai.Web.Data;
 
@@ -11,24 +12,25 @@ public class ApplicationDbContext : IdentityDbContext
     {
     }
 
-    public DbSet<Character> Characters => Set<Character>();
-    public DbSet<Zone> Zones => Set<Zone>();
-    public DbSet<RoomType> RoomTypes => Set<RoomType>();
-    public DbSet<Room> Rooms => Set<Room>();
-    public DbSet<RoomExit> RoomExits => Set<RoomExit>();
+    // Use Game entities for world-related items
+    public DbSet<GameEntities.Character> Characters => Set<GameEntities.Character>();
+    public DbSet<GameEntities.Zone> Zones => Set<GameEntities.Zone>();
+    public DbSet<GameEntities.RoomType> RoomTypes => Set<GameEntities.RoomType>();
+    public DbSet<GameEntities.Room> Rooms => Set<GameEntities.Room>();
+    public DbSet<GameEntities.RoomExit> RoomExits => Set<GameEntities.RoomExit>();
     
-    // Skill System DbSets
-    public DbSet<SkillCategory> SkillCategories => Set<SkillCategory>();
-    public DbSet<SkillDefinition> SkillDefinitions => Set<SkillDefinition>();
-    public DbSet<CharacterSkill> CharacterSkills => Set<CharacterSkill>();
-    public DbSet<SkillUsageLog> SkillUsageLogs => Set<SkillUsageLog>();
+    // Use Web entities for skill system (these are the working ones for the UI)
+    public DbSet<WebEntities.SkillCategory> SkillCategories => Set<WebEntities.SkillCategory>();
+    public DbSet<WebEntities.SkillDefinition> SkillDefinitions => Set<WebEntities.SkillDefinition>();
+    public DbSet<WebEntities.CharacterSkill> CharacterSkills => Set<WebEntities.CharacterSkill>();
+    public DbSet<WebEntities.SkillUsageLog> SkillUsageLogs => Set<WebEntities.SkillUsageLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         
         // Character configuration
-        builder.Entity<Character>(entity =>
+        builder.Entity<GameEntities.Character>(entity =>
         {
             entity.HasIndex(c => new { c.UserId, c.Name }).IsUnique();
             entity.HasIndex(c => c.CurrentRoomId);
@@ -41,21 +43,21 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // Zone configuration
-        builder.Entity<Zone>(entity =>
+        builder.Entity<GameEntities.Zone>(entity =>
         {
             entity.HasIndex(z => z.Name).IsUnique();
             entity.HasIndex(z => z.IsActive);
         });
 
         // RoomType configuration
-        builder.Entity<RoomType>(entity =>
+        builder.Entity<GameEntities.RoomType>(entity =>
         {
             entity.HasIndex(rt => rt.Name).IsUnique();
             entity.HasIndex(rt => rt.IsActive);
         });
 
         // Room configuration
-        builder.Entity<Room>(entity =>
+        builder.Entity<GameEntities.Room>(entity =>
         {
             entity.HasIndex(r => r.ZoneId);
             entity.HasIndex(r => r.RoomTypeId);
@@ -75,7 +77,7 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // RoomExit configuration
-        builder.Entity<RoomExit>(entity =>
+        builder.Entity<GameEntities.RoomExit>(entity =>
         {
             entity.HasIndex(re => new { re.FromRoomId, re.Direction });
             entity.HasIndex(re => re.ToRoomId);
@@ -97,7 +99,7 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // SkillCategory configuration
-        builder.Entity<SkillCategory>(entity =>
+        builder.Entity<WebEntities.SkillCategory>(entity =>
         {
             entity.HasIndex(sc => sc.Name).IsUnique();
             entity.HasIndex(sc => sc.IsActive);
@@ -105,7 +107,7 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // SkillDefinition configuration
-        builder.Entity<SkillDefinition>(entity =>
+        builder.Entity<WebEntities.SkillDefinition>(entity =>
         {
             entity.HasIndex(sd => sd.Name).IsUnique();
             entity.HasIndex(sd => new { sd.CategoryId, sd.SkillType });
@@ -128,21 +130,16 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // CharacterSkill configuration
-        builder.Entity<CharacterSkill>(entity =>
+        builder.Entity<WebEntities.CharacterSkill>(entity =>
         {
             // Composite unique index - each character can have each skill only once
             entity.HasIndex(cs => new { cs.CharacterId, cs.SkillDefinitionId }).IsUnique();
             entity.HasIndex(cs => cs.CharacterId);
             entity.HasIndex(cs => cs.SkillDefinitionId);
-            entity.HasIndex(cs => cs.CurrentLevel);
+            entity.HasIndex(cs => cs.Level);
             entity.HasIndex(cs => cs.LastUsedAt);
 
             // Configure relationships
-            entity.HasOne(cs => cs.Character)
-                .WithMany(c => c.Skills)
-                .HasForeignKey(cs => cs.CharacterId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             entity.HasOne(cs => cs.SkillDefinition)
                 .WithMany(sd => sd.CharacterSkills)
                 .HasForeignKey(cs => cs.SkillDefinitionId)
@@ -150,7 +147,7 @@ public class ApplicationDbContext : IdentityDbContext
         });
 
         // SkillUsageLog configuration
-        builder.Entity<SkillUsageLog>(entity =>
+        builder.Entity<WebEntities.SkillUsageLog>(entity =>
         {
             entity.HasIndex(sul => sul.CharacterId);
             entity.HasIndex(sul => sul.SkillDefinitionId);
@@ -158,11 +155,6 @@ public class ApplicationDbContext : IdentityDbContext
             entity.HasIndex(sul => new { sul.CharacterId, sul.UsedAt });
 
             // Configure relationships
-            entity.HasOne(sul => sul.Character)
-                .WithMany()
-                .HasForeignKey(sul => sul.CharacterId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             entity.HasOne(sul => sul.SkillDefinition)
                 .WithMany()
                 .HasForeignKey(sul => sul.SkillDefinitionId)

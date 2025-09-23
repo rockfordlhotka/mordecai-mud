@@ -4,6 +4,8 @@
 @using Mordecai.Web.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
+@using GameCharacter = Mordecai.Game.Entities.Character
+@using WebCharacterSkill = Mordecai.Web.Data.CharacterSkill
 @inject ApplicationDbContext Db
 @inject AuthenticationStateProvider Auth
 @inject ISkillService SkillService
@@ -37,8 +39,8 @@ else
                 <div class="card-body">
                     <p><strong>Species:</strong> @character.Species</p>
                     <p><strong>Health:</strong> 
-                        FAT: @character.RemainingFatigue/@character.MaxFatigue, 
-                        VIT: @character.RemainingVitality/@character.MaxVitality
+                        FAT: @character.CurrentFatigue/@character.MaxFatigue, 
+                        VIT: @character.CurrentVitality/@character.MaxVitality
                     </p>
                     @if (character.PendingFatigueDamage != 0 || character.PendingVitalityDamage != 0)
                     {
@@ -111,7 +113,7 @@ else
                                             </div>
                                             <div class="col-6">
                                                 <small class="text-muted">Ability Score:</small><br/>
-                                                <strong>@skill.CalculateAbilityScore()</strong>
+                                                <strong>@CalculateAbilityScore(skill, character)</strong>
                                             </div>
                                         </div>
                                         <div class="mt-2">
@@ -173,8 +175,8 @@ else
 
     private bool isLoading = true;
     private string currentUserId = string.Empty;
-    private Character? character;
-    private List<CharacterSkill> skills = new();
+    private GameCharacter? character;
+    private List<WebCharacterSkill> skills = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -200,5 +202,20 @@ else
 
         isLoading = false;
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Calculates the ability score for a skill based on the character's attributes
+    /// </summary>
+    private int CalculateAbilityScore(WebCharacterSkill skill, GameCharacter character)
+    {
+        if (skill.SkillDefinition.SkillType == "CoreAttribute" && !string.IsNullOrEmpty(skill.SkillDefinition.RelatedAttribute))
+        {
+            var attributeValue = character.GetAttributeValue(skill.SkillDefinition.RelatedAttribute);
+            return attributeValue - 5 + skill.Level;
+        }
+        
+        // For non-attribute skills, just return the level as the ability score
+        return skill.Level;
     }
 }

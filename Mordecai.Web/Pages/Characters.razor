@@ -423,7 +423,7 @@ else
             await LoadCharacters();
             ShowStatusMessage($"Character '{character.Name}' created successfully with starting skills!", false);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             ShowStatusMessage("Failed to create character. Please try again.", true);
         }
@@ -481,7 +481,7 @@ else
                 ShowStatusMessage("Failed to delete character. The character may not exist or you may not have permission.", true);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             ShowStatusMessage("An error occurred while deleting the character. Please try again.", true);
         }

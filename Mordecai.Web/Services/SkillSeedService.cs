@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Mordecai.Game.Entities;
 using Mordecai.Web.Data;
+using WebSkillDefinition = Mordecai.Web.Data.SkillDefinition;
+using WebSkillCategory = Mordecai.Web.Data.SkillCategory;
 
 namespace Mordecai.Web.Services;
 
@@ -33,7 +34,7 @@ public class SkillSeedService
         _logger.LogInformation("Seeding skill categories and definitions...");
 
         // Create skill categories based on the specification
-        var categories = new List<SkillCategory>
+        var categories = new List<WebSkillCategory>
         {
             new() 
             {
@@ -44,7 +45,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = false,
                 AllowsTeaching = true,
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new() 
             {
@@ -55,7 +57,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = false,
                 AllowsTeaching = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new() 
             {
@@ -66,7 +69,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = false,
                 AllowsTeaching = true,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new() 
             {
@@ -77,7 +81,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = true,
                 AllowsTeaching = true,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new() 
             {
@@ -88,7 +93,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = false,
                 AllowsTeaching = true,
                 DisplayOrder = 5,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new() 
             {
@@ -99,7 +105,8 @@ public class SkillSeedService
                 AllowsPassiveAdvancement = false,
                 AllowsTeaching = true,
                 DisplayOrder = 6,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -121,7 +128,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Core Skills");
 
-        var coreSkills = new List<SkillDefinition>
+        var coreSkills = new List<WebSkillDefinition>
         {
             new()
             {
@@ -134,7 +141,8 @@ public class SkillSeedService
                 RelatedAttribute = "STR", // Primary attribute: STR (Strength)
                 IsStartingSkill = true,
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -147,7 +155,8 @@ public class SkillSeedService
                 RelatedAttribute = "DEX", // Primary attribute: DEX (Dexterity)
                 IsStartingSkill = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -160,7 +169,8 @@ public class SkillSeedService
                 RelatedAttribute = "END", // Primary attribute: END (Endurance)
                 IsStartingSkill = true,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -173,7 +183,8 @@ public class SkillSeedService
                 RelatedAttribute = "INT", // Primary attribute: INT (Intelligence)
                 IsStartingSkill = true,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -186,7 +197,8 @@ public class SkillSeedService
                 RelatedAttribute = "ITT", // Primary attribute: ITT (Intuition)
                 IsStartingSkill = true,
                 DisplayOrder = 5,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -199,7 +211,8 @@ public class SkillSeedService
                 RelatedAttribute = "WIL", // Primary attribute: WIL (Willpower)
                 IsStartingSkill = true,
                 DisplayOrder = 6,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -212,7 +225,8 @@ public class SkillSeedService
                 RelatedAttribute = "PHY", // Primary attribute: PHY (Physical beauty)
                 IsStartingSkill = true,
                 DisplayOrder = 7,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -224,7 +238,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Weapon Skills");
 
-        var weaponSkills = new List<SkillDefinition>
+        var weaponSkills = new List<WebSkillDefinition>
         {
             new()
             {
@@ -237,7 +251,8 @@ public class SkillSeedService
                 RelatedAttribute = "STR", // Primary attribute: STR for melee weapons
                 CooldownSeconds = 3.0m,
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -250,7 +265,8 @@ public class SkillSeedService
                 RelatedAttribute = "STR", // Primary attribute: STR for heavy weapons
                 CooldownSeconds = 3.5m,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -263,7 +279,8 @@ public class SkillSeedService
                 RelatedAttribute = "STR", // Primary attribute: STR for blunt weapons
                 CooldownSeconds = 3.2m,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -276,7 +293,8 @@ public class SkillSeedService
                 RelatedAttribute = "STR", // Primary attribute: STR for reach weapons
                 CooldownSeconds = 3.8m,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -289,7 +307,8 @@ public class SkillSeedService
                 RelatedAttribute = "DEX", // Primary attribute: DEX for ranged accuracy and draw speed
                 CooldownSeconds = 2.5m,
                 DisplayOrder = 5,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -302,7 +321,8 @@ public class SkillSeedService
                 RelatedAttribute = "INT", // Primary attribute: INT for mechanical operation and precision
                 CooldownSeconds = 4.0m,
                 DisplayOrder = 6,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -315,7 +335,8 @@ public class SkillSeedService
                 RelatedAttribute = "DEX", // Primary attribute: DEX for throwing accuracy and timing
                 CooldownSeconds = 2.0m,
                 DisplayOrder = 7,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -327,7 +348,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Spell Skills");
 
-        var spellSkills = new List<SkillDefinition>
+        var spellSkills = new List<WebSkillDefinition>
         {
             // Fire School Spells - All tied to WIL for magical concentration
             new()
@@ -344,7 +365,8 @@ public class SkillSeedService
                 CooldownSeconds = 2.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -360,7 +382,8 @@ public class SkillSeedService
                 CooldownSeconds = 5.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
 
             // Healing School Spells - All tied to WIL for magical concentration
@@ -377,7 +400,8 @@ public class SkillSeedService
                 ManaCost = 8,
                 CooldownSeconds = 3.0m,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -392,7 +416,8 @@ public class SkillSeedService
                 ManaCost = 20,
                 CooldownSeconds = 8.0m,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
 
             // Lightning School Spells - All tied to WIL for magical concentration
@@ -410,7 +435,8 @@ public class SkillSeedService
                 CooldownSeconds = 4.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 5,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
 
             // Illusion School Spells - All tied to WIL for magical concentration
@@ -427,7 +453,8 @@ public class SkillSeedService
                 ManaCost = 25,
                 CooldownSeconds = 15.0m,
                 DisplayOrder = 6,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -439,7 +466,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Mana Recovery");
 
-        var manaSkills = new List<SkillDefinition>
+        var manaSkills = new List<WebSkillDefinition>
         {
             new()
             {
@@ -453,7 +480,8 @@ public class SkillSeedService
                 MagicSchool = "Fire",
                 AllowsPassiveAdvancement = true,
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -467,7 +495,8 @@ public class SkillSeedService
                 MagicSchool = "Healing",
                 AllowsPassiveAdvancement = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -481,7 +510,8 @@ public class SkillSeedService
                 MagicSchool = "Lightning",
                 AllowsPassiveAdvancement = true,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -495,7 +525,8 @@ public class SkillSeedService
                 MagicSchool = "Illusion",
                 AllowsPassiveAdvancement = true,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -507,7 +538,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Crafting Skills");
 
-        var craftingSkills = new List<SkillDefinition>
+        var craftingSkills = new List<WebSkillDefinition>
         {
             new()
             {
@@ -521,7 +552,8 @@ public class SkillSeedService
                 CooldownSeconds = 10.0m,
                 UsesExplodingDice = true, // For masterwork attempts
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -535,7 +567,8 @@ public class SkillSeedService
                 CooldownSeconds = 8.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -548,7 +581,8 @@ public class SkillSeedService
                 RelatedAttribute = "INT", // Primary attribute: INT for measurements and design
                 CooldownSeconds = 12.0m,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -561,7 +595,8 @@ public class SkillSeedService
                 RelatedAttribute = "ITT", // Primary attribute: ITT for taste, timing, and ingredients
                 CooldownSeconds = 5.0m,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 
@@ -573,7 +608,7 @@ public class SkillSeedService
     {
         var category = await _context.SkillCategories.FirstAsync(c => c.Name == "Social Skills");
 
-        var socialSkills = new List<SkillDefinition>
+        var socialSkills = new List<WebSkillDefinition>
         {
             new()
             {
@@ -587,7 +622,8 @@ public class SkillSeedService
                 CooldownSeconds = 5.0m,
                 UsesExplodingDice = true, // For dramatic social encounters
                 DisplayOrder = 1,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -601,7 +637,8 @@ public class SkillSeedService
                 CooldownSeconds = 5.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 2,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -615,7 +652,8 @@ public class SkillSeedService
                 CooldownSeconds = 5.0m,
                 UsesExplodingDice = true,
                 DisplayOrder = 3,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             },
             new()
             {
@@ -628,7 +666,8 @@ public class SkillSeedService
                 RelatedAttribute = "PHY", // Primary attribute: PHY for leadership presence
                 CooldownSeconds = 10.0m,
                 DisplayOrder = 4,
-                IsActive = true
+                IsActive = true,
+                CreatedBy = "System"
             }
         };
 

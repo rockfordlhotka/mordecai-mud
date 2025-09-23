@@ -1,11 +1,12 @@
 @page "/admin/skills"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
-@using Mordecai.Game.Entities
 @using Mordecai.Web.Data
 @using Mordecai.Web.Services
+@using GameSkillDefinition = Mordecai.Game.Entities.SkillDefinition
+@using WebSkillDefinition = Mordecai.Web.Data.SkillDefinition
 @inject ApplicationDbContext DbContext
-@inject SkillService SkillService
+@inject ISkillService SkillService
 @inject DataMigrationService DataMigrationService
 @inject IJSRuntime JSRuntime
 @attribute [Authorize(Policy = "AdminOnly")]
@@ -482,8 +483,8 @@
     
     // Modals and forms
     private SkillCategory? editingCategory = null;
-    private SkillDefinition? editingSkill = null;
-    private SkillDefinition? viewingSkill = null;
+    private WebSkillDefinition? editingSkill = null;
+    private WebSkillDefinition? viewingSkill = null;
     private CategoryForm categoryForm = new();
     private SkillForm skillForm = new();
 
@@ -627,7 +628,7 @@
         JSRuntime.InvokeVoidAsync("showModal", "skillModal");
     }
 
-    private void EditSkill(SkillDefinition skill)
+    private void EditSkill(WebSkillDefinition skill)
     {
         editingSkill = skill;
         skillForm = new SkillForm
@@ -668,7 +669,7 @@
             if (editingSkill == null)
             {
                 // Create new skill
-                var skill = new SkillDefinition
+                var skill = new WebSkillDefinition
                 {
                     CategoryId = skillForm.CategoryId,
                     Name = skillForm.Name.Trim(),
@@ -729,13 +730,13 @@
         }
     }
 
-    private void ViewSkillDetails(SkillDefinition skill)
+    private void ViewSkillDetails(WebSkillDefinition skill)
     {
         viewingSkill = skill;
         JSRuntime.InvokeVoidAsync("showModal", "skillDetailsModal");
     }
 
-    private async Task ConfirmDeleteSkill(SkillDefinition skill)
+    private async Task ConfirmDeleteSkill(WebSkillDefinition skill)
     {
         if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete the skill '{skill.Name}'?"))
         {
@@ -743,7 +744,7 @@
         }
     }
 
-    private async Task DeleteSkill(SkillDefinition skill)
+    private async Task DeleteSkill(WebSkillDefinition skill)
     {
         try
         {

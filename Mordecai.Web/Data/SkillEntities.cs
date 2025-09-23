@@ -4,9 +4,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Mordecai.Web.Data;
 
 /// <summary>
-/// Defines available skills in the game
+/// Represents a category of skills for organization and shared properties
 /// </summary>
-public class SkillDefinition
+public class SkillCategory
 {
     [Key]
     public int Id { get; set; }
@@ -19,75 +19,317 @@ public class SkillDefinition
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
-    /// Type of skill: AttributeSkill, WeaponSkill, SpellSkill, CraftingSkill, etc.
+    /// Default base cost for skills in this category (can be overridden per skill)
+    /// </summary>
+    public int DefaultBaseCost { get; set; } = 25;
+
+    /// <summary>
+    /// Default multiplier for skills in this category (can be overridden per skill)
+    /// </summary>
+    public decimal DefaultMultiplier { get; set; } = 2.2m;
+
+    /// <summary>
+    /// Whether skills in this category advance passively over time
+    /// </summary>
+    public bool AllowsPassiveAdvancement { get; set; } = false;
+
+    /// <summary>
+    /// Whether skills in this category can be taught by other players
+    /// </summary>
+    public bool AllowsTeaching { get; set; } = true;
+
+    /// <summary>
+    /// Display order for UI purposes
+    /// </summary>
+    public int DisplayOrder { get; set; } = 0;
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    [Required]
+    public string CreatedBy { get; set; } = string.Empty;
+
+    // Navigation properties
+    public virtual ICollection<SkillDefinition> Skills { get; set; } = new List<SkillDefinition>();
+}
+
+/// <summary>
+/// Types of skill usage for different advancement rates
+/// </summary>
+public enum SkillUsageType
+{
+    /// <summary>
+    /// Standard skill application under normal conditions (1.0x multiplier)
+    /// </summary>
+    RoutineUse = 0,
+
+    /// <summary>
+    /// Skill use under difficult circumstances (1.5x multiplier)
+    /// </summary>
+    ChallengingUse = 1,
+
+    /// <summary>
+    /// Exceptional skill performance - critical success (2.0x multiplier)
+    /// </summary>
+    CriticalSuccess = 2,
+
+    /// <summary>
+    /// Instructing other players (0.8x multiplier)
+    /// </summary>
+    TeachingOthers = 3,
+
+    /// <summary>
+    /// Deliberate practice in safe conditions (0.5x multiplier)
+    /// </summary>
+    TrainingPractice = 4
+}
+
+/// <summary>
+/// Detailed log of skill usage events for analytics and validation
+/// </summary>
+public class SkillUsageLog
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    public Guid CharacterId { get; set; }
+
+    [Required]
+    public int SkillDefinitionId { get; set; }
+
+    [Required]
+    public SkillUsageType UsageType { get; set; }
+
+    /// <summary>
+    /// Base usage points before multipliers
+    /// </summary>
+    public int BaseUsagePoints { get; set; }
+
+    /// <summary>
+    /// Multiplier applied based on usage type
+    /// </summary>
+    public decimal UsageMultiplier { get; set; }
+
+    /// <summary>
+    /// Final usage points added (BaseUsagePoints * UsageMultiplier)
+    /// </summary>
+    public int FinalUsagePoints { get; set; }
+
+    /// <summary>
+    /// Character's level in this skill before this usage
+    /// </summary>
+    public int SkillLevelBefore { get; set; }
+
+    /// <summary>
+    /// Character's level in this skill after this usage
+    /// </summary>
+    public int SkillLevelAfter { get; set; }
+
+    /// <summary>
+    /// Whether this usage resulted in a skill level advancement
+    /// </summary>
+    public bool DidAdvance { get; set; } = false;
+
+    /// <summary>
+    /// Context or reason for the skill usage (combat, crafting, etc.)
+    /// </summary>
+    [StringLength(100)]
+    public string? Context { get; set; }
+
+    /// <summary>
+    /// Additional details about the usage event
+    /// </summary>
+    [StringLength(500)]
+    public string? Details { get; set; }
+
+    public DateTimeOffset UsedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    // Navigation properties
+    [ForeignKey(nameof(SkillDefinitionId))]
+    public virtual SkillDefinition SkillDefinition { get; set; } = null!;
+
+    /// <summary>
+    /// Gets the usage multiplier for a given usage type
+    /// </summary>
+    public static decimal GetUsageMultiplier(SkillUsageType usageType)
+    {
+        return usageType switch
+        {
+            SkillUsageType.RoutineUse => 1.0m,
+            SkillUsageType.ChallengingUse => 1.5m,
+            SkillUsageType.CriticalSuccess => 2.0m,
+            SkillUsageType.TeachingOthers => 0.8m,
+            SkillUsageType.TrainingPractice => 0.5m,
+            _ => 1.0m
+        };
+    }
+}
+
+/// <summary>
+/// Defines available skills in the game
+/// </summary>
+public class SkillDefinition
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    public int CategoryId { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(1000)]
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Type of skill: CoreAttribute, WeaponSkill, SpellSkill, CraftingSkill, etc.
     /// </summary>
     [Required]
-    [StringLength(30)]
+    [StringLength(50)]
     public string SkillType { get; set; } = string.Empty;
 
     /// <summary>
-    /// For attribute skills, this is the related attribute name (Physicality, Dodge, etc.)
-    /// For other skills, this can be null or used for grouping
+    /// Usage events required to advance from level 0 to level 1
     /// </summary>
-    [StringLength(30)]
-    public string? RelatedAttribute { get; set; }
+    public int BaseCost { get; set; } = 25;
 
     /// <summary>
-    /// For spell skills, this groups spells by magic school
+    /// Multiplier applied to calculate cost for each subsequent level
+    /// Cost(N ? N+1) = BaseCost × (Multiplier^N)
     /// </summary>
-    [StringLength(30)]
+    public decimal Multiplier { get; set; } = 2.2m;
+
+    /// <summary>
+    /// Related attribute that influences this skill (required)
+    /// Maps to Character attribute properties: STR, DEX, END, INT, ITT, WIL, PHY
+    /// </summary>
+    [Required]
+    [StringLength(50)]
+    public string RelatedAttribute { get; set; } = string.Empty;
+
+    /// <summary>
+    /// For spell skills - the magic school they belong to
+    /// </summary>
+    [StringLength(50)]
     public string? MagicSchool { get; set; }
 
     /// <summary>
-    /// Whether this skill is automatically given to new characters
+    /// Mana cost for spell skills (per cast)
+    /// </summary>
+    public int? ManaCost { get; set; }
+
+    /// <summary>
+    /// Cooldown in seconds between skill uses
+    /// </summary>
+    public decimal CooldownSeconds { get; set; } = 0;
+
+    /// <summary>
+    /// Whether this skill can advance passively over time
+    /// </summary>
+    public bool AllowsPassiveAdvancement { get; set; } = false;
+
+    /// <summary>
+    /// Whether this skill can be taught by other players
+    /// </summary>
+    public bool AllowsTeaching { get; set; } = true;
+
+    /// <summary>
+    /// Whether this skill uses exploding dice (4dF+) for resolution
+    /// </summary>
+    public bool UsesExplodingDice { get; set; } = false;
+
+    /// <summary>
+    /// Maximum practical level for this skill (for balance purposes)
+    /// 0 = no limit, typically 10-15 for most skills
+    /// </summary>
+    public int MaxPracticalLevel { get; set; } = 10;
+
+    /// <summary>
+    /// Whether all characters start with this skill
     /// </summary>
     public bool IsStartingSkill { get; set; } = false;
 
     /// <summary>
-    /// Base experience required to advance from level 0 to 1
+    /// Display order within category for UI purposes
     /// </summary>
-    public int BaseExperienceRequired { get; set; } = 100;
+    public int DisplayOrder { get; set; } = 0;
 
-    /// <summary>
-    /// Multiplier for experience requirements at higher levels
-    /// </summary>
-    public decimal LevelMultiplier { get; set; } = 1.5m;
-
-    /// <summary>
-    /// Maximum level this skill can reach (0 = no limit)
-    /// </summary>
-    public int MaxLevel { get; set; } = 0;
-
-    /// <summary>
-    /// Whether this skill is currently active/available
-    /// </summary>
     public bool IsActive { get; set; } = true;
-
-    /// <summary>
-    /// User who created this skill definition
-    /// </summary>
-    [Required]
-    public string CreatedBy { get; set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    [Required]
+    public string CreatedBy { get; set; } = string.Empty;
+
+    /// <summary>
+    /// JSON field for skill-specific properties and configuration
+    /// </summary>
+    [StringLength(2000)]
+    public string? CustomProperties { get; set; }
+
     // Navigation properties
+    [ForeignKey(nameof(CategoryId))]
+    public virtual SkillCategory Category { get; set; } = null!;
+
     public virtual ICollection<CharacterSkill> CharacterSkills { get; set; } = new List<CharacterSkill>();
 
     /// <summary>
-    /// Calculates experience required to reach a specific level
+    /// Calculates the usage cost required to advance from the specified level to the next
     /// </summary>
-    public int CalculateExperienceRequired(int targetLevel)
+    public int CalculateUsageCostForLevel(int currentLevel)
+    {
+        if (currentLevel < 0) return BaseCost;
+        return (int)Math.Ceiling(BaseCost * Math.Pow((double)Multiplier, currentLevel));
+    }
+
+    /// <summary>
+    /// Calculates the total usage points required to reach the specified level from 0
+    /// </summary>
+    public int CalculateTotalUsageForLevel(int targetLevel)
     {
         if (targetLevel <= 0) return 0;
         
-        var totalExperience = 0;
-        for (int level = 1; level <= targetLevel; level++)
+        int total = 0;
+        for (int level = 0; level < targetLevel; level++)
         {
-            var experienceForLevel = (int)(BaseExperienceRequired * Math.Pow((double)LevelMultiplier, level - 1));
-            totalExperience += experienceForLevel;
+            total += CalculateUsageCostForLevel(level);
         }
-        return totalExperience;
+        return total;
+    }
+
+    /// <summary>
+    /// Calculates the current skill level based on total usage points
+    /// </summary>
+    public int CalculateCurrentLevel(int totalUsagePoints)
+    {
+        if (totalUsagePoints <= 0) return 0;
+        
+        int level = 0;
+        int usedPoints = 0;
+        
+        while (usedPoints < totalUsagePoints)
+        {
+            int costForNextLevel = CalculateUsageCostForLevel(level);
+            if (usedPoints + costForNextLevel > totalUsagePoints)
+                break;
+            
+            usedPoints += costForNextLevel;
+            level++;
+        }
+        
+        return level;
+    }
+
+    /// <summary>
+    /// Calculates experience required to reach a specific level (legacy method for compatibility)
+    /// </summary>
+    public int CalculateExperienceRequired(int targetLevel)
+    {
+        return CalculateTotalUsageForLevel(targetLevel);
     }
 }
 
@@ -130,9 +372,8 @@ public class CharacterSkill
     /// </summary>
     public DateTimeOffset LearnedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    // Navigation properties
-    [ForeignKey(nameof(CharacterId))]
-    public virtual Character Character { get; set; } = null!;
+    // Navigation properties - NOTE: Character reference removed to avoid circular dependency
+    // Character should be accessed through the DbContext if needed
 
     [ForeignKey(nameof(SkillDefinitionId))]
     public virtual SkillDefinition SkillDefinition { get; set; } = null!;
@@ -144,30 +385,24 @@ public class CharacterSkill
     /// </summary>
     public int CalculateAbilityScore()
     {
-        if (SkillDefinition.SkillType == "AttributeSkill" && !string.IsNullOrEmpty(SkillDefinition.RelatedAttribute))
-        {
-            var attributeValue = GetAttributeValue(SkillDefinition.RelatedAttribute);
-            return attributeValue - 5 + Level;
-        }
-        
         // For non-attribute skills, just return the level as the ability score
+        // NOTE: For attribute skills, this would need character data which should be loaded separately
         return Level;
     }
 
     /// <summary>
-    /// Gets the character's attribute value based on the attribute name
+    /// Calculates the effective skill level including any bonuses
     /// </summary>
-    private int GetAttributeValue(string attributeName) => attributeName switch
+    public int CalculateEffectiveLevel()
     {
-        "Physicality" => Character.Physicality,
-        "Dodge" => Character.Dodge,
-        "Drive" => Character.Drive,
-        "Reasoning" => Character.Reasoning,
-        "Awareness" => Character.Awareness,
-        "Focus" => Character.Focus,
-        "Bearing" => Character.Bearing,
-        _ => 10 // Default fallback
-    };
+        // Base level from skill progression
+        int effectiveLevel = Level;
+        
+        // TODO: Add attribute bonuses, equipment bonuses, temporary effects, etc.
+        // For now, just return the base level
+        
+        return Math.Max(0, effectiveLevel);
+    }
 
     /// <summary>
     /// Calculates experience required to reach the next level
@@ -183,7 +418,7 @@ public class CharacterSkill
     /// </summary>
     public bool CanLevelUp()
     {
-        if (SkillDefinition.MaxLevel > 0 && Level >= SkillDefinition.MaxLevel)
+        if (SkillDefinition.MaxPracticalLevel > 0 && Level >= SkillDefinition.MaxPracticalLevel)
             return false;
             
         return ExperienceToNextLevel() == 0;

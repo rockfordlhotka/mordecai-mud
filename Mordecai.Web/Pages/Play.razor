@@ -678,7 +678,7 @@
             var foundHiddenThings = await PerformRoomSearch(skillCheck);
             
             // Track the skill usage for Awareness
-            var usageType = skillCheck >= 12 ? SkillUsageType.CriticalSuccess : SkillUsageType.RoutineUse;
+            var usageType = skillCheck >= 12 ? Mordecai.Web.Data.SkillUsageType.CriticalSuccess : Mordecai.Web.Data.SkillUsageType.RoutineUse;
             var didAdvance = await SkillService.AddSkillUsageAsync(
                 characterId.Value, 
                 awarenessSkillId.Value, 
@@ -706,7 +706,7 @@
             if (didAdvance)
             {
                 var newSkill = await SkillService.GetCharacterSkillAsync(characterId.Value, awarenessSkillId.Value);
-                AddMessage($"Your awareness skill has improved to level {newSkill?.CurrentLevel}!", "text-success");
+                AddMessage($"Your awareness skill has improved to level {newSkill?.Level}!", "text-success");
             }
             
             // Announce to other players in the room that this character is searching
@@ -817,8 +817,8 @@
                 foreach (var characterSkill in skillsInCategory)
                 {
                     var skill = characterSkill.SkillDefinition;
-                    var currentLevel = characterSkill.CurrentLevel;
-                    var totalUsage = characterSkill.TotalUsagePoints;
+                    var currentLevel = characterSkill.Level;
+                    var totalUsage = characterSkill.Experience;
                     var usageCount = characterSkill.UsageCount;
                     
                     // Calculate progress to next level (not the final level)
@@ -857,7 +857,7 @@
             
             // Add summary statistics
             var totalSkills = characterSkills.Count;
-            var averageLevel = characterSkills.Average(cs => cs.CurrentLevel);
+            var averageLevel = characterSkills.Average(cs => cs.Level);
             var totalUsages = characterSkills.Sum(cs => cs.UsageCount);
             
             AddMessage($"\nSkill Summary:", "text-info");
@@ -866,8 +866,8 @@
             AddMessage($"  Total Skill Uses: {totalUsages:N0}", "text-light");
             
             // Show highest skill
-            var highestSkill = characterSkills.OrderByDescending(cs => cs.CurrentLevel).First();
-            AddMessage($"  Highest Skill: {highestSkill.SkillDefinition.Name} (Level {highestSkill.CurrentLevel})", "text-success");
+            var highestSkill = characterSkills.OrderByDescending(cs => cs.Level).First();
+            AddMessage($"  Highest Skill: {highestSkill.SkillDefinition.Name} (Level {highestSkill.Level})", "text-success");
             
             // Show available skill categories that the character doesn't have skills in yet
             var allCategories = await SkillService.GetSkillCategoriesAsync();
