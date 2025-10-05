@@ -3,6 +3,10 @@
 **Updated:** October 5, 2025  
 **Status:** ✅ Cloud-native configuration with secret management
 
+# Database Configuration Guide
+
+> **⚠️ SECURITY WARNING:** This document uses placeholder passwords (`<your-secure-password>`) in all examples. Never commit actual passwords to source control. Always use User Secrets for local development and Kubernetes Secrets or cloud secret management services for production.
+
 ## Overview
 
 The Mordecai MUD project uses a cloud-native database configuration approach that separates sensitive data (passwords) from application configuration and supports environment variable overrides for containerized deployments.
@@ -56,10 +60,10 @@ Both projects share the same `UserSecretsId`: `mordecai-mud-secrets`
 
 ```bash
 # For Mordecai.Web
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.Web
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.Web
 
 # For Mordecai.AdminCli
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.AdminCli
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.AdminCli
 ```
 
 #### View Current Secrets
@@ -90,17 +94,17 @@ You can also use environment variables for local development:
 
 **Windows (PowerShell):**
 ```powershell
-$env:Database__Password = "Scepter42!"
+$env:Database__Password = "<your-secure-password>"
 ```
 
 **Windows (Command Prompt):**
 ```cmd
-set Database__Password=Scepter42!
+set Database__Password=<your-secure-password>
 ```
 
 **Linux/Mac:**
 ```bash
-export Database__Password="Scepter42!"
+export Database__Password="<your-secure-password>"
 ```
 
 **Note:** Use double underscores (`__`) in environment variables to represent nested configuration (`:` in JSON).
@@ -181,7 +185,7 @@ metadata:
   name: mordecai-db-secret
 type: Opaque
 stringData:
-  password: "Scepter42!"  # Replace with actual password
+  password: "<your-secure-password>"  # Replace with actual password in production
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -280,7 +284,7 @@ Azure App Service provides built-in configuration support:
 # Create Key Vault secret
 az keyvault secret set --vault-name <vault-name> \
   --name mordecai-db-password \
-  --value "Scepter42!"
+  --value "<your-secure-password>"
 
 # Get the secret URI
 az keyvault secret show --vault-name <vault-name> \

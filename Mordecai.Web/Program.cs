@@ -45,10 +45,7 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// Add RabbitMQ client (Aspire integration)
-builder.AddRabbitMQClient("messaging");
-
-// Add game messaging services
+// Add game messaging services (connects to RabbitMQ using configuration)
 builder.Services.AddGameMessaging();
 
 // Add character creation services
@@ -112,6 +109,11 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     
     logger.LogInformation("Using PostgreSQL database: Host={DbHost}, Database={DbName}, User={DbUser}", dbHost, dbName, dbUser);
+    
+    // Log RabbitMQ configuration
+    var rabbitMqHost = builder.Configuration["RabbitMQ:Host"] ?? builder.Configuration["RABBITMQ_HOST"] ?? "localhost";
+    var rabbitMqUser = builder.Configuration["RabbitMQ:Username"] ?? builder.Configuration["RABBITMQ_USERNAME"] ?? "guest";
+    logger.LogInformation("Using RabbitMQ: Host={RabbitMqHost}, User={RabbitMqUser}", rabbitMqHost, rabbitMqUser);
     
     context.Database.Migrate();
     

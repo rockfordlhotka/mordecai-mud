@@ -12,7 +12,7 @@ The Mordecai MUD project has been successfully migrated from SQLite to PostgreSQ
 - **Server:** default-postgres.tail920062.ts.net
 - **Database:** mordecai
 - **User:** mordecaimud
-- **Connection String:** `Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=Scepter42!`
+- **Connection String:** `Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=<your-secure-password>`
 
 ## Changes Made
 
@@ -32,7 +32,7 @@ The Mordecai MUD project has been successfully migrated from SQLite to PostgreSQ
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=Scepter42!"
+    "DefaultConnection": "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=<your-secure-password>"
   }
 }
 ```

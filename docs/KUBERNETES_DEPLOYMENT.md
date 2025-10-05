@@ -2,49 +2,55 @@
 
 This guide explains how to deploy Mordecai MUD to Kubernetes, including configuration for RabbitMQ and PostgreSQL database.
 
+## Recent Updates (October 2025)
+
+**RabbitMQ Migration:** The application has been migrated from Aspire-managed local RabbitMQ to direct connection with a Kubernetes-hosted RabbitMQ instance. Key changes:
+
+- ✅ Removed `Aspire.RabbitMQ.Client` package dependency
+- ✅ Cloud-native configuration with environment variables taking priority
+- ✅ Password stored in User Secrets (local) and Kubernetes Secrets (production)
+- ✅ Direct connection to `default-rabbitmq-amqp` RabbitMQ service
+- ✅ Fail-fast validation ensures required configuration is present at startup
+
+See [RABBITMQ_KUBERNETES_MIGRATION.md](../RABBITMQ_KUBERNETES_MIGRATION.md) for detailed migration information.
+
 ## Overview
 
 Mordecai MUD is now configured to support Kubernetes deployment with the following features:
 
-- **Configurable RabbitMQ Connection**: Supports both connection strings (Aspire) and individual parameters (Kubernetes)
+- **Direct RabbitMQ Connection**: Cloud-native configuration with explicit connection parameters
 - **PostgreSQL Database**: Cloud-native database with proper secret management
 - **Cloud-Native Configuration**: Environment variables and Kubernetes Secrets for all sensitive data
-- **Aspire Integration**: Leverages .NET Aspire for local development and manifest generation
+- **Optional Aspire Integration**: Aspire can still be used for local development orchestration
 
 ## Configuration Architecture
 
 ### RabbitMQ Configuration
 
-The application supports two configuration methods:
+The application uses a **cloud-native configuration approach** with direct RabbitMQ connection parameters. Aspire RabbitMQ integration has been removed in favor of explicit configuration.
 
-#### 1. Connection String (Aspire/Local Development)
-```json
-{
-  "ConnectionStrings": {
-    "messaging": "amqp://username:password@hostname:5672/virtualhost"
-  }
-}
-```
-
-#### 2. Individual Parameters (Kubernetes/Production)
+#### Cloud-Native Configuration (Production)
 ```json
 {
   "RabbitMQ": {
-    "Host": "rabbitmq-service",
+    "Host": "default-rabbitmq-amqp",
     "Port": 5672,
-    "Username": "gameuser",
-    "Password": "secretpassword",
+    "Username": "mordecai",
     "VirtualHost": "/"
   }
 }
 ```
 
-**Environment Variable Override Priority:**
-1. `RABBITMQ_HOST` > `RabbitMQ:Host`
-2. `RABBITMQ_PORT` > `RabbitMQ:Port`
-3. `RABBITMQ_USERNAME` > `RabbitMQ:Username`
-4. `RABBITMQ_PASSWORD` > `RabbitMQ:Password`
-5. `RABBITMQ_VIRTUALHOST` > `RabbitMQ:VirtualHost`
+**Important:** The `Password` field is intentionally omitted from `appsettings.json` and must be provided via User Secrets (local development) or Kubernetes Secrets (production).
+
+**Environment Variable Override Priority (Cloud-Native Best Practice):**
+1. `RABBITMQ_HOST` (env var) → `RabbitMQ:Host` (config)
+2. `RABBITMQ_PORT` (env var) → `RabbitMQ:Port` (config)
+3. `RABBITMQ_USERNAME` (env var) → `RabbitMQ:Username` (config)
+4. `RABBITMQ_PASSWORD` (env var) → `RabbitMQ:Password` (User Secrets/K8s Secrets) - **REQUIRED**
+5. `RABBITMQ_VIRTUALHOST` (env var) → `RabbitMQ:VirtualHost` (config)
+
+**Configuration Validation:** The application will throw an exception at startup if required configuration (Host, Username, Password) is missing, ensuring fail-fast behavior.
 
 ### Database Configuration
 
@@ -118,7 +124,7 @@ stringData:
   db-password: your-secure-db-password
   
   # RabbitMQ credentials
-  rabbitmq-username: gameuser
+  # Note: Username is in appsettings.json, only password stored in secret
   rabbitmq-password: your-secure-rabbitmq-password
 ```
 
@@ -148,9 +154,6 @@ spec:
   - secretKey: db-password
     remoteRef:
       key: mordecai-db-password
-  - secretKey: rabbitmq-username
-    remoteRef:
-      key: mordecai-rabbitmq-username
   - secretKey: rabbitmq-password
     remoteRef:
       key: mordecai-rabbitmq-password
@@ -352,14 +355,11 @@ spec:
         
         # RabbitMQ Configuration
         - name: RABBITMQ_HOST
-          value: "rabbitmq-service"
+          value: "default-rabbitmq-amqp"
         - name: RABBITMQ_PORT
           value: "5672"
         - name: RABBITMQ_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: mordecai-secrets
-              key: rabbitmq-username
+          value: "mordecai"
         - name: RABBITMQ_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -452,16 +452,25 @@ kubectl apply -f ingress.yaml
 
 ## Using Aspire for Manifest Generation
 
-.NET Aspire can generate Kubernetes manifests for you:
+**Note:** Aspire RabbitMQ integration has been removed. The application now connects directly to RabbitMQ using explicit configuration.
+
+.NET Aspire can still be used for local development orchestration and manifest generation:
 
 ### Generate Manifests
 
 ```bash
-# From the Mordecai.AppHost project
+# From the Mordecai.AppHost project (if still using Aspire AppHost)
 dotnet run --project Mordecai.AppHost --publisher manifest --output-path ./manifests
 ```
 
 This generates deployment manifests that you can customize further.
+
+### Local Development
+
+For local development, you have two options:
+
+1. **Direct Connection**: Configure RabbitMQ connection in `appsettings.json` and User Secrets (recommended)
+2. **Aspire AppHost**: Use the AppHost project for local service orchestration (optional)
 
 ## Environment Variables Reference
 
@@ -474,9 +483,9 @@ This generates deployment manifests that you can customize further.
 | `Database__Name` | PostgreSQL database name | `mordecai` |
 | `Database__User` | PostgreSQL username | `mordecaimud` |
 | `Database__Password` | PostgreSQL password (from secret) | `<secret>` |
-| `RABBITMQ_HOST` | RabbitMQ hostname or service name | `rabbitmq-service` |
+| `RABBITMQ_HOST` | RabbitMQ hostname or service name | `default-rabbitmq-amqp` |
 | `RABBITMQ_PORT` | RabbitMQ AMQP port | `5672` |
-| `RABBITMQ_USERNAME` | RabbitMQ username | `gameuser` |
+| `RABBITMQ_USERNAME` | RabbitMQ username | `mordecai` |
 | `RABBITMQ_PASSWORD` | RabbitMQ password (from secret) | `<secret>` |
 
 ### Optional Environment Variables
@@ -807,23 +816,38 @@ If using a managed PostgreSQL service, use the cloud provider's backup features:
 
 ## Development vs Production
 
-### Local Development (Aspire)
+### Local Development
+
+#### Option 1: Direct Configuration (Recommended)
 
 ```bash
-# Start Aspire AppHost (includes RabbitMQ container)
+# Set User Secrets for RabbitMQ password
+cd Mordecai.Web
+dotnet user-secrets set "RabbitMQ:Password" "<your-secure-password>"
+
+# Run the application
+dotnet run
+```
+
+The application connects to:
+- RabbitMQ: `default-rabbitmq-amqp:5672` (configured in appsettings.json)
+- PostgreSQL: Configured via environment variables or User Secrets
+
+#### Option 2: Aspire AppHost (Optional)
+
+```bash
+# Start Aspire AppHost (if you want local orchestration)
 dotnet run --project Mordecai.AppHost
 ```
 
-Aspire automatically:
-- Starts RabbitMQ in a container
-- Configures connection strings
-- Provides dashboard at http://localhost:15888
+Note: Aspire no longer manages RabbitMQ connection. You still need to configure RabbitMQ connection details in appsettings.json and User Secrets.
 
 ### Production Deployment
 
 Use explicit environment variables for all configuration:
 - No automatic service discovery
-- Explicit connection parameters
+- Explicit connection parameters via environment variables
+- Passwords from Kubernetes Secrets
 - Persistent storage for database
 - External RabbitMQ service or cluster
 
@@ -834,16 +858,21 @@ Use explicit environment variables for all configuration:
 Rotate database and RabbitMQ passwords regularly:
 
 ```bash
-# Update secret
+# Update secret (example with new RabbitMQ password)
 kubectl create secret generic mordecai-secrets \
-  --from-literal=db-password=NEW_PASSWORD \
-  --from-literal=rabbitmq-username=gameuser \
+  --from-literal=db-password=NEW_DB_PASSWORD \
   --from-literal=rabbitmq-password=NEW_RABBITMQ_PASSWORD \
   --namespace mordecai-mud \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Restart pods to pick up new secrets
 kubectl rollout restart deployment/mordecai-web -n mordecai-mud
+```
+
+**Important:** Update User Secrets for local development when you rotate passwords:
+```bash
+dotnet user-secrets set "RabbitMQ:Password" "NEW_RABBITMQ_PASSWORD" --project Mordecai.Web
+dotnet user-secrets set "Database:Password" "NEW_DB_PASSWORD" --project Mordecai.Web
 ```
 
 ### Using Azure Key Vault (Azure AKS)
@@ -987,5 +1016,11 @@ env:
 ---
 
 **Last Updated:** October 5, 2025  
-**Version:** 2.0 - PostgreSQL with Cloud-Native Secret Management  
+**Version:** 3.0 - Cloud-Native RabbitMQ Configuration  
+**Changes:** Migrated from Aspire-managed RabbitMQ to direct Kubernetes service connection  
 **Maintainer:** Mordecai MUD Development Team
+
+**Related Documentation:**
+- [RabbitMQ Kubernetes Migration](../RABBITMQ_KUBERNETES_MIGRATION.md)
+- [RabbitMQ Quick Start Guide](../RABBITMQ_QUICK_START.md)
+- [RabbitMQ Kubernetes Configuration](../RABBITMQ_KUBERNETES_CONFIG.md)

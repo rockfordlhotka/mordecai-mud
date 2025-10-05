@@ -14,7 +14,7 @@ Password: (stored in User Secrets or environment variables)
 ### User Secrets (Development)
 
 ```bash
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.Web
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.Web
 ```
 
 ### Environment Variables (Production)
@@ -24,7 +24,7 @@ export Database__Host="default-postgres.tail920062.ts.net"
 export Database__Port="5432"
 export Database__Name="mordecai"
 export Database__User="mordecaimud"
-export Database__Password="Scepter42!"
+export Database__Password="<your-secure-password>"
 ```
 
 **Note:** Use double underscores (`__`) in environment variables, not colons
@@ -162,10 +162,10 @@ Can override connection string using environment variable:
 
 ```bash
 # Windows (PowerShell)
-$env:ConnectionStrings__DefaultConnection = "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=Scepter42!"
+$env:ConnectionStrings__DefaultConnection = "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=<your-secure-password>"
 
 # Linux/Mac
-export ConnectionStrings__DefaultConnection="Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=Scepter42!"
+export ConnectionStrings__DefaultConnection="Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=<your-secure-password>"
 ```
 
 ## Important Notes
@@ -184,7 +184,7 @@ export ConnectionStrings__DefaultConnection="Host=default-postgres.tail920062.ts
 dotnet user-secrets init --project Mordecai.Web
 
 # Set connection string
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=Scepter42!" --project Mordecai.Web
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=default-postgres.tail920062.ts.net;Database=mordecai;Username=mordecaimud;Password=<your-secure-password>" --project Mordecai.Web
 
 # List secrets
 dotnet user-secrets list --project Mordecai.Web

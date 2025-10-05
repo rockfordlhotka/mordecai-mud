@@ -1,5 +1,7 @@
 # Cloud-Native Configuration Update
 
+> **⚠️ SECURITY WARNING:** All password examples in this document use placeholder values (`<your-secure-password>`). Never commit actual passwords to source control.
+
 **Date:** October 5, 2025  
 **Status:** ✅ Complete - Cloud-native configuration with secret management
 
@@ -75,8 +77,8 @@ UserSecretsId: mordecai-mud-secrets
 
 Secrets stored:
 ```bash
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.Web
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.AdminCli
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.Web
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.AdminCli
 ```
 
 ## Configuration Priority
@@ -113,10 +115,10 @@ Values are resolved in this order (highest to lowest priority):
 
 ```bash
 # Set password in User Secrets for Mordecai.Web
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.Web
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.Web
 
 # Set password in User Secrets for Mordecai.AdminCli
-dotnet user-secrets set "Database:Password" "Scepter42!" --project Mordecai.AdminCli
+dotnet user-secrets set "Database:Password" "<your-secure-password>" --project Mordecai.AdminCli
 ```
 
 ### Verify Setup

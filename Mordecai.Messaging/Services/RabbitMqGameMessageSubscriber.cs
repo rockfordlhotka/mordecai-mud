@@ -69,38 +69,29 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
     private static ConnectionFactory CreateConnectionFactory(IConfiguration configuration)
     {
-        // Try connection string first (for Aspire local development)
-        var connectionString = configuration.GetConnectionString("messaging");
+        // Cloud-native configuration approach
+        // Priority: Environment variables > Configuration (appsettings.json or User Secrets)
         
-        if (!string.IsNullOrWhiteSpace(connectionString))
+        var host = configuration["RABBITMQ_HOST"] 
+            ?? configuration["RabbitMQ:Host"] 
+            ?? throw new InvalidOperationException("RabbitMQ host not configured. Set RABBITMQ_HOST environment variable or RabbitMQ:Host in configuration.");
+        
+        var portString = configuration["RABBITMQ_PORT"] ?? configuration["RabbitMQ:Port"] ?? "5672";
+        if (!int.TryParse(portString, out var port))
         {
-            return new ConnectionFactory
-            {
-                Uri = new Uri(connectionString),
-                DispatchConsumersAsync = true
-            };
+            port = 5672;
         }
+        
+        var username = configuration["RABBITMQ_USERNAME"] 
+            ?? configuration["RabbitMQ:Username"] 
+            ?? throw new InvalidOperationException("RabbitMQ username not configured. Set RABBITMQ_USERNAME environment variable or RabbitMQ:Username in configuration.");
+        
+        var password = configuration["RABBITMQ_PASSWORD"] 
+            ?? configuration["RabbitMQ:Password"] 
+            ?? throw new InvalidOperationException("RabbitMQ password not configured. Set RABBITMQ_PASSWORD environment variable or RabbitMQ:Password in User Secrets.");
 
-        // Fall back to individual configuration values (for Kubernetes/production)
-        // Priority: Environment variables > Configuration
-        var host = configuration["RabbitMQ:Host"] 
-            ?? configuration["RABBITMQ_HOST"] 
-            ?? "localhost";
-        
-        var port = int.Parse(configuration["RabbitMQ:Port"] 
-            ?? configuration["RABBITMQ_PORT"] 
-            ?? "5672");
-        
-        var username = configuration["RabbitMQ:Username"] 
-            ?? configuration["RABBITMQ_USERNAME"] 
-            ?? "guest";
-        
-        var password = configuration["RabbitMQ:Password"] 
-            ?? configuration["RABBITMQ_PASSWORD"] 
-            ?? "guest";
-
-        var virtualHost = configuration["RabbitMQ:VirtualHost"] 
-            ?? configuration["RABBITMQ_VIRTUALHOST"] 
+        var virtualHost = configuration["RABBITMQ_VIRTUALHOST"] 
+            ?? configuration["RabbitMQ:VirtualHost"] 
             ?? "/";
 
         return new ConnectionFactory
