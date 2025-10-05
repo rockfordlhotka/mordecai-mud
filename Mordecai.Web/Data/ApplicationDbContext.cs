@@ -30,6 +30,9 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<WebEntities.SkillDefinition> SkillDefinitions => Set<WebEntities.SkillDefinition>();
     public DbSet<WebEntities.CharacterSkill> CharacterSkills => Set<WebEntities.CharacterSkill>();
     public DbSet<WebEntities.SkillUsageLog> SkillUsageLogs => Set<WebEntities.SkillUsageLog>();
+    
+    // Game configuration
+    public DbSet<GameEntities.GameConfiguration> GameConfigurations => Set<GameEntities.GameConfiguration>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

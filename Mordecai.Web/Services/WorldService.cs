@@ -22,18 +22,43 @@ public class WorldService : IWorldService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<WorldService> _logger;
+    private readonly IGameConfigurationService _configService;
 
-    public WorldService(ApplicationDbContext context, ILogger<WorldService> logger)
+    public WorldService(
+        ApplicationDbContext context, 
+        ILogger<WorldService> logger,
+        IGameConfigurationService configService)
     {
         _context = context;
         _logger = logger;
+        _configService = configService;
     }
 
     public async Task<Room?> GetStartingRoomAsync()
     {
         try
         {
-            // Look for a room at coordinates 0,0,0 in a zone named "Tutorial" or similar
+            // First, try to get the configured starting room
+            var configuredRoomId = await _configService.GetStartingRoomIdAsync();
+            if (configuredRoomId.HasValue)
+            {
+                var configuredRoom = await _context.Rooms
+                    .Include(r => r.Zone)
+                    .Include(r => r.RoomType)
+                    .FirstOrDefaultAsync(r => r.Id == configuredRoomId.Value && r.IsActive && r.Zone.IsActive);
+
+                if (configuredRoom != null)
+                {
+                    _logger.LogInformation("Starting room found from configuration: {RoomName} (ID: {RoomId}) in zone {ZoneName}",
+                        configuredRoom.Name, configuredRoom.Id, configuredRoom.Zone.Name);
+                    return configuredRoom;
+                }
+
+                _logger.LogWarning("Configured starting room ID {RoomId} not found or inactive, falling back to discovery",
+                    configuredRoomId.Value);
+            }
+
+            // Fallback 1: Look for a room at coordinates 0,0,0 in a zone named "Tutorial" or similar
             var startingRoom = await _context.Rooms
                 .Include(r => r.Zone)
                 .Include(r => r.RoomType)
@@ -47,7 +72,7 @@ public class WorldService : IWorldService
 
             if (startingRoom == null)
             {
-                // Fallback: find any room at 0,0,0
+                // Fallback 2: find any room at 0,0,0
                 startingRoom = await _context.Rooms
                     .Include(r => r.Zone)
                     .Include(r => r.RoomType)
@@ -68,7 +93,7 @@ public class WorldService : IWorldService
 
             if (startingRoom != null)
             {
-                _logger.LogInformation("Starting room found: {RoomName} (ID: {RoomId}) in zone {ZoneName}",
+                _logger.LogInformation("Starting room found via fallback: {RoomName} (ID: {RoomId}) in zone {ZoneName}",
                     startingRoom.Name, startingRoom.Id, startingRoom.Zone.Name);
             }
             else

@@ -1,0 +1,296 @@
+@page "/admin/settings"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@using System.Security.Claims
+@inject IGameConfigurationService ConfigService
+@inject Mordecai.Web.Services.IRoomService RoomService
+@inject IZoneService ZoneService
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Game Settings - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-cog text-primary me-2"></i>
+                    Game Settings
+                </h1>
+                <a href="/admin" class="btn btn-secondary">
+                    <i class="oi oi-arrow-left me-1"></i>
+                    Back to Admin
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading settings...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12 col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-map-marker me-1"></i>
+                            Starting Location
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Configure where new characters begin their journey. This room will be used
+                            when players create new characters.
+                        </p>
+
+                        @if (currentStartingRoom != null)
+                        {
+                            <div class="alert alert-info">
+                                <h6 class="alert-heading">Current Starting Room</h6>
+                                <p class="mb-2">
+                                    <strong>@currentStartingRoom.Name</strong>
+                                    <br />
+                                    <small class="text-muted">Zone: @currentStartingRoom.Zone.Name</small>
+                                    <br />
+                                    <small class="text-muted">Coordinates: (@currentStartingRoom.X, @currentStartingRoom.Y, @currentStartingRoom.Z)</small>
+                                </p>
+                                <p class="mb-0 small">
+                                    @currentStartingRoom.Description
+                                </p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">
+                                <i class="oi oi-warning me-2"></i>
+                                <strong>No starting room configured!</strong>
+                                <p class="mb-0 small">New characters will use fallback logic (first room at 0,0,0 in tutorial zone or any active room).</p>
+                            </div>
+                        }
+
+                        <EditForm Model="@this" OnValidSubmit="@SaveSettings">
+                            <!-- Zone Filter -->
+                            <div class="mb-3">
+                                <label class="form-label">Filter by Zone (Optional)</label>
+                                <select class="form-select" @bind="selectedZoneId" @bind:after="FilterRoomsByZone">
+                                    <option value="0">All Zones</option>
+                                    @foreach (var zone in zones)
+                                    {
+                                        <option value="@zone.Id">@zone.Name</option>
+                                    }
+                                </select>
+                                <div class="form-text">Select a zone to narrow down the room list</div>
+                            </div>
+
+                            <!-- Room Selection -->
+                            <div class="mb-3">
+                                <label class="form-label">Starting Room *</label>
+                                <select class="form-select @(string.IsNullOrEmpty(error) ? "" : "is-invalid")" 
+                                        @bind="selectedStartingRoomId">
+                                    <option value="0">-- Select a starting room --</option>
+                                    @foreach (var room in filteredRooms)
+                                    {
+                                        <option value="@room.Id">
+                                            [@room.Zone.Name] @room.Name (@room.X, @room.Y, @room.Z)
+                                        </option>
+                                    }
+                                </select>
+                                @if (!string.IsNullOrEmpty(error))
+                                {
+                                    <div class="invalid-feedback">@error</div>
+                                }
+                                <div class="form-text">
+                                    Choose the room where new characters will start. Make sure it's a safe,
+                                    welcoming location!
+                                </div>
+                            </div>
+
+                            <!-- Preview Selected Room -->
+                            @if (selectedStartingRoomId > 0)
+                            {
+                                var previewRoom = filteredRooms.FirstOrDefault(r => r.Id == selectedStartingRoomId);
+                                if (previewRoom != null)
+                                {
+                                    <div class="card bg-light mb-3">
+                                        <div class="card-header">
+                                            <strong>Preview:</strong> @previewRoom.Name
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="small">
+                                                <strong>Zone:</strong> @previewRoom.Zone.Name<br />
+                                                <strong>Type:</strong> @previewRoom.RoomType.Name<br />
+                                                <strong>Coordinates:</strong> (@previewRoom.X, @previewRoom.Y, @previewRoom.Z)
+                                            </p>
+                                            <p class="small mb-0">@previewRoom.Description</p>
+                                        </div>
+                                    </div>
+                                }
+                            }
+
+                            <!-- Save Button -->
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="submit" class="btn btn-primary" disabled="@saving">
+                                    @if (saving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="oi oi-check me-1"></i>
+                                    }
+                                    Save Starting Room
+                                </button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="oi oi-info me-1"></i>
+                            Best Practices
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <h6>Choosing a Starting Room</h6>
+                        <ul class="small">
+                            <li>Pick a <strong>Safe Room</strong> type (no combat)</li>
+                            <li>Choose a location with clear directions to tutorial areas</li>
+                            <li>Ensure the room has helpful NPCs or signs nearby</li>
+                            <li>Place it in a beginner-friendly zone (low difficulty)</li>
+                            <li>Make the description welcoming and informative</li>
+                        </ul>
+
+                        <h6 class="mt-3">Considerations</h6>
+                        <ul class="small">
+                            <li>This affects ALL new characters</li>
+                            <li>Existing characters are not moved</li>
+                            <li>The room should always be active and accessible</li>
+                            <li>Consider creating a dedicated "Tutorial Zone" with multiple starting areas</li>
+                        </ul>
+
+                        <h6 class="mt-3">After Changing</h6>
+                        <ul class="small">
+                            <li>Test by creating a new character</li>
+                            <li>Verify the starting room has useful exits</li>
+                            <li>Update any tutorial text or help commands</li>
+                            <li>Consider announcing the change to players</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Zone> zones = new();
+    private List<Room> allRooms = new();
+    private List<Room> filteredRooms = new();
+    private Room? currentStartingRoom;
+    private bool loading = true;
+    private bool saving = false;
+    private string error = string.Empty;
+    private int selectedZoneId = 0;
+    private int selectedStartingRoomId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            // Load zones and rooms
+            zones = (await ZoneService.GetActiveZonesAsync()).ToList();
+            allRooms = (await RoomService.GetActiveRoomsAsync()).ToList();
+            filteredRooms = allRooms;
+
+            // Load current starting room configuration
+            var startingRoomId = await ConfigService.GetStartingRoomIdAsync();
+            if (startingRoomId.HasValue)
+            {
+                currentStartingRoom = allRooms.FirstOrDefault(r => r.Id == startingRoomId.Value);
+                selectedStartingRoomId = startingRoomId.Value;
+                
+                // Set zone filter if current starting room is found
+                if (currentStartingRoom != null)
+                {
+                    selectedZoneId = currentStartingRoom.ZoneId;
+                    FilterRoomsByZone();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void FilterRoomsByZone()
+    {
+        if (selectedZoneId > 0)
+        {
+            filteredRooms = allRooms.Where(r => r.ZoneId == selectedZoneId).ToList();
+        }
+        else
+        {
+            filteredRooms = allRooms;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        error = string.Empty;
+
+        if (selectedStartingRoomId <= 0)
+        {
+            error = "Please select a starting room.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var userEmail = HttpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Email)?.Value ?? "Admin";
+            
+            await ConfigService.SetStartingRoomIdAsync(selectedStartingRoomId, userEmail);
+            
+            // Reload current starting room
+            currentStartingRoom = allRooms.FirstOrDefault(r => r.Id == selectedStartingRoomId);
+            
+            await JSRuntime.InvokeVoidAsync("alert", 
+                $"Starting room updated successfully!\n\nNew characters will now start in:\n{currentStartingRoom?.Name} ({currentStartingRoom?.Zone.Name})");
+        }
+        catch (Exception ex)
+        {
+            error = $"Error saving settings: {ex.Message}";
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

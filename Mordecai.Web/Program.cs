@@ -75,6 +75,7 @@ builder.Services.AddScoped<RoomTypeSeedService>();
 
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
+builder.Services.AddScoped<IGameConfigurationService, GameConfigurationService>();
 builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
 builder.Services.AddScoped<Mordecai.Web.Services.IZoneService, Mordecai.Web.Services.ZoneService>();
 builder.Services.AddScoped<Mordecai.Web.Services.IRoomService, Mordecai.Web.Services.RoomService>();
