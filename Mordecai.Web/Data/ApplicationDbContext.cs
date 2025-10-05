@@ -19,6 +19,12 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<GameEntities.Room> Rooms => Set<GameEntities.Room>();
     public DbSet<GameEntities.RoomExit> RoomExits => Set<GameEntities.RoomExit>();
     
+    // Room Effects System
+    public DbSet<GameEntities.RoomEffectDefinition> RoomEffectDefinitions => Set<GameEntities.RoomEffectDefinition>();
+    public DbSet<GameEntities.RoomEffectImpact> RoomEffectImpacts => Set<GameEntities.RoomEffectImpact>();
+    public DbSet<GameEntities.RoomEffect> RoomEffects => Set<GameEntities.RoomEffect>();
+    public DbSet<GameEntities.RoomEffectApplicationLog> RoomEffectApplicationLogs => Set<GameEntities.RoomEffectApplicationLog>();
+    
     // Use Web entities for skill system (these are the working ones for the UI)
     public DbSet<WebEntities.SkillCategory> SkillCategories => Set<WebEntities.SkillCategory>();
     public DbSet<WebEntities.SkillDefinition> SkillDefinitions => Set<WebEntities.SkillDefinition>();
@@ -96,6 +102,89 @@ public class ApplicationDbContext : IdentityDbContext
 
             // Prevent duplicate exits in the same direction from the same room
             entity.HasIndex(re => new { re.FromRoomId, re.Direction }).IsUnique();
+        });
+
+        // Room Effects System Configuration
+        
+        // RoomEffectDefinition configuration
+        builder.Entity<GameEntities.RoomEffectDefinition>(entity =>
+        {
+            entity.HasIndex(red => red.Name).IsUnique();
+            entity.HasIndex(red => red.IsActive);
+            entity.HasIndex(red => red.EffectType);
+            entity.HasIndex(red => red.Category);
+            
+            // Configure precision for decimal fields
+            entity.Property(red => red.DetectionDifficulty)
+                .HasPrecision(5, 2);
+                
+            entity.Property(red => red.DefaultIntensity)
+                .HasPrecision(4, 2);
+        });
+
+        // RoomEffectImpact configuration
+        builder.Entity<GameEntities.RoomEffectImpact>(entity =>
+        {
+            entity.HasIndex(rei => rei.RoomEffectDefinitionId);
+            entity.HasIndex(rei => rei.ImpactType);
+            entity.HasIndex(rei => rei.TargetType);
+
+            // Configure relationships
+            entity.HasOne(rei => rei.RoomEffectDefinition)
+                .WithMany(red => red.Impacts)
+                .HasForeignKey(rei => rei.RoomEffectDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Configure precision for decimal fields
+            entity.Property(rei => rei.ImpactValue)
+                .HasPrecision(10, 2);
+        });
+
+        // RoomEffect configuration
+        builder.Entity<GameEntities.RoomEffect>(entity =>
+        {
+            entity.HasIndex(re => re.RoomId);
+            entity.HasIndex(re => re.RoomEffectDefinitionId);
+            entity.HasIndex(re => re.EndTime);
+            entity.HasIndex(re => re.IsActive);
+            entity.HasIndex(re => re.CasterCharacterId);
+
+            // Configure relationships
+            entity.HasOne(re => re.Room)
+                .WithMany()
+                .HasForeignKey(re => re.RoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(re => re.RoomEffectDefinition)
+                .WithMany(red => red.ActiveEffects)
+                .HasForeignKey(re => re.RoomEffectDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            // Configure precision for decimal fields
+            entity.Property(re => re.Intensity)
+                .HasPrecision(4, 2);
+        });
+
+        // RoomEffectApplicationLog configuration
+        builder.Entity<GameEntities.RoomEffectApplicationLog>(entity =>
+        {
+            entity.HasIndex(real => real.RoomEffectId);
+            entity.HasIndex(real => real.CharacterId);
+            entity.HasIndex(real => real.Timestamp);
+            entity.HasIndex(real => real.ApplicationType);
+
+            // Configure relationships
+            entity.HasOne(real => real.RoomEffect)
+                .WithMany(re => re.ApplicationLogs)
+                .HasForeignKey(real => real.RoomEffectId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Configure precision for decimal fields
+            entity.Property(real => real.ImpactValue)
+                .HasPrecision(10, 2);
+                
+            entity.Property(real => real.ResistanceRoll)
+                .HasPrecision(6, 2);
         });
 
         // SkillCategory configuration

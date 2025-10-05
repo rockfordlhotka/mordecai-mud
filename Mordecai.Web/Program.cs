@@ -15,6 +15,9 @@ builder.AddServiceDefaults();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=mordecai.db"));
 
+// Register DbContext factory for room effects service
+builder.Services.AddDbContextFactory<ApplicationDbContext>();
+
 builder.Services.AddDefaultIdentity<IdentityUser>(options => 
     {
         options.SignIn.RequireConfirmedAccount = false;
@@ -54,6 +57,12 @@ builder.Services.AddScoped<Mordecai.Web.Services.IZoneService, Mordecai.Web.Serv
 builder.Services.AddScoped<Mordecai.Web.Services.IRoomService, Mordecai.Web.Services.RoomService>();
 builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
+
+// Add room effects service
+builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();
+
+// Add background services
+builder.Services.AddHostedService<RoomEffectBackgroundService>();
 
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();

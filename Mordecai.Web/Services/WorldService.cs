@@ -15,6 +15,7 @@ public interface IWorldService
     Task<IReadOnlyList<RoomExit>> GetExitsFromRoomAsync(int roomId);
     Task<IReadOnlyList<RoomExit>> GetHiddenExitsFromRoomAsync(int roomId);
     Task<bool> CanMoveFromRoomAsync(int fromRoomId, string direction);
+    Task<IReadOnlyList<int>> GetOccupiedRoomsAsync(CancellationToken cancellationToken = default);
 }
 
 public class WorldService : IWorldService
@@ -271,6 +272,23 @@ public class WorldService : IWorldService
         {
             _logger.LogError(ex, "Error checking if can move {Direction} from room {RoomId}", direction, fromRoomId);
             return false;
+        }
+    }
+
+    public async Task<IReadOnlyList<int>> GetOccupiedRoomsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _context.Characters
+                .Where(c => c.CurrentRoomId.HasValue)
+                .Select(c => c.CurrentRoomId!.Value)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting occupied rooms");
+            return Array.Empty<int>();
         }
     }
 }
