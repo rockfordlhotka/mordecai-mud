@@ -1,13 +1,14 @@
 # Kubernetes Deployment Guide for Mordecai MUD
 
-This guide explains how to deploy Mordecai MUD to Kubernetes, including configuration for RabbitMQ and SQLite database persistence.
+This guide explains how to deploy Mordecai MUD to Kubernetes, including configuration for RabbitMQ and PostgreSQL database.
 
 ## Overview
 
 Mordecai MUD is now configured to support Kubernetes deployment with the following features:
 
 - **Configurable RabbitMQ Connection**: Supports both connection strings (Aspire) and individual parameters (Kubernetes)
-- **Persistent Database Storage**: SQLite database path configurable via environment variables for persistent volumes
+- **PostgreSQL Database**: Cloud-native database with proper secret management
+- **Cloud-Native Configuration**: Environment variables and Kubernetes Secrets for all sensitive data
 - **Aspire Integration**: Leverages .NET Aspire for local development and manifest generation
 
 ## Configuration Architecture
@@ -47,17 +48,34 @@ The application supports two configuration methods:
 
 ### Database Configuration
 
-The SQLite database path can be configured via:
+PostgreSQL connection is configured via individual parameters for cloud-native secret management:
 
 **Configuration Priority:**
-1. `DATABASE_PATH` environment variable (highest priority)
-2. `DatabasePath` configuration value
-3. `ConnectionStrings:DefaultConnection` (extracts path from connection string)
-4. Default: `mordecai.db` in application directory
+1. Environment variables (highest priority): `Database__Host`, `Database__Port`, `Database__Name`, `Database__User`, `Database__Password`
+2. User Secrets (development only)
+3. `appsettings.json` (non-sensitive values only)
 
-**Example:**
+**Required Configuration:**
+```json
+{
+  "Database": {
+    "Host": "postgres-service",
+    "Port": "5432",
+    "Name": "mordecai",
+    "User": "mordecaimud"
+  }
+}
+```
+
+**Password:** Must be provided via Kubernetes Secret (never in configuration files)
+
+**Environment Variable Format:**
 ```bash
-DATABASE_PATH=/data/mordecai/mordecai.db
+Database__Host=postgres-service
+Database__Port=5432
+Database__Name=mordecai
+Database__User=mordecaimud
+Database__Password=<from-secret>
 ```
 
 ## Kubernetes Deployment
@@ -66,7 +84,7 @@ DATABASE_PATH=/data/mordecai/mordecai.db
 
 - Kubernetes cluster (1.25+)
 - kubectl configured
-- Persistent volume provisioner available
+- PostgreSQL database (StatefulSet or managed service)
 - RabbitMQ deployment or external RabbitMQ service
 
 ### Step 1: Create Namespace
@@ -96,34 +114,139 @@ metadata:
   namespace: mordecai-mud
 type: Opaque
 stringData:
+  # Database credentials
+  db-password: your-secure-db-password
+  
+  # RabbitMQ credentials
   rabbitmq-username: gameuser
-  rabbitmq-password: your-secure-password
+  rabbitmq-password: your-secure-rabbitmq-password
 ```
 
 ```bash
 kubectl apply -f secrets.yaml
 ```
 
-### Step 3: Create Persistent Volume Claim
+**Using External Secret Management:**
+
+For production, consider using External Secrets Operator with Azure Key Vault, AWS Secrets Manager, or HashiCorp Vault:
 
 ```yaml
-# pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+# external-secret.yaml
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
 metadata:
-  name: mordecai-db-pvc
+  name: mordecai-secrets
   namespace: mordecai-mud
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: standard  # Adjust based on your cluster
+  secretStoreRef:
+    name: azure-keyvault-store  # or aws-secrets-manager, vault, etc.
+    kind: SecretStore
+  target:
+    name: mordecai-secrets
+    creationPolicy: Owner
+  data:
+  - secretKey: db-password
+    remoteRef:
+      key: mordecai-db-password
+  - secretKey: rabbitmq-username
+    remoteRef:
+      key: mordecai-rabbitmq-username
+  - secretKey: rabbitmq-password
+    remoteRef:
+      key: mordecai-rabbitmq-password
+```
+
+### Step 3: Deploy PostgreSQL
+
+#### Option A: PostgreSQL StatefulSet (Development/Testing)
+
+```yaml
+# postgres-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: mordecai-mud
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: mordecai-mud
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: mordecai
+        - name: POSTGRES_USER
+          value: mordecaimud
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mordecai-secrets
+              key: db-password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 20Gi
 ```
 
 ```bash
-kubectl apply -f pvc.yaml
+kubectl apply -f postgres-statefulset.yaml
+```
+
+#### Option B: Managed Database Service (Production)
+
+For production, use a managed PostgreSQL service:
+
+- **Azure**: Azure Database for PostgreSQL Flexible Server
+- **AWS**: Amazon RDS for PostgreSQL
+- **GCP**: Cloud SQL for PostgreSQL
+- **DigitalOcean**: Managed Databases
+
+Update the secrets with your managed database connection details:
+
+```yaml
+stringData:
+  db-host: your-managed-db.postgres.database.azure.com
+  db-password: your-managed-db-password
 ```
 
 ### Step 4: Deploy RabbitMQ (if not using external service)
@@ -196,7 +319,7 @@ metadata:
   name: mordecai-web
   namespace: mordecai-mud
 spec:
-  replicas: 2  # Scale based on player load
+  replicas: 2  # Scale based on player load - PostgreSQL supports multiple replicas
   selector:
     matchLabels:
       app: mordecai-web
@@ -213,8 +336,19 @@ spec:
           name: http
         env:
         # Database Configuration
-        - name: DATABASE_PATH
-          value: "/data/mordecai.db"
+        - name: Database__Host
+          value: "postgres-service"  # Or managed database hostname
+        - name: Database__Port
+          value: "5432"
+        - name: Database__Name
+          value: "mordecai"
+        - name: Database__User
+          value: "mordecaimud"
+        - name: Database__Password
+          valueFrom:
+            secretKeyRef:
+              name: mordecai-secrets
+              key: db-password
         
         # RabbitMQ Configuration
         - name: RABBITMQ_HOST
@@ -240,10 +374,6 @@ spec:
         - name: ASPNETCORE_URLS
           value: "http://+:8080"
         
-        volumeMounts:
-        - name: db-storage
-          mountPath: /data
-        
         resources:
           requests:
             memory: "512Mi"
@@ -265,11 +395,6 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 5
-      
-      volumes:
-      - name: db-storage
-        persistentVolumeClaim:
-          claimName: mordecai-db-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -344,11 +469,15 @@ This generates deployment manifests that you can customize further.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_PATH` | Absolute path to SQLite database file | `/data/mordecai.db` |
+| `Database__Host` | PostgreSQL hostname or service name | `postgres-service` |
+| `Database__Port` | PostgreSQL port | `5432` |
+| `Database__Name` | PostgreSQL database name | `mordecai` |
+| `Database__User` | PostgreSQL username | `mordecaimud` |
+| `Database__Password` | PostgreSQL password (from secret) | `<secret>` |
 | `RABBITMQ_HOST` | RabbitMQ hostname or service name | `rabbitmq-service` |
 | `RABBITMQ_PORT` | RabbitMQ AMQP port | `5672` |
 | `RABBITMQ_USERNAME` | RabbitMQ username | `gameuser` |
-| `RABBITMQ_PASSWORD` | RabbitMQ password | `secretpassword` |
+| `RABBITMQ_PASSWORD` | RabbitMQ password (from secret) | `<secret>` |
 
 ### Optional Environment Variables
 
@@ -358,29 +487,62 @@ This generates deployment manifests that you can customize further.
 | `ASPNETCORE_ENVIRONMENT` | ASP.NET Core environment | `Production` |
 | `ASPNETCORE_URLS` | URLs to listen on | `http://+:8080` |
 
-## Persistent Volume Considerations
+## Database Considerations
 
-### SQLite Database Persistence
+### PostgreSQL Configuration
 
-**Important Notes:**
-- SQLite requires `ReadWriteOnce` access mode
-- Only one pod can access the database at a time
-- For multi-replica deployments, consider:
-  - Using `ReadWriteMany` with a shared filesystem (if supported)
-  - Migrating to PostgreSQL for true multi-instance support
-  - Implementing leader election for database access
+**✅ Production-Ready Features:**
+- **Multiple Replicas**: PostgreSQL supports multiple application instances reading/writing simultaneously
+- **ACID Compliance**: Full transaction support for game state consistency
+- **Horizontal Scaling**: Scale application pods independently of database
+- **Managed Services**: Use cloud provider managed databases for automatic backups, updates, and high availability
 
-### Migration to PostgreSQL
+### Connection Pooling
 
-For production scaling with multiple replicas, consider migrating to PostgreSQL:
+Entity Framework Core automatically manages connection pooling. For high-traffic scenarios, consider:
 
-1. Update connection string format
-2. Replace `UseSqlite` with `UseNpgsql` in `Program.cs`
-3. Deploy PostgreSQL StatefulSet or use managed service
-4. Update environment variables:
-   ```bash
-   DATABASE_CONNECTION_STRING="Host=postgres-service;Database=mordecai;Username=dbuser;Password=dbpassword"
-   ```
+```yaml
+# Add to deployment environment variables
+- name: Database__MaxPoolSize
+  value: "100"
+- name: Database__MinPoolSize
+  value: "10"
+```
+
+### Database Migrations
+
+Run migrations as an init container or Kubernetes Job before deployment:
+
+```yaml
+# db-migration-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mordecai-db-migration
+  namespace: mordecai-mud
+spec:
+  template:
+    spec:
+      containers:
+      - name: migration
+        image: your-registry/mordecai-web:latest
+        command: ["dotnet", "ef", "database", "update"]
+        env:
+        - name: Database__Host
+          value: "postgres-service"
+        - name: Database__Port
+          value: "5432"
+        - name: Database__Name
+          value: "mordecai"
+        - name: Database__User
+          value: "mordecaimud"
+        - name: Database__Password
+          valueFrom:
+            secretKeyRef:
+              name: mordecai-secrets
+              key: db-password
+      restartPolicy: OnFailure
+```
 
 ## Monitoring and Observability
 
@@ -434,7 +596,7 @@ spec:
         averageUtilization: 80
 ```
 
-**Note:** With SQLite, only one replica can write to the database. For true horizontal scaling, migrate to PostgreSQL.
+**Note:** PostgreSQL supports true horizontal scaling of application pods. Scale based on player load and resource utilization.
 
 ### RabbitMQ Scaling
 
@@ -509,14 +671,23 @@ containers:
 ### Database Connection Issues
 
 ```bash
-# Check database file permissions
-kubectl exec -it -n mordecai-mud <pod-name> -- ls -la /data/
+# Check database connection environment variables
+kubectl exec -it -n mordecai-mud <pod-name> -- env | grep Database__
 
-# Check database path configuration
-kubectl exec -it -n mordecai-mud <pod-name> -- env | grep DATABASE
+# Test PostgreSQL connectivity from pod
+kubectl exec -it -n mordecai-mud <pod-name> -- bash
+> apt-get update && apt-get install -y postgresql-client
+> psql -h postgres-service -U mordecaimud -d mordecai
 
-# Verify persistent volume mount
-kubectl describe pvc -n mordecai-mud mordecai-db-pvc
+# Check PostgreSQL service
+kubectl get svc -n mordecai-mud postgres-service
+
+# Check PostgreSQL logs
+kubectl logs -n mordecai-mud postgres-0
+
+# Verify secret exists
+kubectl get secret -n mordecai-mud mordecai-secrets
+kubectl describe secret -n mordecai-mud mordecai-secrets
 ```
 
 ### RabbitMQ Connection Issues
@@ -547,23 +718,21 @@ kubectl logs -n mordecai-mud <pod-name> --previous
 
 ## Backup and Recovery
 
-### Database Backup
+### PostgreSQL Backup
+
+#### Manual Backup
 
 ```bash
-# Create backup job
-kubectl create job -n mordecai-mud db-backup-$(date +%Y%m%d) \
-  --from=cronjob/mordecai-db-backup
-
-# Manual backup
-kubectl exec -n mordecai-mud <pod-name> -- \
-  sqlite3 /data/mordecai.db ".backup '/data/backup-$(date +%Y%m%d).db'"
+# Create backup using pg_dump
+kubectl exec -n mordecai-mud postgres-0 -- \
+  pg_dump -U mordecaimud -d mordecai -F c -f /tmp/mordecai-backup-$(date +%Y%m%d).dump
 
 # Copy backup locally
-kubectl cp mordecai-mud/<pod-name>:/data/backup-$(date +%Y%m%d).db \
-  ./backup-$(date +%Y%m%d).db
+kubectl cp mordecai-mud/postgres-0:/tmp/mordecai-backup-$(date +%Y%m%d).dump \
+  ./mordecai-backup-$(date +%Y%m%d).dump
 ```
 
-### Automated Backup CronJob
+#### Automated Backup CronJob
 
 ```yaml
 # backup-cronjob.yaml
@@ -580,31 +749,61 @@ spec:
         spec:
           containers:
           - name: backup
-            image: alpine:latest
+            image: postgres:16
             command:
             - sh
             - -c
             - |
-              apk add --no-cache sqlite
-              BACKUP_FILE="/backups/mordecai-$(date +%Y%m%d-%H%M%S).db"
-              sqlite3 /data/mordecai.db ".backup '$BACKUP_FILE'"
+              BACKUP_FILE="/backups/mordecai-$(date +%Y%m%d-%H%M%S).dump"
+              pg_dump -h postgres-service -U mordecaimud -d mordecai -F c -f "$BACKUP_FILE"
               echo "Backup created: $BACKUP_FILE"
               # Cleanup old backups (keep last 7 days)
-              find /backups -name "mordecai-*.db" -mtime +7 -delete
+              find /backups -name "mordecai-*.dump" -mtime +7 -delete
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mordecai-secrets
+                  key: db-password
             volumeMounts:
-            - name: db-storage
-              mountPath: /data
             - name: backup-storage
               mountPath: /backups
           restartPolicy: OnFailure
           volumes:
-          - name: db-storage
-            persistentVolumeClaim:
-              claimName: mordecai-db-pvc
           - name: backup-storage
             persistentVolumeClaim:
               claimName: mordecai-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mordecai-backup-pvc
+  namespace: mordecai-mud
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
 ```
+
+#### Restore from Backup
+
+```bash
+# Restore database from backup
+kubectl cp ./mordecai-backup-20251005.dump mordecai-mud/postgres-0:/tmp/restore.dump
+kubectl exec -n mordecai-mud postgres-0 -- \
+  pg_restore -U mordecaimud -d mordecai -c /tmp/restore.dump
+```
+
+### Managed Database Backups
+
+If using a managed PostgreSQL service, use the cloud provider's backup features:
+
+- **Azure Database for PostgreSQL**: Automated backups with point-in-time restore
+- **AWS RDS**: Automated backups and manual snapshots
+- **GCP Cloud SQL**: Automated backups and on-demand backups
+- **DigitalOcean**: Automated daily backups
 
 ## Development vs Production
 
@@ -628,17 +827,88 @@ Use explicit environment variables for all configuration:
 - Persistent storage for database
 - External RabbitMQ service or cluster
 
-## Future Considerations
+## Additional Security Considerations
 
-### Migration to PostgreSQL
+### Secret Rotation
 
-When scaling beyond 10-50 concurrent users or requiring true multi-instance support:
+Rotate database and RabbitMQ passwords regularly:
 
-1. **Update Data Project**: Add `Npgsql.EntityFrameworkCore.PostgreSQL` package
-2. **Update Program.cs**: Replace `UseSqlite` with `UseNpgsql`
-3. **Update Configuration**: Use PostgreSQL connection strings
-4. **Deploy PostgreSQL**: Use StatefulSet or managed service (Azure Database, AWS RDS, etc.)
-5. **Migrate Data**: Export from SQLite and import to PostgreSQL
+```bash
+# Update secret
+kubectl create secret generic mordecai-secrets \
+  --from-literal=db-password=NEW_PASSWORD \
+  --from-literal=rabbitmq-username=gameuser \
+  --from-literal=rabbitmq-password=NEW_RABBITMQ_PASSWORD \
+  --namespace mordecai-mud \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart pods to pick up new secrets
+kubectl rollout restart deployment/mordecai-web -n mordecai-mud
+```
+
+### Using Azure Key Vault (Azure AKS)
+
+```yaml
+# Install Azure Key Vault Provider for Secrets Store CSI Driver
+# Then create SecretProviderClass
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: azure-keyvault-provider
+  namespace: mordecai-mud
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "true"
+    userAssignedIdentityID: "<CLIENT_ID>"
+    keyvaultName: "mordecai-keyvault"
+    objects: |
+      array:
+        - |
+          objectName: "db-password"
+          objectType: "secret"
+        - |
+          objectName: "rabbitmq-password"
+          objectType: "secret"
+    tenantId: "<TENANT_ID>"
+  secretObjects:
+  - secretName: mordecai-secrets
+    type: Opaque
+    data:
+    - objectName: "db-password"
+      key: "db-password"
+    - objectName: "rabbitmq-password"
+      key: "rabbitmq-password"
+```
+
+### Using AWS Secrets Manager (AWS EKS)
+
+```yaml
+# Install AWS Secrets Manager CSI Driver
+# Then create SecretProviderClass
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: aws-secrets-provider
+  namespace: mordecai-mud
+spec:
+  provider: aws
+  parameters:
+    objects: |
+      - objectName: "mordecai/db-password"
+        objectType: "secretsmanager"
+      - objectName: "mordecai/rabbitmq-password"
+        objectType: "secretsmanager"
+  secretObjects:
+  - secretName: mordecai-secrets
+    type: Opaque
+    data:
+    - objectName: "mordecai/db-password"
+      key: "db-password"
+    - objectName: "mordecai/rabbitmq-password"
+      key: "rabbitmq-password"
+```
 
 ### Service Mesh Integration
 
@@ -661,8 +931,61 @@ Implement continuous deployment with:
 - [RabbitMQ on Kubernetes](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html)
 - [OpenTelemetry .NET](https://opentelemetry.io/docs/languages/net/)
 
+## Configuration Validation
+
+Before deploying, validate your configuration:
+
+```bash
+# Check all secrets are created
+kubectl get secrets -n mordecai-mud
+
+# Verify secret contents (keys only, not values)
+kubectl describe secret mordecai-secrets -n mordecai-mud
+
+# Test database connectivity
+kubectl run -it --rm postgres-test \
+  --image=postgres:16 \
+  --restart=Never \
+  --namespace=mordecai-mud \
+  --env="PGPASSWORD=$(kubectl get secret mordecai-secrets -n mordecai-mud -o jsonpath='{.data.db-password}' | base64 -d)" \
+  -- psql -h postgres-service -U mordecaimud -d mordecai -c "SELECT version();"
+
+# Dry-run deployment to check for errors
+kubectl apply -f mordecai-web-deployment.yaml --dry-run=client
+```
+
+## Performance Tuning
+
+### PostgreSQL Optimization
+
+```yaml
+# Add to PostgreSQL StatefulSet or configure in managed service
+env:
+- name: POSTGRES_SHARED_BUFFERS
+  value: "256MB"
+- name: POSTGRES_EFFECTIVE_CACHE_SIZE
+  value: "1GB"
+- name: POSTGRES_MAX_CONNECTIONS
+  value: "200"
+- name: POSTGRES_WORK_MEM
+  value: "4MB"
+```
+
+### Application Settings
+
+```yaml
+# Add to application deployment
+env:
+- name: Database__CommandTimeout
+  value: "30"
+- name: Database__MaxPoolSize
+  value: "100"
+- name: ASPNETCORE_Kestrel__Limits__MaxConcurrentConnections
+  value: "1000"
+```
+
 ---
 
-**Last Updated:** 2025-01-23  
-**Version:** 1.0  
+**Last Updated:** October 5, 2025  
+**Version:** 2.0 - PostgreSQL with Cloud-Native Secret Management  
 **Maintainer:** Mordecai MUD Development Team

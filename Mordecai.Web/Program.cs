@@ -11,27 +11,22 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Get database path from configuration with environment variable override
-// Priority: DATABASE_PATH env var > DatabasePath config > ConnectionString > Default
-var databasePath = builder.Configuration["DATABASE_PATH"] 
-    ?? builder.Configuration["DatabasePath"]
-    ?? builder.Configuration.GetConnectionString("DefaultConnection")?.Replace("Data Source=", "")
-    ?? "mordecai.db";
+// Build PostgreSQL connection string from environment variables (cloud-native)
+// Priority: Environment variables > User Secrets > appsettings.json
+var dbHost = builder.Configuration["Database:Host"] ?? "localhost";
+var dbPort = builder.Configuration["Database:Port"] ?? "5432";
+var dbName = builder.Configuration["Database:Name"] ?? "mordecai";
+var dbUser = builder.Configuration["Database:User"] ?? "mordecaimud";
+var dbPassword = builder.Configuration["Database:Password"] 
+    ?? throw new InvalidOperationException("Database password not configured. Set Database:Password in User Secrets or environment variable.");
 
-// Ensure absolute path for Kubernetes persistent volumes
-if (!Path.IsPathRooted(databasePath))
-{
-    databasePath = Path.GetFullPath(databasePath);
-}
-
-var connectionString = $"Data Source={databasePath}";
-builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+var connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword}";
 
 // Register ONLY the pooled DbContext factory (not AddDbContext separately)
 // This provides both IDbContextFactory and direct DbContext injection
 builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
 {
-    options.UseSqlite(connectionString);
+    options.UseNpgsql(connectionString);
 });
 
 // Identity needs DbContext, so we add a scoped resolver that uses the factory
@@ -116,15 +111,7 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     
-    logger.LogInformation("Using database at: {DatabasePath}", databasePath);
-    
-    // Ensure directory exists for database file
-    var directory = Path.GetDirectoryName(databasePath);
-    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-    {
-        Directory.CreateDirectory(directory);
-        logger.LogInformation("Created database directory: {Directory}", directory);
-    }
+    logger.LogInformation("Using PostgreSQL database: Host={DbHost}, Database={DbName}, User={DbUser}", dbHost, dbName, dbUser);
     
     context.Database.Migrate();
     

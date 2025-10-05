@@ -78,14 +78,24 @@ public class Program
         // Get the directory where the executable is located
         var baseDirectory = AppContext.BaseDirectory;
         
-        // Build configuration
+        // Build configuration (includes environment variables and user secrets)
         var configuration = new ConfigurationBuilder()
             .SetBasePath(baseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddEnvironmentVariables()
+            .AddUserSecrets<Program>(optional: true)
             .Build();
 
-        // Find the database file more intelligently
-        var connectionString = GetDatabaseConnectionString(baseDirectory, configuration);
+        // Build PostgreSQL connection string from environment variables (cloud-native)
+        // Priority: Environment variables > User Secrets > appsettings.json
+        var dbHost = configuration["Database:Host"] ?? "localhost";
+        var dbPort = configuration["Database:Port"] ?? "5432";
+        var dbName = configuration["Database:Name"] ?? "mordecai";
+        var dbUser = configuration["Database:User"] ?? "mordecaimud";
+        var dbPassword = configuration["Database:Password"] 
+            ?? throw new InvalidOperationException("Database password not configured. Set Database:Password in User Secrets or environment variable.");
+
+        var connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword}";
 
         // Build service collection
         var services = new ServiceCollection();
@@ -100,9 +110,9 @@ public class Program
             builder.AddConsole();
         });
 
-        // Add Entity Framework with corrected connection string
+        // Add Entity Framework with PostgreSQL
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlite(connectionString));
+            options.UseNpgsql(connectionString));
 
         // Add Identity services
         services.AddIdentity<IdentityUser, IdentityRole>(options =>
@@ -191,81 +201,5 @@ public class Program
             AnsiConsole.WriteException(ex);
             return 1;
         }
-    }
-
-    private static string GetDatabaseConnectionString(string baseDirectory, IConfiguration configuration)
-    {
-        var defaultConnectionString = configuration.GetConnectionString("DefaultConnection");
-        
-        // If the connection string doesn't contain "Data Source=", return as-is
-        if (defaultConnectionString == null || !defaultConnectionString.StartsWith("Data Source="))
-        {
-            return defaultConnectionString ?? "Data Source=mordecai.db";
-        }
-
-        // Extract the database path from the connection string
-        var dbPath = defaultConnectionString.Substring("Data Source=".Length);
-        
-        // Try different potential locations for the database file
-        var potentialPaths = new[]
-        {
-            // Current working directory
-            Path.Combine(Environment.CurrentDirectory, "Mordecai.Web", "mordecai.db"),
-            
-            // Relative to executable (bin/Debug/net9.0 -> root)
-            Path.Combine(baseDirectory, "..", "..", "..", "..", "Mordecai.Web", "mordecai.db"),
-            
-            // Relative to executable (bin/Release/net9.0 -> root)  
-            Path.Combine(baseDirectory, "..", "..", "..", "..", "Mordecai.Web", "mordecai.db"),
-            
-            // Direct relative path from config
-            Path.Combine(Environment.CurrentDirectory, dbPath),
-            
-            // Absolute path if provided
-            dbPath,
-            
-            // Fallback: create in current directory
-            Path.Combine(Environment.CurrentDirectory, "mordecai.db")
-        };
-
-        // Find the first existing database file
-        foreach (var path in potentialPaths)
-        {
-            try
-            {
-                var fullPath = Path.GetFullPath(path);
-                if (File.Exists(fullPath))
-                {
-                    return $"Data Source={fullPath}";
-                }
-            }
-            catch
-            {
-                // Ignore invalid paths
-                continue;
-            }
-        }
-
-        // If no existing database found, use the first valid path for creation
-        foreach (var path in potentialPaths.Take(potentialPaths.Length - 1)) // Skip the fallback
-        {
-            try
-            {
-                var fullPath = Path.GetFullPath(path);
-                var directory = Path.GetDirectoryName(fullPath);
-                if (directory != null && Directory.Exists(directory))
-                {
-                    return $"Data Source={fullPath}";
-                }
-            }
-            catch
-            {
-                // Ignore invalid paths
-                continue;
-            }
-        }
-
-        // Final fallback
-        return $"Data Source={Path.Combine(Environment.CurrentDirectory, "mordecai.db")}";
     }
 }

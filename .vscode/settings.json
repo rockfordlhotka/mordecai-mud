@@ -1,0 +1,19 @@
+{
+    "dbcode.connections": [
+        {
+            "connectionId": "YkALKgLlXFEVWv-5RQ4Qe",
+            "name": "lhotkalake-mordecai",
+            "driver": "postgres",
+            "connectionType": "host",
+            "host": "default-postgres.tail920062.ts.net",
+            "port": 5432,
+            "ssl": false,
+            "username": "mordecaimud",
+            "password": "",
+            "savePassword": "secretStorage",
+            "database": "mordecai",
+            "readOnly": false,
+            "connectionTimeout": 30
+        }
+    ]
+}
