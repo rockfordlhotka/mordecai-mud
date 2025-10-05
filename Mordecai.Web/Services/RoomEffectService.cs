@@ -170,10 +170,11 @@ public class RoomEffectService : IRoomEffectService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
         return await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .ThenInclude(red => red.Impacts)
-            .Where(re => re.RoomId == roomId && re.IsActive && (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+            .Where(re => re.RoomId == roomId && re.IsActive && (!re.EndTime.HasValue || re.EndTime.Value > now))
             .OrderBy(re => re.StartTime)
             .ToListAsync(cancellationToken);
     }
@@ -182,10 +183,11 @@ public class RoomEffectService : IRoomEffectService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
         return await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .Where(re => re.RoomId == roomId && re.IsActive && re.RoomEffectDefinition.IsVisible && 
-                        (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+                        (!re.EndTime.HasValue || re.EndTime.Value > now))
             .OrderBy(re => re.StartTime)
             .ToListAsync(cancellationToken);
     }
@@ -194,15 +196,14 @@ public class RoomEffectService : IRoomEffectService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
         var activeEffects = await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .ThenInclude(red => red.Impacts)
             .Where(re => re.RoomId == roomId && re.IsActive && 
                         re.RoomEffectDefinition.TickInterval > 0 &&
-                        (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+                        (!re.EndTime.HasValue || re.EndTime.Value > now))
             .ToListAsync(cancellationToken);
-
-        var now = DateTimeOffset.UtcNow;
 
         foreach (var effect in activeEffects)
         {
@@ -232,11 +233,12 @@ public class RoomEffectService : IRoomEffectService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
         var preventionEffects = await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .ThenInclude(red => red.Impacts)
             .Where(re => re.RoomId == roomId && re.IsActive && 
-                        (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+                        (!re.EndTime.HasValue || re.EndTime.Value > now))
             .SelectMany(re => re.RoomEffectDefinition.Impacts)
             .Where(rei => rei.ImpactType == "MovementPrevention" && 
                          (rei.TargetType == "AllOccupants" || rei.TargetType == "ExitTrigger"))
@@ -254,11 +256,12 @@ public class RoomEffectService : IRoomEffectService
 
         if (character == null) return;
 
+        var now = DateTimeOffset.UtcNow;
         var entryEffects = await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .ThenInclude(red => red.Impacts)
             .Where(re => re.RoomId == roomId && re.IsActive && 
-                        (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+                        (!re.EndTime.HasValue || re.EndTime.Value > now))
             .Where(re => re.RoomEffectDefinition.Impacts.Any(rei => rei.TargetType == "EntryTrigger"))
             .ToListAsync(cancellationToken);
 
@@ -279,11 +282,12 @@ public class RoomEffectService : IRoomEffectService
 
         if (character == null) return;
 
+        var now = DateTimeOffset.UtcNow;
         var exitEffects = await context.RoomEffects
             .Include(re => re.RoomEffectDefinition)
             .ThenInclude(red => red.Impacts)
             .Where(re => re.RoomId == roomId && re.IsActive && 
-                        (re.EndTime == null || re.EndTime > DateTimeOffset.UtcNow))
+                        (!re.EndTime.HasValue || re.EndTime.Value > now))
             .Where(re => re.RoomEffectDefinition.Impacts.Any(rei => rei.TargetType == "ExitTrigger"))
             .ToListAsync(cancellationToken);
 
@@ -299,9 +303,18 @@ public class RoomEffectService : IRoomEffectService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var expiredEffects = await context.RoomEffects
-            .Where(re => re.IsActive && re.EndTime != null && re.EndTime <= DateTimeOffset.UtcNow)
+        var now = DateTimeOffset.UtcNow;
+        
+        // Load all active effects with EndTime set, then filter in memory
+        // SQLite has issues translating nullable DateTimeOffset comparisons
+        var activeEffectsWithEndTime = await context.RoomEffects
+            .Where(re => re.IsActive && re.EndTime != null)
             .ToListAsync(cancellationToken);
+
+        // Filter expired effects in memory
+        var expiredEffects = activeEffectsWithEndTime
+            .Where(re => re.EndTime!.Value <= now)
+            .ToList();
 
         foreach (var effect in expiredEffects)
         {
