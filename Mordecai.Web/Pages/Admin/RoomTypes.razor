@@ -1,0 +1,483 @@
+@page "/admin/roomtypes"
+@using Microsoft.AspNetCore.Authorization
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Services
+@inject Mordecai.Web.Services.IRoomService RoomService
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Room Types - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-grid-three-up text-primary me-2"></i>
+                    Room Types
+                </h1>
+                <div>
+                    <button class="btn btn-success" @onclick="ShowCreateModal">
+                        <i class="oi oi-plus me-1"></i>
+                        Create New Room Type
+                    </button>
+                    <a href="/admin" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading room types...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="oi oi-list me-1"></i>
+                            All Room Types (@roomTypes.Count)
+                        </h5>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="showInactive" @bind="showInactive" @bind:after="StateHasChanged" />
+                            <label class="form-check-label" for="showInactive">
+                                Show Inactive
+                            </label>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (filteredRoomTypes.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Description</th>
+                                            <th class="text-center">Combat</th>
+                                            <th class="text-center">Logout</th>
+                                            <th class="text-center">Indoor</th>
+                                            <th class="text-center">Healing</th>
+                                            <th class="text-center">Learning</th>
+                                            <th class="text-center">Status</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var roomType in filteredRoomTypes.OrderBy(rt => rt.Name))
+                                        {
+                                            <tr class="@(roomType.IsActive ? "" : "table-secondary")">
+                                                <td>
+                                                    <strong>@roomType.Name</strong>
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">@roomType.Description</small>
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (roomType.AllowsCombat)
+                                                    {
+                                                        <i class="oi oi-check text-success" title="Combat Allowed"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="oi oi-x text-danger" title="No Combat"></i>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (roomType.AllowsLogout)
+                                                    {
+                                                        <i class="oi oi-check text-success" title="Logout Allowed"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="oi oi-x text-danger" title="No Logout"></i>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (roomType.IsIndoor)
+                                                    {
+                                                        <i class="oi oi-check text-info" title="Indoor"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="oi oi-sun text-warning" title="Outdoor"></i>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge @(roomType.HealingRate > 1.0m ? "bg-success" : roomType.HealingRate < 1.0m ? "bg-warning" : "bg-secondary")">
+                                                        @roomType.HealingRate.ToString("0.0")x
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge @(roomType.SkillLearningBonus > 1.0m ? "bg-info" : "bg-secondary")">
+                                                        @roomType.SkillLearningBonus.ToString("0.0")x
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (roomType.IsActive)
+                                                    {
+                                                        <span class="badge bg-success">Active</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Inactive</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowEditModal(roomType)">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-4 text-center text-muted">
+                                <i class="oi oi-info display-4"></i>
+                                <p class="mt-2">No room types found.</p>
+                                @if (!showInactive)
+                                {
+                                    <p class="small">Try enabling "Show Inactive" to see all room types.</p>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (filteredRoomTypes.Any())
+                {
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="oi oi-info me-1"></i>
+                                Room Type Properties
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Settings Explained</h6>
+                                    <ul class="small">
+                                        <li><strong>Combat:</strong> Whether players can engage in combat in this room type</li>
+                                        <li><strong>Logout:</strong> Whether players can safely log out from this room type</li>
+                                        <li><strong>Indoor:</strong> Affects day/night descriptions (indoor rooms ignore outdoor day/night)</li>
+                                        <li><strong>Healing Rate:</strong> Multiplier for health regeneration (1.0 = normal)</li>
+                                        <li><strong>Learning Bonus:</strong> Multiplier for skill advancement (1.0 = normal)</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Common Room Types</h6>
+                                    <ul class="small">
+                                        <li><strong>Normal:</strong> Standard room, all activities allowed</li>
+                                        <li><strong>Safe Room:</strong> No combat, good for resting</li>
+                                        <li><strong>Training Hall:</strong> Enhanced skill learning</li>
+                                        <li><strong>Temple/Inn:</strong> Enhanced healing</li>
+                                        <li><strong>Shop/Bank:</strong> Special command rooms</li>
+                                        <li><strong>Dungeon:</strong> Dangerous, no logout, slower healing</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Create/Edit Modal -->
+@if (showModal && editingRoomType != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        @if (editingRoomType.Id == 0)
+                        {
+                            <i class="oi oi-plus me-1"></i>
+                            <text>Create New Room Type</text>
+                        }
+                        else
+                        {
+                            <i class="oi oi-pencil me-1"></i>
+                            <text>Edit Room Type</text>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <EditForm Model="@editingRoomType" OnValidSubmit="@SaveRoomType">
+                    <div class="modal-body">
+                        <DataAnnotationsValidator />
+                        
+                        <!-- Name -->
+                        <div class="mb-3">
+                            <label class="form-label">Name *</label>
+                            <input type="text" class="form-control @(string.IsNullOrEmpty(nameError) ? "" : "is-invalid")" 
+                                   @bind="editingRoomType.Name" placeholder="e.g., Normal, Temple, Dungeon..." maxlength="50" />
+                            @if (!string.IsNullOrEmpty(nameError))
+                            {
+                                <div class="invalid-feedback">@nameError</div>
+                            }
+                            <ValidationMessage For="() => editingRoomType.Name" />
+                        </div>
+
+                        <!-- Description -->
+                        <div class="mb-3">
+                            <label class="form-label">Description *</label>
+                            <textarea class="form-control" @bind="editingRoomType.Description" 
+                                      placeholder="Brief description of this room type..." 
+                                      rows="2" maxlength="500"></textarea>
+                            <ValidationMessage For="() => editingRoomType.Description" />
+                        </div>
+
+                        <!-- Boolean Settings -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="allowsCombat" @bind="editingRoomType.AllowsCombat" />
+                                    <label class="form-check-label" for="allowsCombat">
+                                        <strong>Allows Combat</strong>
+                                    </label>
+                                </div>
+                                <small class="text-muted">Players can fight in this room type</small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="allowsLogout" @bind="editingRoomType.AllowsLogout" />
+                                    <label class="form-check-label" for="allowsLogout">
+                                        <strong>Allows Logout</strong>
+                                    </label>
+                                </div>
+                                <small class="text-muted">Players can safely log out here</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="hasSpecialCommands" @bind="editingRoomType.HasSpecialCommands" />
+                                    <label class="form-check-label" for="hasSpecialCommands">
+                                        <strong>Has Special Commands</strong>
+                                    </label>
+                                </div>
+                                <small class="text-muted">Special interactions available (shops, banks, etc.)</small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input type="checkbox" class="form-check-input" id="isIndoor" @bind="editingRoomType.IsIndoor" />
+                                    <label class="form-check-label" for="isIndoor">
+                                        <strong>Indoor</strong>
+                                    </label>
+                                </div>
+                                <small class="text-muted">Affects day/night description behavior</small>
+                            </div>
+                        </div>
+
+                        <!-- Numeric Settings -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Healing Rate</label>
+                                <input type="number" step="0.1" min="0" max="5" class="form-control" @bind="editingRoomType.HealingRate" />
+                                <small class="text-muted">1.0 = normal, 2.0 = double speed</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Skill Learning Bonus</label>
+                                <input type="number" step="0.1" min="0" max="5" class="form-control" @bind="editingRoomType.SkillLearningBonus" />
+                                <small class="text-muted">1.0 = normal, 1.5 = 50% bonus</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max Occupancy</label>
+                                <input type="number" min="0" class="form-control" @bind="editingRoomType.MaxOccupancy" />
+                                <small class="text-muted">0 = unlimited</small>
+                            </div>
+                        </div>
+
+                        <!-- Entry/Exit Messages -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Entry Message (Optional)</label>
+                                <input type="text" class="form-control" @bind="editingRoomType.EntryMessage" 
+                                       placeholder="e.g., You feel a sense of peace..." maxlength="200" />
+                                <small class="text-muted">Shown when entering this type of room</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Exit Message (Optional)</label>
+                                <input type="text" class="form-control" @bind="editingRoomType.ExitMessage" 
+                                       placeholder="e.g., You leave the safety behind..." maxlength="200" />
+                                <small class="text-muted">Shown when leaving this type of room</small>
+                            </div>
+                        </div>
+
+                        <!-- Active Status -->
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="isActive" @bind="editingRoomType.IsActive" />
+                                <label class="form-check-label" for="isActive">
+                                    <strong>Active</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted">Inactive room types cannot be assigned to new rooms</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@saving">
+                            @if (saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            @if (editingRoomType.Id == 0)
+                            {
+                                <text>Create Room Type</text>
+                            }
+                            else
+                            {
+                                <text>Update Room Type</text>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RoomType> roomTypes = new();
+    private RoomType? editingRoomType;
+    private bool loading = true;
+    private bool showModal = false;
+    private bool saving = false;
+    private bool showInactive = true;
+    private string nameError = string.Empty;
+
+    private IEnumerable<RoomType> filteredRoomTypes => 
+        showInactive ? roomTypes : roomTypes.Where(rt => rt.IsActive);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoomTypes();
+    }
+
+    private async Task LoadRoomTypes()
+    {
+        loading = true;
+        try
+        {
+            roomTypes = (await RoomService.GetAllRoomTypesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading room types: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        editingRoomType = new RoomType
+        {
+            Name = string.Empty,
+            Description = string.Empty,
+            AllowsCombat = true,
+            AllowsLogout = true,
+            HasSpecialCommands = false,
+            HealingRate = 1.0m,
+            SkillLearningBonus = 1.0m,
+            MaxOccupancy = 0,
+            IsIndoor = false,
+            IsActive = true
+        };
+        nameError = string.Empty;
+        showModal = true;
+    }
+
+    private void ShowEditModal(RoomType roomType)
+    {
+        // Create a copy to edit
+        editingRoomType = new RoomType
+        {
+            Id = roomType.Id,
+            Name = roomType.Name,
+            Description = roomType.Description,
+            AllowsCombat = roomType.AllowsCombat,
+            AllowsLogout = roomType.AllowsLogout,
+            HasSpecialCommands = roomType.HasSpecialCommands,
+            HealingRate = roomType.HealingRate,
+            SkillLearningBonus = roomType.SkillLearningBonus,
+            MaxOccupancy = roomType.MaxOccupancy,
+            IsIndoor = roomType.IsIndoor,
+            EntryMessage = roomType.EntryMessage,
+            ExitMessage = roomType.ExitMessage,
+            IsActive = roomType.IsActive
+        };
+        nameError = string.Empty;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        editingRoomType = null;
+        nameError = string.Empty;
+    }
+
+    private async Task SaveRoomType()
+    {
+        if (editingRoomType == null) return;
+
+        nameError = string.Empty;
+
+        // Validate name is unique
+        if (roomTypes.Any(rt => rt.Name.Equals(editingRoomType.Name, StringComparison.OrdinalIgnoreCase) && rt.Id != editingRoomType.Id))
+        {
+            nameError = "A room type with this name already exists.";
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            if (editingRoomType.Id == 0)
+            {
+                await RoomService.CreateRoomTypeAsync(editingRoomType);
+                await JSRuntime.InvokeVoidAsync("alert", $"Room type '{editingRoomType.Name}' created successfully!");
+            }
+            else
+            {
+                await RoomService.UpdateRoomTypeAsync(editingRoomType);
+                await JSRuntime.InvokeVoidAsync("alert", $"Room type '{editingRoomType.Name}' updated successfully!");
+            }
+
+            await LoadRoomTypes();
+            CloseModal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving room type: {ex.Message}");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

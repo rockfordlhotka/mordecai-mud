@@ -62,13 +62,16 @@ builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>(
 
 // Add skill services
 builder.Services.AddScoped<SkillService>();
-builder.Services.AddScoped<SkillSeedService>();
 
 // Add admin services
 builder.Services.AddScoped<AdminSeedService>();
 
 // Add data migration services
 builder.Services.AddScoped<DataMigrationService>();
+
+// Add seed services
+builder.Services.AddScoped<SkillSeedService>();
+builder.Services.AddScoped<RoomTypeSeedService>();
 
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
@@ -127,6 +130,10 @@ using (var scope = app.Services.CreateScope())
     // Seed admin data first (roles and users)
     var adminSeedService = scope.ServiceProvider.GetRequiredService<AdminSeedService>();
     await adminSeedService.SeedAdminDataAsync();
+    
+    // Seed room types
+    var roomTypeSeedService = scope.ServiceProvider.GetRequiredService<RoomTypeSeedService>();
+    await roomTypeSeedService.SeedRoomTypesAsync();
     
     // Seed skill data if needed
     var skillSeedService = scope.ServiceProvider.GetRequiredService<SkillSeedService>();

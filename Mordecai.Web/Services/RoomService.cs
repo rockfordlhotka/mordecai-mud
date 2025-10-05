@@ -19,6 +19,9 @@ public interface IRoomService
     Task<IEnumerable<Room>> GetActiveRoomsByZoneAsync(int zoneId);
     Task<IEnumerable<RoomType>> GetAllRoomTypesAsync();
     Task<IEnumerable<RoomType>> GetActiveRoomTypesAsync();
+    Task<RoomType?> GetRoomTypeByIdAsync(int id);
+    Task<RoomType> CreateRoomTypeAsync(RoomType roomType);
+    Task<RoomType> UpdateRoomTypeAsync(RoomType roomType);
     Task<int> GetRoomCountByZoneAsync(int zoneId);
     Task<bool> HasCharactersInRoomAsync(int roomId);
     Task<(bool HasExits, int ExitCount)> HasExitsAsync(int roomId);
@@ -175,6 +178,34 @@ public class RoomService : IRoomService
             .Where(rt => rt.IsActive)
             .OrderBy(rt => rt.Name)
             .ToListAsync();
+    }
+
+    public async Task<RoomType?> GetRoomTypeByIdAsync(int id)
+    {
+        return await _context.RoomTypes
+            .FirstOrDefaultAsync(rt => rt.Id == id);
+    }
+
+    public async Task<RoomType> CreateRoomTypeAsync(RoomType roomType)
+    {
+        _logger.LogInformation("Creating new room type: {RoomTypeName}", roomType.Name);
+        
+        _context.RoomTypes.Add(roomType);
+        await _context.SaveChangesAsync();
+        
+        _logger.LogInformation("Room type created successfully with ID: {RoomTypeId}", roomType.Id);
+        return roomType;
+    }
+
+    public async Task<RoomType> UpdateRoomTypeAsync(RoomType roomType)
+    {
+        _logger.LogInformation("Updating room type: {RoomTypeId} - {RoomTypeName}", roomType.Id, roomType.Name);
+        
+        _context.RoomTypes.Update(roomType);
+        await _context.SaveChangesAsync();
+        
+        _logger.LogInformation("Room type updated successfully: {RoomTypeId}", roomType.Id);
+        return roomType;
     }
 
     public async Task<int> GetRoomCountByZoneAsync(int zoneId)
