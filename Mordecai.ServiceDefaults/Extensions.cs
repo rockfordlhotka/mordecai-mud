@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -99,9 +100,54 @@ public static class Extensions
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
-        builder.Services.AddHealthChecks()
+        var healthChecks = builder.Services.AddHealthChecks()
             // Add a default liveness check to ensure app is responsive
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+
+        // Add PostgreSQL health check if configured
+        var dbHost = builder.Configuration["Database:Host"];
+        var dbPort = builder.Configuration["Database:Port"] ?? "5432";
+        var dbName = builder.Configuration["Database:Name"];
+        var dbUser = builder.Configuration["Database:User"];
+        var dbPassword = builder.Configuration["Database:Password"];
+
+        if (!string.IsNullOrEmpty(dbHost) && !string.IsNullOrEmpty(dbName) && 
+            !string.IsNullOrEmpty(dbUser) && !string.IsNullOrEmpty(dbPassword))
+        {
+            var postgresConnectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword}";
+            healthChecks.AddNpgSql(
+                postgresConnectionString,
+                name: "postgresql",
+                failureStatus: HealthStatus.Degraded,
+                tags: ["ready", "db", "postgresql"]);
+        }
+
+        // Add RabbitMQ health check if configured
+        var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? builder.Configuration["RABBITMQ_HOST"];
+        var rabbitPort = builder.Configuration["RabbitMQ:Port"] ?? builder.Configuration["RABBITMQ_PORT"] ?? "5672";
+        var rabbitUser = builder.Configuration["RabbitMQ:Username"] ?? builder.Configuration["RABBITMQ_USERNAME"] ?? "guest";
+        var rabbitPassword = builder.Configuration["RabbitMQ:Password"] ?? builder.Configuration["RABBITMQ_PASSWORD"] ?? "guest";
+        var rabbitVHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? builder.Configuration["RABBITMQ_VHOST"] ?? "/";
+
+        if (!string.IsNullOrEmpty(rabbitHost))
+        {
+            healthChecks.AddRabbitMQ(
+                sp => 
+                {
+                    var factory = new RabbitMQ.Client.ConnectionFactory
+                    {
+                        HostName = rabbitHost,
+                        Port = int.Parse(rabbitPort),
+                        UserName = rabbitUser,
+                        Password = rabbitPassword,
+                        VirtualHost = rabbitVHost
+                    };
+                    return factory.CreateConnectionAsync().GetAwaiter().GetResult();
+                },
+                name: "rabbitmq",
+                failureStatus: HealthStatus.Degraded,
+                tags: ["ready", "messaging", "rabbitmq"]);
+        }
 
         return builder;
     }
