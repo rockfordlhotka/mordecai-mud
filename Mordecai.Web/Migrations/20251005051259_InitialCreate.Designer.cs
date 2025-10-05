@@ -11,8 +11,8 @@ using Mordecai.Web.Data;
 namespace Mordecai.Web.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250923015729_AddSkillsSystem")]
-    partial class AddSkillsSystem
+    [Migration("20251005051259_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -329,16 +329,9 @@ namespace Mordecai.Web.Migrations
 
                     b.HasIndex("CharacterId");
 
-                    b.HasIndex("CurrentLevel");
-
-                    b.HasIndex("LastUsedAt");
-
                     b.HasIndex("SkillDefinitionId");
 
-                    b.HasIndex("CharacterId", "SkillDefinitionId")
-                        .IsUnique();
-
-                    b.ToTable("CharacterSkills");
+                    b.ToTable("CharacterSkill");
                 });
 
             modelBuilder.Entity("Mordecai.Game.Entities.Room", b =>
@@ -420,6 +413,268 @@ namespace Mordecai.Web.Migrations
                     b.HasIndex("X", "Y", "Z");
 
                     b.ToTable("Rooms");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffect", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("CasterCharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CustomData")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("EndTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Intensity")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("LastTickTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RoomEffectDefinitionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StackCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CasterCharacterId");
+
+                    b.HasIndex("EndTime");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("RoomEffectDefinitionId");
+
+                    b.HasIndex("RoomId");
+
+                    b.ToTable("RoomEffects");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectApplicationLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicationType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImpactType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ImpactValue")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("ResistanceRoll")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("ResistanceSuccess")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RoomEffectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationType");
+
+                    b.HasIndex("CharacterId");
+
+                    b.HasIndex("RoomEffectId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.ToTable("RoomEffectApplicationLogs");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DefaultDuration")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("DefaultIntensity")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("DetectionDifficulty")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DetectionSkillId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EffectColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IconName")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsStackable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsVisible")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxStacks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemovalMethods")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TickInterval")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("EffectType");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("RoomEffectDefinitions");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectImpact", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DamageType")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImpactFormula")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImpactType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ImpactValue")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsPercentage")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ResistanceSkillId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RoomEffectDefinitionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TargetAttribute")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TargetSkillId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImpactType");
+
+                    b.HasIndex("RoomEffectDefinitionId");
+
+                    b.HasIndex("TargetType");
+
+                    b.ToTable("RoomEffectImpacts");
                 });
 
             modelBuilder.Entity("Mordecai.Game.Entities.RoomExit", b =>
@@ -565,6 +820,221 @@ namespace Mordecai.Web.Migrations
 
                     b.HasKey("Id");
 
+                    b.ToTable("SkillCategory");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.SkillDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowsPassiveAdvancement")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowsTeaching")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BaseCost")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("CooldownSeconds")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CustomProperties")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsStartingSkill")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MagicSchool")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ManaCost")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxPracticalLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelatedAttribute")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SkillType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UsesExplodingDice")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("SkillDefinition");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.Zone", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DifficultyLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsOutdoor")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WeatherType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Zones");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.CharacterSkill", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("CharacterId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Experience")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LearnedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SkillDefinitionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UsageCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CharacterId");
+
+                    b.HasIndex("LastUsedAt");
+
+                    b.HasIndex("Level");
+
+                    b.HasIndex("SkillDefinitionId");
+
+                    b.HasIndex("CharacterId", "SkillDefinitionId")
+                        .IsUnique();
+
+                    b.ToTable("CharacterSkills");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.SkillCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowsPassiveAdvancement")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowsTeaching")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DefaultBaseCost")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("DefaultMultiplier")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
                     b.HasIndex("DisplayOrder");
 
                     b.HasIndex("IsActive");
@@ -575,7 +1045,7 @@ namespace Mordecai.Web.Migrations
                     b.ToTable("SkillCategories");
                 });
 
-            modelBuilder.Entity("Mordecai.Game.Entities.SkillDefinition", b =>
+            modelBuilder.Entity("Mordecai.Web.Data.SkillDefinition", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -598,6 +1068,10 @@ namespace Mordecai.Web.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("CustomProperties")
@@ -638,6 +1112,7 @@ namespace Mordecai.Web.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("RelatedAttribute")
+                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
@@ -665,7 +1140,7 @@ namespace Mordecai.Web.Migrations
                     b.ToTable("SkillDefinitions");
                 });
 
-            modelBuilder.Entity("Mordecai.Game.Entities.SkillUsageLog", b =>
+            modelBuilder.Entity("Mordecai.Web.Data.SkillUsageLog", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -721,53 +1196,6 @@ namespace Mordecai.Web.Migrations
                     b.HasIndex("CharacterId", "UsedAt");
 
                     b.ToTable("SkillUsageLogs");
-                });
-
-            modelBuilder.Entity("Mordecai.Game.Entities.Zone", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("DifficultyLevel")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsOutdoor")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("WeatherType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Zones");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -869,6 +1297,47 @@ namespace Mordecai.Web.Migrations
                     b.Navigation("Zone");
                 });
 
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffect", b =>
+                {
+                    b.HasOne("Mordecai.Game.Entities.RoomEffectDefinition", "RoomEffectDefinition")
+                        .WithMany("ActiveEffects")
+                        .HasForeignKey("RoomEffectDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Mordecai.Game.Entities.Room", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Room");
+
+                    b.Navigation("RoomEffectDefinition");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectApplicationLog", b =>
+                {
+                    b.HasOne("Mordecai.Game.Entities.RoomEffect", "RoomEffect")
+                        .WithMany("ApplicationLogs")
+                        .HasForeignKey("RoomEffectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RoomEffect");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectImpact", b =>
+                {
+                    b.HasOne("Mordecai.Game.Entities.RoomEffectDefinition", "RoomEffectDefinition")
+                        .WithMany("Impacts")
+                        .HasForeignKey("RoomEffectDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RoomEffectDefinition");
+                });
+
             modelBuilder.Entity("Mordecai.Game.Entities.RoomExit", b =>
                 {
                     b.HasOne("Mordecai.Game.Entities.Room", "FromRoom")
@@ -893,27 +1362,41 @@ namespace Mordecai.Web.Migrations
                     b.HasOne("Mordecai.Game.Entities.SkillCategory", "Category")
                         .WithMany("Skills")
                         .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.CharacterSkill", b =>
+                {
+                    b.HasOne("Mordecai.Web.Data.SkillDefinition", "SkillDefinition")
+                        .WithMany("CharacterSkills")
+                        .HasForeignKey("SkillDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SkillDefinition");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.SkillDefinition", b =>
+                {
+                    b.HasOne("Mordecai.Web.Data.SkillCategory", "Category")
+                        .WithMany("Skills")
+                        .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("Mordecai.Game.Entities.SkillUsageLog", b =>
+            modelBuilder.Entity("Mordecai.Web.Data.SkillUsageLog", b =>
                 {
-                    b.HasOne("Mordecai.Game.Entities.Character", "Character")
-                        .WithMany()
-                        .HasForeignKey("CharacterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Mordecai.Game.Entities.SkillDefinition", "SkillDefinition")
+                    b.HasOne("Mordecai.Web.Data.SkillDefinition", "SkillDefinition")
                         .WithMany()
                         .HasForeignKey("SkillDefinitionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Character");
 
                     b.Navigation("SkillDefinition");
                 });
@@ -928,6 +1411,18 @@ namespace Mordecai.Web.Migrations
                     b.Navigation("ExitsFromHere");
 
                     b.Navigation("ExitsToHere");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffect", b =>
+                {
+                    b.Navigation("ApplicationLogs");
+                });
+
+            modelBuilder.Entity("Mordecai.Game.Entities.RoomEffectDefinition", b =>
+                {
+                    b.Navigation("ActiveEffects");
+
+                    b.Navigation("Impacts");
                 });
 
             modelBuilder.Entity("Mordecai.Game.Entities.RoomType", b =>
@@ -948,6 +1443,16 @@ namespace Mordecai.Web.Migrations
             modelBuilder.Entity("Mordecai.Game.Entities.Zone", b =>
                 {
                     b.Navigation("Rooms");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.SkillCategory", b =>
+                {
+                    b.Navigation("Skills");
+                });
+
+            modelBuilder.Entity("Mordecai.Web.Data.SkillDefinition", b =>
+                {
+                    b.Navigation("CharacterSkills");
                 });
 #pragma warning restore 612, 618
         }

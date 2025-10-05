@@ -47,15 +47,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
         try
         {
-            var connectionString = configuration.GetConnectionString("messaging") 
-                ?? throw new InvalidOperationException("RabbitMQ connection string 'messaging' not found");
-
-            var factory = new ConnectionFactory
-            {
-                Uri = new Uri(connectionString),
-                DispatchConsumersAsync = true
-            };
-
+            var factory = CreateConnectionFactory(configuration);
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
 
@@ -73,6 +65,53 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             _logger.LogError(ex, "Failed to initialize RabbitMQ Game Message Subscriber for character {CharacterId}", CharacterId);
             throw;
         }
+    }
+
+    private static ConnectionFactory CreateConnectionFactory(IConfiguration configuration)
+    {
+        // Try connection string first (for Aspire local development)
+        var connectionString = configuration.GetConnectionString("messaging");
+        
+        if (!string.IsNullOrWhiteSpace(connectionString))
+        {
+            return new ConnectionFactory
+            {
+                Uri = new Uri(connectionString),
+                DispatchConsumersAsync = true
+            };
+        }
+
+        // Fall back to individual configuration values (for Kubernetes/production)
+        // Priority: Environment variables > Configuration
+        var host = configuration["RabbitMQ:Host"] 
+            ?? configuration["RABBITMQ_HOST"] 
+            ?? "localhost";
+        
+        var port = int.Parse(configuration["RabbitMQ:Port"] 
+            ?? configuration["RABBITMQ_PORT"] 
+            ?? "5672");
+        
+        var username = configuration["RabbitMQ:Username"] 
+            ?? configuration["RABBITMQ_USERNAME"] 
+            ?? "guest";
+        
+        var password = configuration["RabbitMQ:Password"] 
+            ?? configuration["RABBITMQ_PASSWORD"] 
+            ?? "guest";
+
+        var virtualHost = configuration["RabbitMQ:VirtualHost"] 
+            ?? configuration["RABBITMQ_VIRTUALHOST"] 
+            ?? "/";
+
+        return new ConnectionFactory
+        {
+            HostName = host,
+            Port = port,
+            UserName = username,
+            Password = password,
+            VirtualHost = virtualHost,
+            DispatchConsumersAsync = true
+        };
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)

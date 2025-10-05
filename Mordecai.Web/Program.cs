@@ -11,12 +11,32 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Add services to the container.
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=mordecai.db"));
+// Get database path from configuration with environment variable override
+// Priority: DATABASE_PATH env var > DatabasePath config > ConnectionString > Default
+var databasePath = builder.Configuration["DATABASE_PATH"] 
+    ?? builder.Configuration["DatabasePath"]
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")?.Replace("Data Source=", "")
+    ?? "mordecai.db";
 
-// Register DbContext factory for room effects service
-builder.Services.AddDbContextFactory<ApplicationDbContext>();
+// Ensure absolute path for Kubernetes persistent volumes
+if (!Path.IsPathRooted(databasePath))
+{
+    databasePath = Path.GetFullPath(databasePath);
+}
+
+var connectionString = $"Data Source={databasePath}";
+builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+
+// Register ONLY the pooled DbContext factory (not AddDbContext separately)
+// This provides both IDbContextFactory and direct DbContext injection
+builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
+{
+    options.UseSqlite(connectionString);
+});
+
+// Identity needs DbContext, so we add a scoped resolver that uses the factory
+builder.Services.AddScoped<ApplicationDbContext>(sp => 
+    sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>().CreateDbContext());
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options => 
     {
@@ -90,6 +110,18 @@ app.MapDefaultEndpoints();
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    logger.LogInformation("Using database at: {DatabasePath}", databasePath);
+    
+    // Ensure directory exists for database file
+    var directory = Path.GetDirectoryName(databasePath);
+    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+    {
+        Directory.CreateDirectory(directory);
+        logger.LogInformation("Created database directory: {Directory}", directory);
+    }
+    
     context.Database.Migrate();
     
     // Seed admin data first (roles and users)

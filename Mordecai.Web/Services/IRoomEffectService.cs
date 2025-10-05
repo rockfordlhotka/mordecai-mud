@@ -1,6 +1,6 @@
 using Mordecai.Game.Entities;
 
-namespace Mordecai.Game.Services;
+namespace Mordecai.Web.Services;
 
 /// <summary>
 /// Service for managing room effects - creating, applying, and removing effects from rooms

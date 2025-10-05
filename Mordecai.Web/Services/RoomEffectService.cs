@@ -4,7 +4,7 @@ using Mordecai.Game.Entities;
 using Mordecai.Web.Data;
 using System.Text.Json;
 
-namespace Mordecai.Game.Services;
+namespace Mordecai.Web.Services;
 
 /// <summary>
 /// Service for managing room effects - creating, applying, and removing effects from rooms
@@ -336,7 +336,7 @@ public class RoomEffectService : IRoomEffectService
             .ToListAsync(cancellationToken);
     }
 
-    private async Task ApplyEffectImpactsToCharacterAsync(ApplicationDbContext context, RoomEffect effect, Character character, string applicationType, CancellationToken cancellationToken)
+    private Task ApplyEffectImpactsToCharacterAsync(ApplicationDbContext context, RoomEffect effect, Character character, string applicationType, CancellationToken cancellationToken)
     {
         var impacts = effect.RoomEffectDefinition.Impacts
             .Where(rei => rei.TargetType == "AllOccupants" || rei.TargetType == $"{applicationType}Trigger")
@@ -395,6 +395,8 @@ public class RoomEffectService : IRoomEffectService
 
             context.RoomEffectApplicationLogs.Add(applicationLog);
         }
+
+        return Task.CompletedTask;
     }
 
     private static decimal CalculateImpactValue(RoomEffectImpact impact, decimal intensity)
