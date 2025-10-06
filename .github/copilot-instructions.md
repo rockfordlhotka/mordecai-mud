@@ -10,6 +10,15 @@ This repository builds a skill-based, real-time, text MUD using .NET 9 (Blazor S
 - Aspire AppHost orchestrates services locally (RabbitMQ container, etc.)
 - OpenTelemetry for tracing/logging/metrics
 
+## Documentation
+
+Never create arbitrary documentation; always link to existing docs or RFCs.
+
+- Mordecai Specification (docs/mordecai_specification.md)
+- Quick reference (docs/quick_reference.md)
+- Database design (docs/database_design.md)
+- Kubernetes deployment (docs/kubernetes_deployment.md)
+
 ## Current Development Priorities (Early Phases)
 1. World foundation: rooms, movement, descriptions, look/examine commands, local/room chat
 2. Character system: creation, 7 core skills (Physicality, Dodge, Drive, Reasoning, Awareness, Focus, Bearing), practice-based skill progression
