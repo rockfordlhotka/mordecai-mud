@@ -10,71 +10,34 @@ namespace Mordecai.Web.Services;
 /// </summary>
 public interface ISkillService
 {
-    /// <summary>
-    /// Gets all skill categories with their skills
-    /// </summary>
     Task<List<SkillCategory>> GetSkillCategoriesAsync();
-
-    /// <summary>
-    /// Gets a character's skills with their definitions
-    /// </summary>
     Task<List<WebCharacterSkill>> GetCharacterSkillsAsync(Guid characterId);
-
-    /// <summary>
-    /// Gets a specific character skill
-    /// </summary>
     Task<WebCharacterSkill?> GetCharacterSkillAsync(Guid characterId, int skillDefinitionId);
-
-    /// <summary>
-    /// Adds starting skills to a new character
-    /// </summary>
     Task InitializeCharacterSkillsAsync(Guid characterId);
-
-    /// <summary>
-    /// Adds usage points to a skill and handles progression
-    /// </summary>
-    Task<bool> AddSkillUsageAsync(
-        Guid characterId, 
-        int skillDefinitionId, 
-        SkillUsageType usageType, 
-        int baseUsagePoints = 1,
-        string? context = null,
-        string? details = null);
-
-    /// <summary>
-    /// Learns a new skill for a character
-    /// </summary>
+    Task<bool> AddSkillUsageAsync(Guid characterId, int skillDefinitionId, SkillUsageType usageType, int baseUsagePoints = 1, string? context = null, string? details = null);
     Task<WebCharacterSkill?> LearnSkillAsync(Guid characterId, int skillDefinitionId);
-
-    /// <summary>
-    /// Gets skill usage statistics for a character
-    /// </summary>
-    Task<List<SkillUsageLog>> GetSkillUsageHistoryAsync(
-        Guid characterId, 
-        int? skillDefinitionId = null, 
-        int take = 50);
+    Task<List<SkillUsageLog>> GetSkillUsageHistoryAsync(Guid characterId, int? skillDefinitionId = null, int take = 50);
 }
 
 /// <summary>
-/// Service for managing character skills and skill progression
+/// Implementation that uses IDbContextFactory to create short-lived contexts per operation
+/// which is safe for Blazor Server concurrent callbacks.
 /// </summary>
 public class SkillService : ISkillService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly ILogger<SkillService> _logger;
 
-    public SkillService(ApplicationDbContext context, ILogger<SkillService> logger)
+    public SkillService(IDbContextFactory<ApplicationDbContext> contextFactory, ILogger<SkillService> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _logger = logger;
     }
 
-    /// <summary>
-    /// Gets all skill categories with their skills
-    /// </summary>
     public async Task<List<SkillCategory>> GetSkillCategoriesAsync()
     {
-        return await _context.SkillCategories
+        await using var ctx = _contextFactory.CreateDbContext();
+        return await ctx.SkillCategories
             .Include(sc => sc.Skills.Where(sd => sd.IsActive))
             .Where(sc => sc.IsActive)
             .OrderBy(sc => sc.DisplayOrder)
@@ -82,12 +45,10 @@ public class SkillService : ISkillService
             .ToListAsync();
     }
 
-    /// <summary>
-    /// Gets a character's skills with their definitions
-    /// </summary>
     public async Task<List<WebCharacterSkill>> GetCharacterSkillsAsync(Guid characterId)
     {
-        return await _context.CharacterSkills
+        await using var ctx = _contextFactory.CreateDbContext();
+        return await ctx.CharacterSkills
             .Include(cs => cs.SkillDefinition)
             .ThenInclude(sd => sd.Category)
             .Where(cs => cs.CharacterId == characterId)
@@ -97,132 +58,118 @@ public class SkillService : ISkillService
             .ToListAsync();
     }
 
-    /// <summary>
-    /// Gets a specific character skill
-    /// </summary>
     public async Task<WebCharacterSkill?> GetCharacterSkillAsync(Guid characterId, int skillDefinitionId)
     {
-        return await _context.CharacterSkills
+        await using var ctx = _contextFactory.CreateDbContext();
+        return await ctx.CharacterSkills
             .Include(cs => cs.SkillDefinition)
             .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
     }
 
-    /// <summary>
-    /// Adds starting skills to a new character
-    /// </summary>
     public async Task InitializeCharacterSkillsAsync(Guid characterId)
     {
-        var character = await _context.Characters.FindAsync(characterId);
-        if (character == null)
-        {
-            throw new ArgumentException("Character not found", nameof(characterId));
-        }
+        await using var ctx = _contextFactory.CreateDbContext();
+        var character = await ctx.Characters.FindAsync(characterId);
+        if (character == null) return;
 
-        var startingSkills = await _context.SkillDefinitions
-            .Where(sd => sd.IsStartingSkill && sd.IsActive)
+        var startingSkills = await ctx.SkillDefinitions
+            .Where(sd => sd.IsStartingSkill)
             .ToListAsync();
 
-        foreach (var skillDef in startingSkills)
+        foreach (var sd in startingSkills)
         {
-            // Calculate initial experience based on related attribute
-            int initialExperience = 0;
-            if (!string.IsNullOrEmpty(skillDef.RelatedAttribute))
-            {
-                int attributeValue = character.GetAttributeValue(skillDef.RelatedAttribute);
-                // Convert attribute value to equivalent experience points (attribute becomes starting level)
-                initialExperience = skillDef.CalculateExperienceRequired(attributeValue);
-            }
-
             var characterSkill = new WebCharacterSkill
             {
                 CharacterId = characterId,
-                SkillDefinitionId = skillDef.Id,
-                Experience = initialExperience,
-                Level = skillDef.CalculateCurrentLevel(initialExperience),
+                SkillDefinitionId = sd.Id,
+                Experience = 0,
+                Level = sd.CalculateCurrentLevel(0),
                 LearnedAt = DateTimeOffset.UtcNow
             };
 
-            _context.CharacterSkills.Add(characterSkill);
+            ctx.CharacterSkills.Add(characterSkill);
         }
 
-        await _context.SaveChangesAsync();
+        await ctx.SaveChangesAsync();
         _logger.LogInformation("Initialized starting skills for character {CharacterId}", characterId);
     }
 
-    /// <summary>
-    /// Adds usage points to a skill and handles progression
-    /// </summary>
-    public async Task<bool> AddSkillUsageAsync(
-        Guid characterId, 
-        int skillDefinitionId, 
-        SkillUsageType usageType, 
-        int baseUsagePoints = 1,
-        string? context = null,
-        string? details = null)
+    public async Task<bool> AddSkillUsageAsync(Guid characterId, int skillDefinitionId, SkillUsageType usageType, int baseUsagePoints = 1, string? context = null, string? details = null)
     {
-        var characterSkill = await GetCharacterSkillAsync(characterId, skillDefinitionId);
+        await using var ctx = _contextFactory.CreateDbContext();
+
+        var characterSkill = await ctx.CharacterSkills
+            .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
+
         if (characterSkill == null)
         {
-            // Character doesn't have this skill yet - learn it
-            characterSkill = await LearnSkillAsync(characterId, skillDefinitionId);
-            if (characterSkill == null)
-            {
-                return false;
-            }
+            var learned = await LearnSkillAsync(characterId, skillDefinitionId);
+            if (learned == null) return false;
+            // re-query into this context to get a tracked instance
+            characterSkill = await ctx.CharacterSkills
+                .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
+            if (characterSkill == null) return false;
         }
 
-        // Calculate final experience with multiplier
         decimal multiplier = SkillUsageLog.GetUsageMultiplier(usageType);
         int finalExperience = (int)Math.Ceiling(baseUsagePoints * multiplier);
 
-        // Add experience to the skill
         bool didAdvance = characterSkill.AddExperience(finalExperience);
 
-        _context.CharacterSkills.Update(characterSkill);
-        await _context.SaveChangesAsync();
+        ctx.CharacterSkills.Update(characterSkill);
+        await ctx.SaveChangesAsync();
 
         if (didAdvance)
         {
-            _logger.LogInformation(
-                "Skill advanced: Character {CharacterId} skill {SkillId} to level {NewLevel}",
-                characterId, skillDefinitionId, characterSkill.Level);
+            _logger.LogInformation("Skill advanced: Character {CharacterId} skill {SkillId} to level {NewLevel}", characterId, skillDefinitionId, characterSkill.Level);
+        }
+
+        try
+        {
+            ctx.SkillUsageLogs.Add(new SkillUsageLog
+            {
+                CharacterId = characterId,
+                SkillDefinitionId = skillDefinitionId,
+                UsedAt = DateTimeOffset.UtcNow,
+                UsageType = usageType,
+                BaseUsagePoints = baseUsagePoints,
+                UsageMultiplier = multiplier,
+                FinalUsagePoints = finalExperience,
+                SkillLevelBefore = characterSkill.Level - (didAdvance ? 1 : 0),
+                SkillLevelAfter = characterSkill.Level,
+                DidAdvance = didAdvance,
+                Context = context,
+                Details = details
+            });
+            await ctx.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to write skill usage log for character {CharacterId}", characterId);
         }
 
         return didAdvance;
     }
 
-    /// <summary>
-    /// Learns a new skill for a character
-    /// </summary>
     public async Task<WebCharacterSkill?> LearnSkillAsync(Guid characterId, int skillDefinitionId)
     {
-        var skillDef = await _context.SkillDefinitions.FindAsync(skillDefinitionId);
-        if (skillDef == null || !skillDef.IsActive)
-        {
-            return null;
-        }
+        await using var ctx = _contextFactory.CreateDbContext();
 
-        var character = await _context.Characters.FindAsync(characterId);
-        if (character == null)
-        {
-            return null;
-        }
+        var skillDef = await ctx.SkillDefinitions.FindAsync(skillDefinitionId);
+        if (skillDef == null || !skillDef.IsActive) return null;
 
-        // Check if character already has this skill
-        var existingSkill = await _context.CharacterSkills
+        var character = await ctx.Characters.FindAsync(characterId);
+        if (character == null) return null;
+
+        var existingSkill = await ctx.CharacterSkills
             .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
-        
-        if (existingSkill != null)
-        {
-            return existingSkill;
-        }
 
-        // Calculate initial experience based on related attribute
+        if (existingSkill != null) return existingSkill;
+
         int initialExperience = 0;
         if (!string.IsNullOrEmpty(skillDef.RelatedAttribute))
         {
             int attributeValue = character.GetAttributeValue(skillDef.RelatedAttribute);
-            // Give some initial progress based on attribute (but don't start at full attribute level)
             initialExperience = Math.Max(0, skillDef.CalculateExperienceRequired(Math.Max(0, attributeValue - 5)));
         }
 
@@ -235,24 +182,18 @@ public class SkillService : ISkillService
             LearnedAt = DateTimeOffset.UtcNow
         };
 
-        _context.CharacterSkills.Add(characterSkill);
-        await _context.SaveChangesAsync();
+        ctx.CharacterSkills.Add(characterSkill);
+        await ctx.SaveChangesAsync();
 
-        _logger.LogInformation("Character {CharacterId} learned skill {SkillId} at level {Level}", 
-            characterId, skillDefinitionId, characterSkill.Level);
+        _logger.LogInformation("Character {CharacterId} learned skill {SkillId} at level {Level}", characterId, skillDefinitionId, characterSkill.Level);
 
         return characterSkill;
     }
 
-    /// <summary>
-    /// Gets skill usage statistics for a character
-    /// </summary>
-    public async Task<List<SkillUsageLog>> GetSkillUsageHistoryAsync(
-        Guid characterId, 
-        int? skillDefinitionId = null, 
-        int take = 50)
+    public async Task<List<SkillUsageLog>> GetSkillUsageHistoryAsync(Guid characterId, int? skillDefinitionId = null, int take = 50)
     {
-        var query = _context.SkillUsageLogs
+        await using var ctx = _contextFactory.CreateDbContext();
+        var query = ctx.SkillUsageLogs
             .Include(sul => sul.SkillDefinition)
             .Where(sul => sul.CharacterId == characterId);
 
@@ -270,16 +211,16 @@ public class SkillService : ISkillService
     private int CalculateCurrentLevel(SkillDefinition skillDef, int experience)
     {
         if (experience <= 0) return 0;
-        
+
         int level = 0;
         int totalNeeded = 0;
-        
+
         while (totalNeeded < experience)
         {
             level++;
             totalNeeded = skillDef.CalculateExperienceRequired(level);
         }
-        
-        return level - 1; // Return the completed level
+
+        return level - 1;
     }
 }

@@ -20,16 +20,16 @@ public interface IWorldService
 
 public class WorldService : IWorldService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly ILogger<WorldService> _logger;
     private readonly IGameConfigurationService _configService;
 
     public WorldService(
-        ApplicationDbContext context, 
+        IDbContextFactory<ApplicationDbContext> contextFactory,
         ILogger<WorldService> logger,
         IGameConfigurationService configService)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _logger = logger;
         _configService = configService;
     }
@@ -42,7 +42,8 @@ public class WorldService : IWorldService
             var configuredRoomId = await _configService.GetStartingRoomIdAsync();
             if (configuredRoomId.HasValue)
             {
-                var configuredRoom = await _context.Rooms
+                await using var ctx = _contextFactory.CreateDbContext();
+                var configuredRoom = await ctx.Rooms
                     .Include(r => r.Zone)
                     .Include(r => r.RoomType)
                     .FirstOrDefaultAsync(r => r.Id == configuredRoomId.Value && r.IsActive && r.Zone.IsActive);
@@ -59,7 +60,8 @@ public class WorldService : IWorldService
             }
 
             // Fallback 1: Look for a room at coordinates 0,0,0 in a zone named "Tutorial" or similar
-            var startingRoom = await _context.Rooms
+            await using var ctx2 = _contextFactory.CreateDbContext();
+            var startingRoom = await ctx2.Rooms
                 .Include(r => r.Zone)
                 .Include(r => r.RoomType)
                 .Where(r => r.IsActive && r.Zone.IsActive)
@@ -73,7 +75,7 @@ public class WorldService : IWorldService
             if (startingRoom == null)
             {
                 // Fallback 2: find any room at 0,0,0
-                startingRoom = await _context.Rooms
+                startingRoom = await ctx2.Rooms
                     .Include(r => r.Zone)
                     .Include(r => r.RoomType)
                     .Where(r => r.IsActive && r.Zone.IsActive)
@@ -84,7 +86,7 @@ public class WorldService : IWorldService
             if (startingRoom == null)
             {
                 // Ultimate fallback: find any active room
-                startingRoom = await _context.Rooms
+                startingRoom = await ctx2.Rooms
                     .Include(r => r.Zone)
                     .Include(r => r.RoomType)
                     .Where(r => r.IsActive && r.Zone.IsActive)
@@ -114,14 +116,23 @@ public class WorldService : IWorldService
     {
         try
         {
-            return await _context.Rooms
-                .Include(r => r.Zone)
-                .Include(r => r.RoomType)
-                .Include(r => r.ExitsFromHere.Where(e => e.IsActive))
-                    .ThenInclude(e => e.ToRoom)
-                        .ThenInclude(r => r.Zone)
-                .Where(r => r.Id == roomId && r.IsActive && r.Zone.IsActive)
-                .FirstOrDefaultAsync();
+            try
+            {
+                await using var ctx = _contextFactory.CreateDbContext();
+                return await ctx.Rooms
+                    .Include(r => r.Zone)
+                    .Include(r => r.RoomType)
+                    .Include(r => r.ExitsFromHere.Where(e => e.IsActive))
+                        .ThenInclude(e => e.ToRoom)
+                            .ThenInclude(r => r.Zone)
+                    .Where(r => r.Id == roomId && r.IsActive && r.Zone.IsActive)
+                    .FirstOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting room {RoomId}", roomId);
+                return null;
+            }
         }
         catch (Exception ex)
         {
@@ -134,7 +145,8 @@ public class WorldService : IWorldService
     {
         try
         {
-            var query = _context.Rooms
+            await using var ctx = _contextFactory.CreateDbContext();
+            var query = ctx.Rooms
                 .Include(r => r.Zone)
                 .Include(r => r.RoomType)
                 .Where(r => r.IsActive && r.Zone.IsActive)
@@ -159,7 +171,10 @@ public class WorldService : IWorldService
     {
         try
         {
-            return await _context.RoomExits
+        try
+        {
+            await using var ctx = _contextFactory.CreateDbContext();
+            return await ctx.RoomExits
                 .Include(e => e.ToRoom)
                     .ThenInclude(r => r.Zone)
                 .Include(e => e.ToRoom)
@@ -170,6 +185,12 @@ public class WorldService : IWorldService
                            e.ToRoom.IsActive && 
                            e.ToRoom.Zone.IsActive)
                 .FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting exit {Direction} from room {RoomId}", direction, fromRoomId);
+            return null;
+        }
         }
         catch (Exception ex)
         {
@@ -247,15 +268,24 @@ public class WorldService : IWorldService
     {
         try
         {
-            return await _context.RoomExits
-                .Include(e => e.ToRoom)
-                    .ThenInclude(r => r.Zone)
-                .Where(e => e.FromRoomId == roomId && 
-                           e.IsActive && 
-                           e.ToRoom.IsActive && 
-                           e.ToRoom.Zone.IsActive)
-                .OrderBy(e => e.Direction)
-                .ToListAsync();
+            try
+            {
+                await using var ctx = _contextFactory.CreateDbContext();
+                return await ctx.RoomExits
+                    .Include(e => e.ToRoom)
+                        .ThenInclude(r => r.Zone)
+                    .Where(e => e.FromRoomId == roomId && 
+                               e.IsActive && 
+                               e.ToRoom.IsActive && 
+                               e.ToRoom.Zone.IsActive)
+                    .OrderBy(e => e.Direction)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting exits from room {RoomId}", roomId);
+                return Array.Empty<RoomExit>();
+            }
         }
         catch (Exception ex)
         {
@@ -268,16 +298,25 @@ public class WorldService : IWorldService
     {
         try
         {
-            return await _context.RoomExits
-                .Include(e => e.ToRoom)
-                    .ThenInclude(r => r.Zone)
-                .Where(e => e.FromRoomId == roomId && 
-                           e.IsHidden && 
-                           e.IsActive && 
-                           e.ToRoom.IsActive && 
-                           e.ToRoom.Zone.IsActive)
-                .OrderBy(e => e.Direction)
-                .ToListAsync();
+            try
+            {
+                await using var ctx = _contextFactory.CreateDbContext();
+                return await ctx.RoomExits
+                    .Include(e => e.ToRoom)
+                        .ThenInclude(r => r.Zone)
+                    .Where(e => e.FromRoomId == roomId && 
+                               e.IsHidden && 
+                               e.IsActive && 
+                               e.ToRoom.IsActive && 
+                               e.ToRoom.Zone.IsActive)
+                    .OrderBy(e => e.Direction)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting hidden exits from room {RoomId}", roomId);
+                return Array.Empty<RoomExit>();
+            }
         }
         catch (Exception ex)
         {
@@ -304,7 +343,8 @@ public class WorldService : IWorldService
     {
         try
         {
-            return await _context.Characters
+            await using var ctx = _contextFactory.CreateDbContext();
+            return await ctx.Characters
                 .Where(c => c.CurrentRoomId.HasValue)
                 .Select(c => c.CurrentRoomId!.Value)
                 .Distinct()

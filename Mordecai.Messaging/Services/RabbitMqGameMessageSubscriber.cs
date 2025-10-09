@@ -19,8 +19,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
     private readonly string _exchangeName;
     private string _queueName = string.Empty;
     private readonly JsonSerializerOptions _jsonOptions;
-    private EventingBasicConsumer? _consumer;
-    private EventHandler<BasicDeliverEventArgs>? _consumerHandler;
+    private AsyncEventingBasicConsumer? _consumer;
     private bool _disposed;
     private bool _started;
 
@@ -133,46 +132,14 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             BindToRoutingKeys();
 
 
-            // Set up consumer using EventingBasicConsumer and offload handling to the thread pool
-            _consumer = new EventingBasicConsumer(_channel);
-            _consumerHandler = (model, ea) =>
-            {
-                try
-                {
-                    var messageType = ea.BasicProperties?.Type;
-                    var bodyArray = ea.Body.ToArray();
-                    var messageBody = Encoding.UTF8.GetString(bodyArray);
+            // Set up async consumer so it works with DispatchConsumersAsync = true on the connection factory
+            _consumer = new AsyncEventingBasicConsumer(_channel);
 
-                    var gameMessage = DeserializeMessage(messageType, messageBody);
-                    if (gameMessage != null && ShouldProcessMessage(gameMessage))
-                    {
-                        if (MessageReceived != null)
-                        {
-                            // Offload to thread-pool so consumer thread isn't blocked
-                            _ = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    await MessageReceived(gameMessage).ConfigureAwait(false);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Error in MessageReceived handler for character {CharacterId}", CharacterId);
-                                }
-                            });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing inbound message for character {CharacterId}", CharacterId);
-                }
-            };
+            // Wire the async handler which will deserialize, filter and invoke the MessageReceived callback
+            _consumer.Received += OnMessageReceivedAsync;
 
-            _consumer.Received += _consumerHandler;
-
-            // Use autoAck=true to simplify consumer handling (matching the working example)
-            _channel.BasicConsume(_queueName, autoAck: true, consumer: _consumer);
+            // Use manual ack=false so the async handler can ack/nack messages after processing
+            _channel.BasicConsume(_queueName, autoAck: false, consumer: _consumer);
 
             _started = true;
             _logger.LogInformation("Started message subscription for character {CharacterId} in room {RoomId}", 
@@ -195,9 +162,9 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
         try
         {
-            if (_consumer != null && _consumerHandler != null)
+            if (_consumer != null)
             {
-                _consumer.Received -= _consumerHandler;
+                _consumer.Received -= OnMessageReceivedAsync;
             }
 
             _started = false;
@@ -410,9 +377,9 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             if (_started)
             {
                 _started = false;
-                if (_consumer != null && _consumerHandler != null)
+                if (_consumer != null)
                 {
-                    _consumer.Received -= _consumerHandler;
+                    _consumer.Received -= OnMessageReceivedAsync;
                 }
             }
             

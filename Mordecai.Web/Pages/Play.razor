@@ -18,6 +18,7 @@
 @inject IWorldService WorldService
 @inject SkillService SkillService
 @inject IJSRuntime JSRuntime
+@inject ILoggerFactory LoggerFactory
 @implements IDisposable
 
 <PageTitle>Play Mordecai MUD</PageTitle>
@@ -218,7 +219,6 @@
     private int? currentRoomId = null;
     private Room? currentRoom = null;
     private bool isSubscribed = false;
-    private bool shouldFocusInput = false;
 
     // Character vital stats - now loads from actual character data
     private int currentFat = 0;
@@ -243,8 +243,12 @@
         public string EffectType { get; set; } = string.Empty;
     }
 
+    private ILogger? _logger;
+
     protected override async Task OnInitializedAsync()
     {
+        _logger ??= LoggerFactory?.CreateLogger("Play.razor");
+        _logger?.LogDebug("Play.OnInitializedAsync start - characterId={CharacterId}", characterId);
         // If no character ID provided, redirect to character selection
         if (characterId == null || characterId == Guid.Empty)
         {
@@ -292,14 +296,17 @@
                 
                 // Get character's current room (or starting room if none set)
                 currentRoomId = await CharacterService.GetCharacterCurrentRoomAsync(characterId.Value, currentUserId);
-                
+                _logger?.LogDebug("Play: CharacterService.GetCharacterCurrentRoomAsync returned {RoomId}", currentRoomId);
+
                 if (currentRoomId.HasValue)
                 {
                     currentRoom = await WorldService.GetRoomByIdAsync(currentRoomId.Value);
+                    _logger?.LogDebug("Play: WorldService.GetRoomByIdAsync({RoomId}) returned {HasRoom}", currentRoomId, currentRoom != null);
                     if (currentRoom == null)
                     {
                         // Room doesn't exist, fall back to starting room
                         currentRoom = await WorldService.GetStartingRoomAsync();
+                        _logger?.LogDebug("Play: WorldService.GetStartingRoomAsync returned {StartingRoomId} (fallback)", currentRoom?.Id);
                         currentRoomId = currentRoom?.Id;
                     }
                 }
@@ -307,6 +314,7 @@
                 {
                     // No current room, use starting room
                     currentRoom = await WorldService.GetStartingRoomAsync();
+                    _logger?.LogDebug("Play: WorldService.GetStartingRoomAsync returned {StartingRoomId} (no currentRoomId)", currentRoom?.Id);
                     currentRoomId = currentRoom?.Id;
                 }
 
@@ -315,6 +323,21 @@
                     AddMessage("Error: No starting room found! The world may not be properly configured.", "text-danger");
                     AddMessage("Please contact an administrator.", "text-warning");
                     return;
+                }
+                
+                // At this point currentRoom/currentRoomId should be resolved. Render welcome + description and subscribe.
+                if (currentRoom != null)
+                {
+                    AddMessage($"Welcome to {currentRoom.Zone.Name}!", "text-success");
+                    AddMessage("Type 'look' to examine your surroundings.", "text-muted");
+
+                    var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
+                    AddMessage(roomDescription, "text-info");
+                }
+                else
+                {
+                    AddMessage("Welcome to Mordecai MUD!", "text-success");
+                    AddMessage("Error: Unable to determine your location.", "text-danger");
                 }
             }
             else
@@ -331,7 +354,19 @@
             MessageBroadcastService.MessageReceived += OnMessageReceived;
             await MessageBroadcastService.RegisterCharacterListenerAsync(characterId.Value, currentRoomId);
             isSubscribed = true;
+            _logger?.LogDebug("Play: Registered message listener for character {CharacterId} in room {RoomId}", characterId, currentRoomId);
         }
+
+        _logger?.LogDebug("Play.OnInitializedAsync end - characterId={CharacterId} roomId={RoomId}", characterId, currentRoomId);
+
+        // Announce player joining
+        if (characterId.HasValue && currentRoomId.HasValue)
+        {
+            var joinMessage = new PlayerJoined(characterId.Value, characterName, currentRoomId.Value);
+            await MessagePublisher.PublishAsync(joinMessage);
+        }
+
+        StateHasChanged();
     }
 
     private async Task LoadCharacterVitals()
@@ -345,7 +380,7 @@
         }
 
         // Calculate max health values from character's actual attributes
-        // FAT = (Drive × 2) - 5
+        // FAT = (Drive ï¿½ 2) - 5
         maxFat = loadedCharacter.MaxFatigue;
         
         // VIT = (Physicality + Drive) - 5  
@@ -370,44 +405,7 @@
         await Task.CompletedTask;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            // Focus the input on first render
-            await commandInput.FocusAsync();
-
-            if (currentRoom != null)
-            {
-                AddMessage($"Welcome to {currentRoom.Zone.Name}!", "text-success");
-                AddMessage("Type 'look' to examine your surroundings.", "text-muted");
-                
-                // Show initial room description
-                var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
-                AddMessage(roomDescription, "text-info");
-            }
-            else
-            {
-                AddMessage("Welcome to Mordecai MUD!", "text-success");
-                AddMessage("Error: Unable to determine your location.", "text-danger");
-            }
-            
-            // Announce player joining
-            if (characterId.HasValue && currentRoomId.HasValue)
-            {
-                var joinMessage = new PlayerJoined(characterId.Value, characterName, currentRoomId.Value);
-                await MessagePublisher.PublishAsync(joinMessage);
-            }
-            
-            StateHasChanged();
-        }
-        else if (shouldFocusInput)
-        {
-            // Only restore focus when explicitly requested (e.g., after sending command)
-            await commandInput.FocusAsync();
-            shouldFocusInput = false;
-        }
-    }
+    // We avoid OnAfterRenderAsync for room resolution; rely on data-binding and StateHasChanged in OnInitializedAsync.
 
     private void OnMessageReceived(Guid targetCharacterId, string message)
     {
@@ -486,9 +484,8 @@
         currentCommand = string.Empty;
         isProcessing = false;
         
-        // Request focus restoration after processing
-        shouldFocusInput = true;
-        StateHasChanged();
+    // Request focus restoration after processing
+    StateHasChanged();
     }
 
     private void ExitGame()

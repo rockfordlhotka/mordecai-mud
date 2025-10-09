@@ -16,18 +16,18 @@ public interface ICharacterService
 
 public class CharacterService : ICharacterService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly IWorldService _worldService;
     private readonly SkillService _skillService;
     private readonly ILogger<CharacterService> _logger;
 
     public CharacterService(
-        ApplicationDbContext context, 
+        IDbContextFactory<ApplicationDbContext> contextFactory,
         IWorldService worldService,
         SkillService skillService,
         ILogger<CharacterService> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _worldService = worldService;
         _skillService = skillService;
         _logger = logger;
@@ -37,7 +37,8 @@ public class CharacterService : ICharacterService
     {
         try
         {
-            return await _context.Characters
+            await using var context = _contextFactory.CreateDbContext();
+            return await context.Characters
                 .Where(c => c.Id == characterId && c.UserId == userId)
                 .FirstOrDefaultAsync();
         }
@@ -99,7 +100,8 @@ public class CharacterService : ICharacterService
     {
         try
         {
-            return await _context.Characters
+            await using var context = _contextFactory.CreateDbContext();
+            return await context.Characters
                 .AnyAsync(c => c.Id == characterId && c.UserId == userId);
         }
         catch (Exception ex)
@@ -124,7 +126,8 @@ public class CharacterService : ICharacterService
             }
 
             // Check if character already has skills
-            var existingSkillsCount = await _context.CharacterSkills
+            await using var context = _contextFactory.CreateDbContext();
+            var existingSkillsCount = await context.CharacterSkills
                 .Where(cs => cs.CharacterId == characterId)
                 .CountAsync();
 
@@ -153,7 +156,8 @@ public class CharacterService : ICharacterService
     {
         try
         {
-            var character = await _context.Characters
+            await using var context = _contextFactory.CreateDbContext();
+            var character = await context.Characters
                 .Where(c => c.Id == characterId && c.UserId == userId)
                 .FirstOrDefaultAsync();
 
@@ -165,18 +169,19 @@ public class CharacterService : ICharacterService
             }
 
             // Start a transaction to ensure all related data is deleted consistently
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            await using var ctx = _contextFactory.CreateDbContext();
+            using var transaction = await ctx.Database.BeginTransactionAsync();
             
             try
             {
                 // Delete related character skills first (foreign key constraint)
-                var characterSkills = await _context.CharacterSkills
+                var characterSkills = await ctx.CharacterSkills
                     .Where(cs => cs.CharacterId == characterId)
                     .ToListAsync();
                 
                 if (characterSkills.Any())
                 {
-                    _context.CharacterSkills.RemoveRange(characterSkills);
+                    ctx.CharacterSkills.RemoveRange(characterSkills);
                     _logger.LogInformation("Deleting {Count} character skills for character {CharacterId}", 
                         characterSkills.Count, characterId);
                 }
@@ -190,10 +195,10 @@ public class CharacterService : ICharacterService
                 // - etc.
 
                 // Delete the character itself
-                _context.Characters.Remove(character);
+                ctx.Characters.Remove(character);
                 
                 // Save all changes
-                await _context.SaveChangesAsync();
+                await ctx.SaveChangesAsync();
                 await transaction.CommitAsync();
                 
                 _logger.LogInformation("Successfully deleted character {CharacterName} ({CharacterId}) for user {UserId}", 

@@ -15,14 +15,14 @@ public interface IGameConfigurationService
 
 public class GameConfigurationService : IGameConfigurationService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly ILogger<GameConfigurationService> _logger;
 
     public const string StartingRoomKey = "Game.StartingRoomId";
 
-    public GameConfigurationService(ApplicationDbContext context, ILogger<GameConfigurationService> logger)
+    public GameConfigurationService(IDbContextFactory<ApplicationDbContext> contextFactory, ILogger<GameConfigurationService> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _logger = logger;
     }
 
@@ -30,7 +30,9 @@ public class GameConfigurationService : IGameConfigurationService
     {
         try
         {
-            var config = await _context.GameConfigurations
+            await using var ctx = _contextFactory.CreateDbContext();
+            var config = await ctx.GameConfigurations
+                .AsNoTracking()
                 .FirstOrDefaultAsync(gc => gc.Key == key);
 
             return config?.Value;
@@ -63,7 +65,8 @@ public class GameConfigurationService : IGameConfigurationService
     {
         try
         {
-            var config = await _context.GameConfigurations
+            await using var ctx = _contextFactory.CreateDbContext();
+            var config = await ctx.GameConfigurations
                 .FirstOrDefaultAsync(gc => gc.Key == key);
 
             if (config == null)
@@ -76,7 +79,7 @@ public class GameConfigurationService : IGameConfigurationService
                     UpdatedAt = DateTimeOffset.UtcNow,
                     UpdatedBy = updatedBy
                 };
-                _context.GameConfigurations.Add(config);
+                ctx.GameConfigurations.Add(config);
             }
             else
             {
@@ -86,7 +89,7 @@ public class GameConfigurationService : IGameConfigurationService
                 config.UpdatedBy = updatedBy;
             }
 
-            await _context.SaveChangesAsync();
+            await ctx.SaveChangesAsync();
             _logger.LogInformation("Configuration {Key} set to {Value} by {UpdatedBy}", key, value, updatedBy);
         }
         catch (Exception ex)
@@ -98,7 +101,7 @@ public class GameConfigurationService : IGameConfigurationService
 
     public async Task<int?> GetStartingRoomIdAsync()
     {
-        return await GetConfigurationAsIntAsync(StartingRoomKey);
+    return await GetConfigurationAsIntAsync(StartingRoomKey);
     }
 
     public async Task SetStartingRoomIdAsync(int roomId, string updatedBy)
