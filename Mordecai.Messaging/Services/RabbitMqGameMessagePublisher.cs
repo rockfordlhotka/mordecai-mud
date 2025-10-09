@@ -13,8 +13,8 @@ namespace Mordecai.Messaging.Services;
 public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDisposable
 {
     private readonly ILogger<RabbitMqGameMessagePublisher> _logger;
-    private readonly IConnection _connection;
-    private readonly IModel _channel;
+    private readonly IConnection? _connection;
+    private readonly IModel? _channel;
     private readonly string _exchangeName;
     private readonly JsonSerializerOptions _jsonOptions;
     private bool _disposed;
@@ -25,7 +25,7 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
     {
         _logger = logger;
         _exchangeName = "mordecai.game.events";
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -35,17 +35,27 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
         try
         {
             var factory = CreateConnectionFactory(configuration);
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
 
-            // Declare the exchange for game events (topic exchange for routing)
-            _channel.ExchangeDeclare(
-                exchange: _exchangeName,
-                type: ExchangeType.Topic,
-                durable: true,
-                autoDelete: false);
+            // Try to create connection, but gracefully handle failures
+            try
+            {
+                _connection = factory.CreateConnection();
+                _channel = _connection.CreateModel();
 
-            _logger.LogInformation("RabbitMQ Game Message Publisher initialized successfully");
+                // Declare the exchange for game events (topic exchange for routing)
+                _channel.ExchangeDeclare(
+                    exchange: _exchangeName,
+                    type: ExchangeType.Topic,
+                    durable: true,
+                    autoDelete: false);
+
+                _logger.LogInformation("RabbitMQ Game Message Publisher initialized successfully");
+            }
+            catch (Exception rabbitEx)
+            {
+                _logger.LogWarning(rabbitEx, "Could not connect to RabbitMQ. Publisher will operate in offline mode.");
+                // Don't rethrow - allow the service to start without RabbitMQ for development
+            }
         }
         catch (Exception ex)
         {
@@ -56,26 +66,23 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
 
     private static ConnectionFactory CreateConnectionFactory(IConfiguration configuration)
     {
-        // Cloud-native configuration approach
-        // Priority: Environment variables > Configuration (appsettings.json or User Secrets)
-        
         var host = configuration["RABBITMQ_HOST"] 
             ?? configuration["RabbitMQ:Host"] 
-            ?? throw new InvalidOperationException("RabbitMQ host not configured. Set RABBITMQ_HOST environment variable or RabbitMQ:Host in configuration.");
-        
+            ?? "localhost";
+
         var portString = configuration["RABBITMQ_PORT"] ?? configuration["RabbitMQ:Port"] ?? "5672";
         if (!int.TryParse(portString, out var port))
         {
             port = 5672;
         }
-        
+
         var username = configuration["RABBITMQ_USERNAME"] 
             ?? configuration["RabbitMQ:Username"] 
-            ?? throw new InvalidOperationException("RabbitMQ username not configured. Set RABBITMQ_USERNAME environment variable or RabbitMQ:Username in configuration.");
-        
+            ?? "guest";
+
         var password = configuration["RABBITMQ_PASSWORD"] 
             ?? configuration["RabbitMQ:Password"] 
-            ?? throw new InvalidOperationException("RabbitMQ password not configured. Set RABBITMQ_PASSWORD environment variable or RabbitMQ:Password in User Secrets.");
+            ?? "guest";
 
         var virtualHost = configuration["RABBITMQ_VIRTUALHOST"] 
             ?? configuration["RabbitMQ:VirtualHost"] 
@@ -88,7 +95,10 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
             UserName = username,
             Password = password,
             VirtualHost = virtualHost,
-            DispatchConsumersAsync = true
+            DispatchConsumersAsync = true,
+            RequestedHeartbeat = TimeSpan.FromSeconds(60),
+            NetworkRecoveryInterval = TimeSpan.FromSeconds(10),
+            AutomaticRecoveryEnabled = true
         };
     }
 
@@ -96,6 +106,13 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(RabbitMqGameMessagePublisher));
+
+        // If RabbitMQ is not available, log and continue
+        if (_connection == null || !_connection.IsOpen || _channel == null || !_channel.IsOpen)
+        {
+            _logger.LogWarning("RabbitMQ connection not available. Message {MessageType} will not be published.", typeof(T).Name);
+            return;
+        }
 
         try
         {
@@ -117,13 +134,12 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
             _logger.LogDebug("Published message {MessageType} with routing key {RoutingKey}", 
                 typeof(T).Name, routingKey);
 
-            // RabbitMQ.Client operations are sync, but we add a Task.Yield to be properly async
             await Task.Yield();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish message {MessageType}", typeof(T).Name);
-            throw;
+            // Don't rethrow - let the application continue even if messaging fails
         }
     }
 
@@ -134,7 +150,6 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
 
         try
         {
-            // Process all messages in the batch
             foreach (var message in messages)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -144,16 +159,13 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to publish message batch");
-            throw;
+            // Don't rethrow - let the application continue
         }
     }
 
     private static string GetRoutingKey<T>(T message) where T : GameMessage
     {
         var messageType = typeof(T).Name.ToLowerInvariant();
-        
-        // Create routing keys for topic-based routing
-        // Format: {category}.{type}.{room_id}
         var category = GetMessageCategory(message);
         var roomPart = message.RoomId?.ToString() ?? "global";
         

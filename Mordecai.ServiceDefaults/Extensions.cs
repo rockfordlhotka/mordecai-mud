@@ -129,25 +129,7 @@ public static class Extensions
         var rabbitPassword = builder.Configuration["RabbitMQ:Password"] ?? builder.Configuration["RABBITMQ_PASSWORD"] ?? "guest";
         var rabbitVHost = builder.Configuration["RabbitMQ:VirtualHost"] ?? builder.Configuration["RABBITMQ_VHOST"] ?? "/";
 
-        if (!string.IsNullOrEmpty(rabbitHost))
-        {
-            healthChecks.AddRabbitMQ(
-                sp => 
-                {
-                    var factory = new RabbitMQ.Client.ConnectionFactory
-                    {
-                        HostName = rabbitHost,
-                        Port = int.Parse(rabbitPort),
-                        UserName = rabbitUser,
-                        Password = rabbitPassword,
-                        VirtualHost = rabbitVHost
-                    };
-                    return factory.CreateConnectionAsync().GetAwaiter().GetResult();
-                },
-                name: "rabbitmq",
-                failureStatus: HealthStatus.Degraded,
-                tags: ["ready", "messaging", "rabbitmq"]);
-        }
+        // RabbitMQ health check removed to maintain compatibility with RabbitMQ.Client v6.2.1
 
         return builder;
     }

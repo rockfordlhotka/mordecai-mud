@@ -16,7 +16,7 @@
             <a href="/Identity/Account/Register" class="btn btn-success btn-lg me-3">
                 <span class="oi oi-person me-2"></span>Create Account
             </a>
-            <a href="/Identity/Account/Login" class="btn btn-outline-primary btn-lg">
+            <a href="/Identity/Account/Login" class="btn btn-light btn-lg text-primary shadow-sm">
                 <span class="oi oi-account-login me-2"></span>Login
             </a>
         </NotAuthorized>
@@ -109,5 +109,17 @@
     
     .card:hover {
         transform: translateY(-5px);
+    }
+
+    /* Improve button contrast on the dark hero gradient */
+    .hero-section .btn-light {
+        font-weight: 600;
+        min-width: 140px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+    }
+
+    .hero-section .btn-light:hover {
+        filter: brightness(0.95);
+        transform: translateY(-1px);
     }
 </style>

@@ -14,12 +14,13 @@ namespace Mordecai.Messaging.Services;
 public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 {
     private readonly ILogger<RabbitMqGameMessageSubscriber> _logger;
-    private readonly IConnection _connection;
-    private readonly IModel _channel;
+    private readonly IConnection? _connection;
+    private IModel? _channel;
     private readonly string _exchangeName;
-    private readonly string _queueName;
+    private string _queueName = string.Empty;
     private readonly JsonSerializerOptions _jsonOptions;
-    private AsyncEventingBasicConsumer? _consumer;
+    private EventingBasicConsumer? _consumer;
+    private EventHandler<BasicDeliverEventArgs>? _consumerHandler;
     private bool _disposed;
     private bool _started;
 
@@ -39,7 +40,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         _logger = logger;
         _exchangeName = "mordecai.game.events";
         _queueName = $"character.{characterId}";
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -48,47 +49,52 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         try
         {
             var factory = CreateConnectionFactory(configuration);
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
 
-            // Create character-specific queue (temporary, auto-delete when character disconnects)
-            _channel.QueueDeclare(
-                queue: _queueName,
-                durable: false,
-                exclusive: false,
-                autoDelete: true);
+            // Try to create connection, but gracefully handle failures
+            try
+            {
+                _connection = factory.CreateConnection();
+                _channel = _connection.CreateModel();
 
-            _logger.LogDebug("Created message subscriber for character {CharacterId}", CharacterId);
+                // Ensure the exchange exists (topic exchange)
+                _channel.ExchangeDeclare(_exchangeName, ExchangeType.Topic, durable: true);
+
+                // Let the server create a unique, temporary queue for this subscriber
+                _queueName = _channel.QueueDeclare().QueueName;
+
+                _logger.LogDebug("Created message subscriber for character {CharacterId} with queue {QueueName}", CharacterId, _queueName);
+            }
+            catch (Exception rabbitEx)
+            {
+                _logger.LogWarning(rabbitEx, "Could not connect to RabbitMQ for character {CharacterId}. Subscriber will operate in offline mode.", CharacterId);
+                // Don't rethrow - allow the service to start without RabbitMQ for development
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to initialize RabbitMQ Game Message Subscriber for character {CharacterId}", CharacterId);
             throw;
         }
-    }
-
+        }
     private static ConnectionFactory CreateConnectionFactory(IConfiguration configuration)
     {
-        // Cloud-native configuration approach
-        // Priority: Environment variables > Configuration (appsettings.json or User Secrets)
-        
         var host = configuration["RABBITMQ_HOST"] 
             ?? configuration["RabbitMQ:Host"] 
-            ?? throw new InvalidOperationException("RabbitMQ host not configured. Set RABBITMQ_HOST environment variable or RabbitMQ:Host in configuration.");
-        
+            ?? "localhost";
+
         var portString = configuration["RABBITMQ_PORT"] ?? configuration["RabbitMQ:Port"] ?? "5672";
         if (!int.TryParse(portString, out var port))
         {
             port = 5672;
         }
-        
+
         var username = configuration["RABBITMQ_USERNAME"] 
             ?? configuration["RabbitMQ:Username"] 
-            ?? throw new InvalidOperationException("RabbitMQ username not configured. Set RABBITMQ_USERNAME environment variable or RabbitMQ:Username in configuration.");
-        
+            ?? "guest";
+
         var password = configuration["RABBITMQ_PASSWORD"] 
             ?? configuration["RabbitMQ:Password"] 
-            ?? throw new InvalidOperationException("RabbitMQ password not configured. Set RABBITMQ_PASSWORD environment variable or RabbitMQ:Password in User Secrets.");
+            ?? "guest";
 
         var virtualHost = configuration["RABBITMQ_VIRTUALHOST"] 
             ?? configuration["RabbitMQ:VirtualHost"] 
@@ -101,28 +107,72 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             UserName = username,
             Password = password,
             VirtualHost = virtualHost,
-            DispatchConsumersAsync = true
+            DispatchConsumersAsync = true,
+            RequestedHeartbeat = TimeSpan.FromSeconds(60),
+            NetworkRecoveryInterval = TimeSpan.FromSeconds(10),
+            AutomaticRecoveryEnabled = true
         };
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_started || _disposed)
-            return;
+            return Task.CompletedTask;
+
+        // If RabbitMQ is not available, just mark as started
+        if (_connection == null || _channel == null)
+        {
+            _logger.LogWarning("RabbitMQ connection not available for character {CharacterId}. Operating in offline mode.", CharacterId);
+            _started = true;
+            return Task.CompletedTask;
+        }
 
         try
         {
             // Bind to all relevant routing keys
-            await BindToRoutingKeysAsync().ConfigureAwait(false);
+            BindToRoutingKeys();
 
-            // Set up consumer
-            _consumer = new AsyncEventingBasicConsumer(_channel);
-            _consumer.Received += OnMessageReceivedAsync;
 
-            _channel.BasicConsume(
-                queue: _queueName,
-                autoAck: false,
-                consumer: _consumer);
+            // Set up consumer using EventingBasicConsumer and offload handling to the thread pool
+            _consumer = new EventingBasicConsumer(_channel);
+            _consumerHandler = (model, ea) =>
+            {
+                try
+                {
+                    var messageType = ea.BasicProperties?.Type;
+                    var bodyArray = ea.Body.ToArray();
+                    var messageBody = Encoding.UTF8.GetString(bodyArray);
+
+                    var gameMessage = DeserializeMessage(messageType, messageBody);
+                    if (gameMessage != null && ShouldProcessMessage(gameMessage))
+                    {
+                        if (MessageReceived != null)
+                        {
+                            // Offload to thread-pool so consumer thread isn't blocked
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await MessageReceived(gameMessage).ConfigureAwait(false);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Error in MessageReceived handler for character {CharacterId}", CharacterId);
+                                }
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing inbound message for character {CharacterId}", CharacterId);
+                }
+            };
+
+            _consumer.Received += _consumerHandler;
+
+            // Use autoAck=true to simplify consumer handling (matching the working example)
+            _channel.BasicConsume(_queueName, autoAck: true, consumer: _consumer);
 
             _started = true;
             _logger.LogInformation("Started message subscription for character {CharacterId} in room {RoomId}", 
@@ -131,72 +181,95 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to start message subscription for character {CharacterId}", CharacterId);
-            throw;
+            // Don't rethrow - allow the game to continue without messaging
+            _started = true;
         }
+
+        return Task.CompletedTask;
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken = default)
+    public Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (!_started || _disposed)
-            return;
+            return Task.CompletedTask;
 
         try
         {
-            if (_consumer != null)
+            if (_consumer != null && _consumerHandler != null)
             {
-                _consumer.Received -= OnMessageReceivedAsync;
+                _consumer.Received -= _consumerHandler;
             }
 
             _started = false;
             _logger.LogInformation("Stopped message subscription for character {CharacterId}", CharacterId);
-            
-            await Task.CompletedTask.ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error stopping message subscription for character {CharacterId}", CharacterId);
         }
-    }
 
-    private Task BindToRoutingKeysAsync()
-    {
-        // Bind to global messages
-        _channel.QueueBind(_queueName, _exchangeName, "system.*.global");
-        _channel.QueueBind(_queueName, _exchangeName, "chat.globalchatmessage.*");
-
-        // Bind to room-specific messages if in a room
-        if (CurrentRoomId.HasValue)
-        {
-            BindToRoomMessagesAsync(CurrentRoomId.Value);
-        }
-
-        // Bind to character-specific messages (errors, private tells, etc.)
-        _channel.QueueBind(_queueName, _exchangeName, "*.*.global");
-        
         return Task.CompletedTask;
     }
 
-    private Task BindToRoomMessagesAsync(int roomId)
+    private void BindToRoutingKeys()
     {
-        var roomRoutingKeys = new[]
-        {
-            $"movement.*.{roomId}",
-            $"chat.*.{roomId}",
-            $"combat.*.{roomId}",
-            $"skill.*.{roomId}"
-        };
+        if (_channel == null)
+            return;
 
-        foreach (var routingKey in roomRoutingKeys)
+        try
         {
-            _channel.QueueBind(_queueName, _exchangeName, routingKey);
+            // Bind to global messages
+            _channel.QueueBind(_queueName, _exchangeName, "system.*.global");
+            _channel.QueueBind(_queueName, _exchangeName, "chat.globalchatmessage.*");
+
+            // Bind to room-specific messages if in a room
+            if (CurrentRoomId.HasValue)
+            {
+                BindToRoomMessages(CurrentRoomId.Value);
+            }
+
+            // Bind to character-specific messages (errors, private tells, etc.)
+            _channel.QueueBind(_queueName, _exchangeName, "*.*.global");
         }
-
-        _logger.LogDebug("Bound character {CharacterId} to room {RoomId} messages", CharacterId, roomId);
-        return Task.CompletedTask;
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to bind to routing keys for character {CharacterId}", CharacterId);
+        }
     }
 
-    private Task UnbindFromRoomMessagesAsync(int roomId)
+    private void BindToRoomMessages(int roomId)
     {
+        if (_channel == null)
+            return;
+
+        try
+        {
+            var roomRoutingKeys = new[]
+            {
+                $"movement.*.{roomId}",
+                $"chat.*.{roomId}",
+                $"combat.*.{roomId}",
+                $"skill.*.{roomId}"
+            };
+
+            foreach (var routingKey in roomRoutingKeys)
+            {
+                _channel.QueueBind(_queueName, _exchangeName, routingKey);
+            }
+
+            _logger.LogDebug("Bound character {CharacterId} to room {RoomId} messages", CharacterId, roomId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to bind to room messages for character {CharacterId}", CharacterId);
+        }
+    }
+
+    private void UnbindFromRoomMessages(int roomId)
+    {
+        if (_channel == null)
+            return;
+
         var roomRoutingKeys = new[]
         {
             $"movement.*.{roomId}",
@@ -216,16 +289,15 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
                 _logger.LogWarning(ex, "Failed to unbind from routing key {RoutingKey}", routingKey);
             }
         }
-        
-        return Task.CompletedTask;
     }
 
     private async Task OnMessageReceivedAsync(object sender, BasicDeliverEventArgs eventArgs)
     {
         try
         {
-            var messageType = eventArgs.BasicProperties.Type;
-            var messageBody = Encoding.UTF8.GetString(eventArgs.Body.Span);
+            var messageType = eventArgs.BasicProperties?.Type;
+            var bodyArray = eventArgs.Body.ToArray();
+            var messageBody = Encoding.UTF8.GetString(bodyArray);
             
             var gameMessage = DeserializeMessage(messageType, messageBody);
             if (gameMessage != null && ShouldProcessMessage(gameMessage))
@@ -237,19 +309,22 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             }
 
             // Acknowledge the message
-            _channel.BasicAck(eventArgs.DeliveryTag, false);
+            _channel?.BasicAck(eventArgs.DeliveryTag, false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing message for character {CharacterId}", CharacterId);
             
             // Reject the message (don't requeue to avoid infinite loops)
-            _channel.BasicNack(eventArgs.DeliveryTag, false, false);
+            _channel?.BasicNack(eventArgs.DeliveryTag, false, false);
         }
     }
 
-    private GameMessage? DeserializeMessage(string messageType, string messageBody)
+    private GameMessage? DeserializeMessage(string? messageType, string messageBody)
     {
+        if (string.IsNullOrEmpty(messageType))
+            return null;
+
         try
         {
             return messageType switch
@@ -283,39 +358,34 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
     private bool ShouldProcessMessage(GameMessage message)
     {
-        // If message has specific target character IDs, check if this character is included
         if (message.TargetCharacterIds?.Any() == true)
         {
             return message.TargetCharacterIds.Contains(CharacterId);
         }
 
-        // If message has a room ID, check if this character is in that room
         if (message.RoomId.HasValue)
         {
             return CurrentRoomId == message.RoomId.Value;
         }
 
-        // Global messages (no room ID, no specific targets) are always processed
         return true;
     }
 
-    public async Task UpdateRoomAsync(int? newRoomId, CancellationToken cancellationToken = default)
+    public Task UpdateRoomAsync(int? newRoomId, CancellationToken cancellationToken = default)
     {
         if (CurrentRoomId == newRoomId || !_started)
-            return;
+            return Task.CompletedTask;
 
         try
         {
-            // Unbind from old room if we were in one
             if (CurrentRoomId.HasValue)
             {
-                await UnbindFromRoomMessagesAsync(CurrentRoomId.Value).ConfigureAwait(false);
+                UnbindFromRoomMessages(CurrentRoomId.Value);
             }
 
-            // Bind to new room if we're entering one
             if (newRoomId.HasValue)
             {
-                await BindToRoomMessagesAsync(newRoomId.Value).ConfigureAwait(false);
+                BindToRoomMessages(newRoomId.Value);
             }
 
             CurrentRoomId = newRoomId;
@@ -326,6 +396,8 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         {
             _logger.LogError(ex, "Failed to update room subscription for character {CharacterId}", CharacterId);
         }
+
+        return Task.CompletedTask;
     }
 
     public void Dispose()
@@ -337,11 +409,10 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         {
             if (_started)
             {
-                // Use synchronous version in Dispose to avoid blocking
                 _started = false;
-                if (_consumer != null)
+                if (_consumer != null && _consumerHandler != null)
                 {
-                    _consumer.Received -= OnMessageReceivedAsync;
+                    _consumer.Received -= _consumerHandler;
                 }
             }
             
