@@ -8,6 +8,7 @@
 @using Mordecai.Messaging.Messages
 @using Mordecai.Game.Entities
 @using Mordecai.Web.Data
+@using System.Threading
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -84,9 +85,9 @@
                             <div class="progress-bar bg-warning" 
                                  style="width: @(maxFat > 0 ? (currentFat * 100.0 / maxFat) : 0)%"></div>
                         </div>
-                        @if (pendingFat != currentFat)
+                        @if (pendingFat != 0)
                         {
-                            <div class="small text-muted">Pending: @pendingFat</div>
+                            <div class="small text-muted">Pending: @(pendingFat > 0 ? "+" : "")@pendingFat</div>
                         }
                     </div>
 
@@ -100,9 +101,9 @@
                             <div class="progress-bar bg-danger" 
                                  style="width: @(maxVit > 0 ? (currentVit * 100.0 / maxVit) : 0)%"></div>
                         </div>
-                        @if (pendingVit != currentVit)
+                        @if (pendingVit != 0)
                         {
-                            <div class="small text-muted">Pending: @pendingVit</div>
+                            <div class="small text-muted">Pending: @(pendingVit > 0 ? "+" : "")@pendingVit</div>
                         }
                     </div>
                 </div>
@@ -219,6 +220,9 @@
     private int? currentRoomId = null;
     private Room? currentRoom = null;
     private bool isSubscribed = false;
+    private Task? _healthRefreshTask;
+    private CancellationTokenSource? _healthRefreshCts;
+    private static readonly TimeSpan HealthRefreshInterval = TimeSpan.FromSeconds(3);
 
     // Character vital stats - now loads from actual character data
     private int currentFat = 0;
@@ -227,9 +231,6 @@
     private int currentVit = 0;
     private int maxVit = 0;
     private int pendingVit = 0;
-
-    // Store the loaded character for health calculations
-    private Character? loadedCharacter = null;
 
     // Active effects (placeholder - should come from your character service)
     private List<ActiveEffect> activeEffects = new();
@@ -274,7 +275,6 @@
             var character = await CharacterService.GetCharacterByIdAsync(characterId.Value, currentUserId);
             if (character != null)
             {
-                loadedCharacter = character;
                 characterName = character.Name;
                 
                 // Ensure character has starting skills (for characters created before skill initialization was added)
@@ -289,7 +289,11 @@
                 }
                 
                 // Load character vitals using actual character data
-                await LoadCharacterVitals();
+                var initialSnapshot = await CharacterService.GetCharacterHealthAsync(characterId.Value, currentUserId);
+                if (initialSnapshot != null)
+                {
+                    ApplyHealthSnapshot(initialSnapshot);
+                }
                 
                 // Load active effects (placeholder - implement in your character service)
                 await LoadActiveEffects();
@@ -366,34 +370,44 @@
             await MessagePublisher.PublishAsync(joinMessage);
         }
 
+        if (characterId.HasValue)
+        {
+            StartHealthRefreshLoop();
+        }
+
         StateHasChanged();
     }
 
-    private async Task LoadCharacterVitals()
+    private void ApplyHealthSnapshot(CharacterHealthSnapshot snapshot)
     {
-        if (loadedCharacter == null)
+        currentFat = snapshot.CurrentFatigue;
+        maxFat = snapshot.MaxFatigue;
+        pendingFat = snapshot.PendingFatigueDamage;
+        currentVit = snapshot.CurrentVitality;
+        maxVit = snapshot.MaxVitality;
+        pendingVit = snapshot.PendingVitalityDamage;
+    }
+
+    private async Task RefreshCharacterVitalsAsync()
+    {
+        if (!characterId.HasValue)
         {
-            // Fallback to safe defaults if character not loaded
-            currentFat = maxFat = pendingFat = 15;
-            currentVit = maxVit = pendingVit = 15;
             return;
         }
 
-        // Calculate max health values from character's actual attributes
-        // FAT = (Drive � 2) - 5
-        maxFat = loadedCharacter.MaxFatigue;
-        
-        // VIT = (Physicality + Drive) - 5  
-        maxVit = loadedCharacter.MaxVitality;
-
-        // TODO: In the future, load current and pending values from the database
-        // For now, assume character is at full health
-        currentFat = maxFat;
-        currentVit = maxVit;
-        pendingFat = currentFat;
-        pendingVit = currentVit;
-        
-        await Task.CompletedTask;
+        try
+        {
+            var snapshot = await CharacterService.GetCharacterHealthAsync(characterId.Value, currentUserId);
+            if (snapshot != null)
+            {
+                ApplyHealthSnapshot(snapshot);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error refreshing vitals for character {CharacterId}", characterId);
+        }
     }
 
     private async Task LoadActiveEffects()
@@ -480,6 +494,7 @@
 
         // Process the command
         await ProcessGameCommand(command);
+    await RefreshCharacterVitalsAsync();
 
         currentCommand = string.Empty;
         isProcessing = false;
@@ -897,6 +912,12 @@
 
     private async Task HandleMovementCommand(string direction)
     {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
         // Normalize direction
         var normalizedDirection = direction switch
         {
@@ -927,6 +948,27 @@
         {
             AddMessage("That exit seems to lead nowhere.", "text-danger");
             return;
+        }
+
+        var fatigueResult = await CharacterService.TryConsumeFatigueForMovementAsync(characterId.Value, currentUserId, 1);
+        if (!fatigueResult.Success)
+        {
+            if (!string.IsNullOrWhiteSpace(fatigueResult.FailureReason))
+            {
+                AddMessage(fatigueResult.FailureReason, "text-danger");
+            }
+
+            if (fatigueResult.Snapshot != null)
+            {
+                ApplyHealthSnapshot(fatigueResult.Snapshot);
+            }
+
+            return;
+        }
+
+        if (fatigueResult.Snapshot != null)
+        {
+            ApplyHealthSnapshot(fatigueResult.Snapshot);
         }
 
         // Announce leaving current room
@@ -1132,6 +1174,77 @@
         {
             MessageBroadcastService.MessageReceived -= OnMessageReceived;
             _ = MessageBroadcastService.UnregisterCharacterListenerAsync(characterId.Value);
+        }
+
+        StopHealthRefreshLoop();
+    }
+
+    private void StartHealthRefreshLoop()
+    {
+        if (_healthRefreshTask != null)
+        {
+            return;
+        }
+
+        _healthRefreshCts = new CancellationTokenSource();
+        var token = _healthRefreshCts.Token;
+
+        _healthRefreshTask = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(HealthRefreshInterval);
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    if (!characterId.HasValue)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        var snapshot = await CharacterService.GetCharacterHealthAsync(characterId.Value, currentUserId);
+                        if (snapshot != null)
+                        {
+                            await InvokeAsync(() =>
+                            {
+                                ApplyHealthSnapshot(snapshot);
+                                StateHasChanged();
+                            });
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        await InvokeAsync(() => _logger?.LogError(ex, "Error refreshing character vitals in periodic loop"));
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown
+            }
+        }, token);
+    }
+
+    private void StopHealthRefreshLoop()
+    {
+        try
+        {
+            _healthRefreshCts?.Cancel();
+        }
+        catch
+        {
+            // Ignored during disposal
+        }
+        finally
+        {
+            _healthRefreshCts?.Dispose();
+            _healthRefreshCts = null;
+            _healthRefreshTask = null;
         }
     }
 }

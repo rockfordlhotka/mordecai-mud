@@ -1,3 +1,4 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Mordecai.Game.Entities;
@@ -363,22 +364,47 @@ public class RoomEffectService : IRoomEffectService
             switch (impact.ImpactType)
             {
                 case "PeriodicDamage":
-                    if (impact.TargetAttribute == "Health")
                     {
-                        // Apply damage to character
-                        character.CurrentFatigue = Math.Max(0, character.CurrentFatigue - (int)impactValue);
-                        character.CurrentVitality = Math.Max(0, character.CurrentVitality - (int)Math.Max(0, impactValue - character.CurrentFatigue));
+                        var damageAmount = (int)Math.Ceiling(Math.Abs(impactValue));
+                        if (damageAmount <= 0)
+                        {
+                            break;
+                        }
+
+                        switch (impact.TargetAttribute?.ToLowerInvariant())
+                        {
+                            case "vitality":
+                                QueuePendingHealthChange(character, 0, damageAmount);
+                                break;
+                            case "fatigue":
+                                QueuePendingHealthChange(character, damageAmount, 0);
+                                break;
+                            default:
+                                QueuePendingHealthChange(character, damageAmount, 0);
+                                break;
+                        }
                     }
                     break;
 
                 case "PeriodicHealing":
-                    if (impact.TargetAttribute == "Health")
                     {
-                        // Apply healing to character
-                        character.CurrentFatigue = Math.Min(character.CalculatedFatigue, character.CurrentFatigue + (int)impactValue);
-                        if (character.CurrentFatigue >= character.CalculatedFatigue)
+                        var healingAmount = (int)Math.Ceiling(Math.Abs(impactValue));
+                        if (healingAmount <= 0)
                         {
-                            character.CurrentVitality = Math.Min(character.CalculatedVitality, character.CurrentVitality + (int)impactValue);
+                            break;
+                        }
+
+                        switch (impact.TargetAttribute?.ToLowerInvariant())
+                        {
+                            case "vitality":
+                                QueuePendingHealthChange(character, 0, -healingAmount);
+                                break;
+                            case "fatigue":
+                                QueuePendingHealthChange(character, -healingAmount, 0);
+                                break;
+                            default:
+                                QueuePendingHealthChange(character, -healingAmount, 0);
+                                break;
                         }
                     }
                     break;
@@ -410,6 +436,31 @@ public class RoomEffectService : IRoomEffectService
         }
 
         return Task.CompletedTask;
+    }
+
+    private static void QueuePendingHealthChange(Character character, int fatigueDelta, int vitalityDelta)
+    {
+        if (fatigueDelta != 0)
+        {
+            character.PendingFatigueDamage = SafeAdd(character.PendingFatigueDamage, fatigueDelta);
+        }
+
+        if (vitalityDelta != 0)
+        {
+            character.PendingVitalityDamage = SafeAdd(character.PendingVitalityDamage, vitalityDelta);
+        }
+    }
+
+    private static int SafeAdd(int current, int delta)
+    {
+        try
+        {
+            return checked(current + delta);
+        }
+        catch (OverflowException)
+        {
+            return delta > 0 ? int.MaxValue : int.MinValue;
+        }
     }
 
     private static decimal CalculateImpactValue(RoomEffectImpact impact, decimal intensity)

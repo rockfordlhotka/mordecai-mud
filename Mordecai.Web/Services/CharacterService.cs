@@ -1,6 +1,8 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using Mordecai.Game.Entities;
 using Mordecai.Web.Data;
+using System.Threading;
 
 namespace Mordecai.Web.Services;
 
@@ -12,6 +14,8 @@ public interface ICharacterService
     Task<bool> CharacterExistsAsync(Guid characterId, string userId);
     Task<bool> DeleteCharacterAsync(Guid characterId, string userId);
     Task<bool> EnsureCharacterHasStartingSkillsAsync(Guid characterId, string userId);
+    Task<CharacterHealthSnapshot?> GetCharacterHealthAsync(Guid characterId, string userId, CancellationToken cancellationToken = default);
+    Task<CharacterHealthOperationResult> TryConsumeFatigueForMovementAsync(Guid characterId, string userId, int fatigueCost, CancellationToken cancellationToken = default);
 }
 
 public class CharacterService : ICharacterService
@@ -53,17 +57,29 @@ public class CharacterService : ICharacterService
     {
         try
         {
-            var character = await GetCharacterByIdAsync(characterId, userId);
+            await using var context = _contextFactory.CreateDbContext();
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId);
+
             if (character == null)
             {
                 return null;
             }
 
-            // TODO: For now, characters don't have a CurrentRoomId field yet
-            // We'll need to add this to the Character entity in a future migration
-            // For now, always start at the starting room
+            if (character.CurrentRoomId.HasValue)
+            {
+                return character.CurrentRoomId;
+            }
+
             var startingRoom = await _worldService.GetStartingRoomAsync();
-            return startingRoom?.Id;
+            if (startingRoom != null)
+            {
+                character.CurrentRoomId = startingRoom.Id;
+                await context.SaveChangesAsync();
+                return startingRoom.Id;
+            }
+
+            return null;
         }
         catch (Exception ex)
         {
@@ -76,17 +92,22 @@ public class CharacterService : ICharacterService
     {
         try
         {
-            var character = await GetCharacterByIdAsync(characterId, userId);
+            await using var context = _contextFactory.CreateDbContext();
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId);
+
             if (character == null)
             {
                 return false;
             }
 
-            // TODO: Update character's CurrentRoomId when the field is added
-            // For now, this is a placeholder that always succeeds
-            _logger.LogDebug("Character {CharacterId} room set to {RoomId} (placeholder implementation)", 
-                characterId, roomId);
-            
+            character.CurrentRoomId = roomId;
+            character.LastPlayedAt = DateTimeOffset.UtcNow;
+
+            await context.SaveChangesAsync();
+
+            _logger.LogDebug("Character {CharacterId} room set to {RoomId}", characterId, roomId);
+
             return true;
         }
         catch (Exception ex)
@@ -219,4 +240,79 @@ public class CharacterService : ICharacterService
             return false;
         }
     }
+
+    public async Task<CharacterHealthSnapshot?> GetCharacterHealthAsync(Guid characterId, string userId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var character = await context.Characters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId, cancellationToken);
+
+            return character != null
+                ? CreateHealthSnapshot(character)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving health snapshot for character {CharacterId}", characterId);
+            return null;
+        }
+    }
+
+    public async Task<CharacterHealthOperationResult> TryConsumeFatigueForMovementAsync(Guid characterId, string userId, int fatigueCost, CancellationToken cancellationToken = default)
+    {
+        if (fatigueCost <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fatigueCost), "Fatigue cost must be greater than zero.");
+        }
+
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId, cancellationToken);
+
+            if (character == null)
+            {
+                return new CharacterHealthOperationResult(false, "Character not found.", null);
+            }
+
+            var pendingFatigueDamage = Math.Max(0, character.PendingFatigueDamage);
+            var availableFatigue = character.CurrentFatigue - pendingFatigueDamage;
+
+            if (availableFatigue <= 0)
+            {
+                return new CharacterHealthOperationResult(false, "You are too exhausted to move.", CreateHealthSnapshot(character));
+            }
+
+            try
+            {
+                character.PendingFatigueDamage = checked(character.PendingFatigueDamage + fatigueCost);
+            }
+            catch (OverflowException)
+            {
+                character.PendingFatigueDamage = int.MaxValue;
+            }
+            character.LastPlayedAt = DateTimeOffset.UtcNow;
+
+            await context.SaveChangesAsync(cancellationToken);
+
+            return new CharacterHealthOperationResult(true, null, CreateHealthSnapshot(character));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error applying movement fatigue for character {CharacterId}", characterId);
+            return new CharacterHealthOperationResult(false, "An error occurred while applying fatigue.", null);
+        }
+    }
+
+    private static CharacterHealthSnapshot CreateHealthSnapshot(Character character) => new(
+        character.CurrentFatigue,
+        character.MaxFatigue,
+        character.PendingFatigueDamage,
+        character.CurrentVitality,
+        character.MaxVitality,
+        character.PendingVitalityDamage);
 }

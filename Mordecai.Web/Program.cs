@@ -79,6 +79,7 @@ builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();
 
 // Add background services
 builder.Services.AddHostedService<RoomEffectBackgroundService>();
+builder.Services.AddHostedService<HealthTickBackgroundService>();
 
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();
