@@ -585,6 +585,9 @@
                     AddMessage("drive - Trade a portion of your vitality for fatigue recovery using the Drive skill");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
+                    AddMessage("whisper [target] [message] - Whisper quietly to someone in the room");
+                    AddMessage("tell [target] [message] - Speak privately to someone in the room");
+                    AddMessage("yell|shout [message] - Raise your voice so nearby rooms hear you");
                     AddMessage("ooc [message] - Speak on the out-of-character channel");
                     AddMessage("emote [action] - Perform an emotive action");
                     AddMessage("who - See who else is online");
@@ -650,9 +653,21 @@
                     break;
                     
                 default:
-                    if (firstWord == "say" && parts.Length > 1)
+                    if (firstWord == "say")
                     {
                         await HandleSayCommand(parts);
+                    }
+                    else if (firstWord == "whisper")
+                    {
+                        await HandleWhisperCommand(parts);
+                    }
+                    else if (firstWord == "tell")
+                    {
+                        await HandleTellCommand(parts);
+                    }
+                    else if (firstWord == "yell" || firstWord == "shout")
+                    {
+                        await HandleYellCommand(parts);
                     }
                     else if (firstWord == "ooc" && parts.Length > 1)
                     {
@@ -1163,6 +1178,82 @@
         {
             AddMessage("Say what?", "text-warning");
         }
+    }
+
+    private async Task HandleWhisperCommand(string[] parts)
+    {
+        if (parts.Length < 3)
+        {
+            AddMessage("Usage: whisper <target> <message>", "text-warning");
+            return;
+        }
+
+        var targetName = parts[1];
+        var message = string.Join(" ", parts.Skip(2));
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            AddMessage("Whisper what?", "text-warning");
+            return;
+        }
+
+        var result = await GameActionService.HandleChatMessageAsync(
+            characterId!.Value,
+            characterName,
+            currentRoomId!.Value,
+            message,
+            ChatType.Whisper,
+            targetName);
+
+        AddMessage(result, "text-success");
+    }
+
+    private async Task HandleTellCommand(string[] parts)
+    {
+        if (parts.Length < 3)
+        {
+            AddMessage("Usage: tell <target> <message>", "text-warning");
+            return;
+        }
+
+        var targetName = parts[1];
+        var message = string.Join(" ", parts.Skip(2));
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            AddMessage("Tell them what?", "text-warning");
+            return;
+        }
+
+        var result = await GameActionService.HandleChatMessageAsync(
+            characterId!.Value,
+            characterName,
+            currentRoomId!.Value,
+            message,
+            ChatType.Tell,
+            targetName);
+
+        AddMessage(result, "text-success");
+    }
+
+    private async Task HandleYellCommand(string[] parts)
+    {
+        var message = string.Join(" ", parts.Skip(1));
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            AddMessage("Yell what?", "text-warning");
+            return;
+        }
+
+        var result = await GameActionService.HandleChatMessageAsync(
+            characterId!.Value,
+            characterName,
+            currentRoomId!.Value,
+            message,
+            ChatType.Yell);
+
+        AddMessage(result, "text-success");
     }
 
     private async Task HandleOocCommand(string[] parts)

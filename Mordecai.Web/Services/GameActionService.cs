@@ -118,9 +118,17 @@ public class GameActionService
             }
 
             // Return feedback message for the speaker
-            var feedback = target != null 
-                ? $"You {GetChatVerb(chatType)} to {target.Name}: {message}"
-                : $"You {GetChatVerb(chatType)}: {message}";
+            string feedback;
+            if (target != null)
+            {
+                feedback = chatType == ChatType.Tell
+                    ? $"You tell {target.Name}: {message}"
+                    : $"You {GetChatVerb(chatType)} to {target.Name}: {message}";
+            }
+            else
+            {
+                feedback = $"You {GetChatVerb(chatType)}: {message}";
+            }
 
             _logger.LogDebug("Published {ChatType} message from character {CharacterId} in room {RoomId}{TargetInfo}", 
                 chatType, characterId, roomId, target != null ? $" targeting {target.Name}" : "");
