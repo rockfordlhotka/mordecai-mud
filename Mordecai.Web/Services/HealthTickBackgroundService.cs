@@ -18,6 +18,7 @@ public class HealthTickBackgroundService : BackgroundService
     private const int ProcessingIntervalSeconds = 3;
     private const int FatigueRegenPerTick = 1;
     private const int VitalityRegenPerTick = 1;
+    private static readonly TimeSpan PassiveVitalityRegenInterval = TimeSpan.FromHours(1);
 
     public HealthTickBackgroundService(
         IServiceProvider serviceProvider,
@@ -80,7 +81,6 @@ public class HealthTickBackgroundService : BackgroundService
     var updatedCount = 0;
     var now = DateTimeOffset.UtcNow;
     var baseFatigueRegenInterval = TimeSpan.FromSeconds(ProcessingIntervalSeconds);
-    var baseVitalityRegenInterval = TimeSpan.FromHours(1);
 
         foreach (var character in characters)
         {
@@ -118,28 +118,8 @@ public class HealthTickBackgroundService : BackgroundService
                 }
             }
 
-            if (character.CurrentVitality > 0)
+            if (ApplyPassiveVitalityRegen(character, now, maxVitality))
             {
-                if (character.LastVitalityRegenAt is null)
-                {
-                    character.LastVitalityRegenAt = now;
-                    characterUpdated = true;
-                }
-
-                if (character.CurrentVitality < maxVitality)
-                {
-                    var lastVitalityRegen = character.LastVitalityRegenAt ?? now;
-                    if (now - lastVitalityRegen >= baseVitalityRegenInterval)
-                    {
-                        character.PendingVitalityDamage = SafeAdd(character.PendingVitalityDamage, -VitalityRegenPerTick);
-                        character.LastVitalityRegenAt = now;
-                        characterUpdated = true;
-                    }
-                }
-            }
-            else if (character.LastVitalityRegenAt is not null)
-            {
-                character.LastVitalityRegenAt = null;
                 characterUpdated = true;
             }
 
@@ -205,7 +185,6 @@ public class HealthTickBackgroundService : BackgroundService
             var capacity = character.MaxFatigue - character.CurrentFatigue;
             if (capacity <= 0)
             {
-                character.PendingVitalityDamage += character.PendingFatigueDamage;
                 character.PendingFatigueDamage = 0;
                 return true;
             }
@@ -217,7 +196,7 @@ public class HealthTickBackgroundService : BackgroundService
             var overflow = amount - applied;
             if (overflow > 0)
             {
-                character.PendingVitalityDamage -= overflow;
+                character.PendingFatigueDamage = 0;
             }
 
             return applied > 0 || overflow > 0;
@@ -255,6 +234,64 @@ public class HealthTickBackgroundService : BackgroundService
             character.PendingVitalityDamage = Math.Min(0, character.PendingVitalityDamage + amount);
             return applied > 0;
         }
+    }
+
+    internal static bool ApplyPassiveVitalityRegen(Character character, DateTimeOffset now, int maxVitality)
+    {
+        if (character.CurrentVitality <= 0)
+        {
+            if (character.LastVitalityRegenAt is not null)
+            {
+                character.LastVitalityRegenAt = null;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (character.LastVitalityRegenAt is null)
+        {
+            character.LastVitalityRegenAt = now;
+            return true;
+        }
+
+        if (character.CurrentVitality >= maxVitality)
+        {
+            if (character.LastVitalityRegenAt != now)
+            {
+                character.LastVitalityRegenAt = now;
+                return true;
+            }
+
+            return false;
+        }
+
+        var lastRegen = character.LastVitalityRegenAt.Value;
+        var elapsed = now - lastRegen;
+        if (elapsed < PassiveVitalityRegenInterval)
+        {
+            return false;
+        }
+
+        var regenTicks = (int)(elapsed.Ticks / PassiveVitalityRegenInterval.Ticks);
+        if (regenTicks <= 0)
+        {
+            return false;
+        }
+
+        var potentialHealing = regenTicks * VitalityRegenPerTick;
+        var missingVitality = Math.Max(0, maxVitality - character.CurrentVitality);
+        var healAmount = Math.Min(potentialHealing, missingVitality);
+
+        if (healAmount > 0)
+        {
+            character.CurrentVitality = Math.Min(maxVitality, character.CurrentVitality + healAmount);
+        }
+
+        var nextTimestamp = lastRegen.AddTicks(PassiveVitalityRegenInterval.Ticks * regenTicks);
+        character.LastVitalityRegenAt = character.CurrentVitality >= maxVitality ? now : nextTimestamp;
+
+        return healAmount > 0 || character.LastVitalityRegenAt != lastRegen;
     }
 
     private static int SafeAdd(int current, int delta)

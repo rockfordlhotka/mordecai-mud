@@ -397,6 +397,12 @@ public class CharacterService : ICharacterService
                 return new DriveCommandResult(false, "Your drive falters; you need an ability score of 8 or higher to channel vitality.", driveTargetValue, abilityScore, null, null, 0, 0, CreateHealthSnapshot(character));
             }
 
+            var fatigueShortfall = CalculateTotalFatigueShortfall(character);
+            if (fatigueShortfall <= 0)
+            {
+                return new DriveCommandResult(false, "You are already fully recovered; there is no fatigue to convert.", driveTargetValue, abilityScore, null, null, 0, 0, CreateHealthSnapshot(character));
+            }
+
             var diceRoll = _diceService.RollExploding4dF();
             var checkTotal = abilityScore + diceRoll;
             var succeeded = checkTotal >= driveTargetValue;
@@ -408,7 +414,13 @@ public class CharacterService : ICharacterService
                 return new DriveCommandResult(false, "You grit your teeth, but the strain refuses to convert your vitality.", driveTargetValue, abilityScore, diceRoll, checkTotal, 0, 0, CreateHealthSnapshot(character));
             }
 
-            var healingAmount = abilityScore - driveTargetValue + 2;
+            var rawHealingAmount = abilityScore - driveTargetValue + 2;
+            var healingAmount = Math.Min(rawHealingAmount, fatigueShortfall);
+
+            if (healingAmount <= 0)
+            {
+                return new DriveCommandResult(false, "The strain fails to find any fatigue to ease.", driveTargetValue, abilityScore, diceRoll, checkTotal, 0, 0, CreateHealthSnapshot(character));
+            }
             const int damageAmount = 1;
 
             character.PendingFatigueDamage = SafeAdd(character.PendingFatigueDamage, -healingAmount);
@@ -419,9 +431,17 @@ public class CharacterService : ICharacterService
 
             var snapshot = CreateHealthSnapshot(character);
 
-            await RecordDriveUsageAsync(characterId, driveSkillId.Value, usageType, abilityScore, diceRoll, checkTotal, driveTargetValue, $"Converted {damageAmount} VIT into {healingAmount} FAT.");
+            var usageDetails = healingAmount == rawHealingAmount
+                ? $"Converted {damageAmount} VIT into {healingAmount} FAT."
+                : $"Converted {damageAmount} VIT into {healingAmount} FAT (capped from {rawHealingAmount}).";
 
-            return new DriveCommandResult(true, $"You channel raw endurance, trading {damageAmount} VIT for {healingAmount} FAT recovery.", driveTargetValue, abilityScore, diceRoll, checkTotal, healingAmount, damageAmount, snapshot);
+            await RecordDriveUsageAsync(characterId, driveSkillId.Value, usageType, abilityScore, diceRoll, checkTotal, driveTargetValue, usageDetails);
+
+            var feedback = healingAmount == rawHealingAmount
+                ? $"You channel raw endurance, trading {damageAmount} VIT for {healingAmount} FAT recovery."
+                : $"You channel raw endurance, trading {damageAmount} VIT for {healingAmount} FAT recovery (limited by your current fatigue).";
+
+            return new DriveCommandResult(true, feedback, driveTargetValue, abilityScore, diceRoll, checkTotal, healingAmount, damageAmount, snapshot);
         }
         catch (Exception ex)
         {
@@ -585,6 +605,15 @@ public class CharacterService : ICharacterService
         character.CurrentVitality,
         character.MaxVitality,
         character.PendingVitalityDamage);
+
+    private static int CalculateTotalFatigueShortfall(Character character)
+    {
+        var pendingDamage = Math.Max(0, character.PendingFatigueDamage);
+        var healingInFlight = Math.Max(0, -character.PendingFatigueDamage);
+        var missingFatigue = Math.Max(0, character.MaxFatigue - character.CurrentFatigue);
+        var unmetFatigue = Math.Max(0, missingFatigue - healingInFlight);
+        return pendingDamage + unmetFatigue;
+    }
 
     private static int SafeAdd(int current, int delta)
     {
