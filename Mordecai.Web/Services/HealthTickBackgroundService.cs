@@ -17,6 +17,7 @@ public class HealthTickBackgroundService : BackgroundService
     private readonly ILogger<HealthTickBackgroundService> _logger;
     private const int ProcessingIntervalSeconds = 3;
     private const int FatigueRegenPerTick = 1;
+    private const int VitalityRegenPerTick = 1;
 
     public HealthTickBackgroundService(
         IServiceProvider serviceProvider,
@@ -67,7 +68,8 @@ public class HealthTickBackgroundService : BackgroundService
         var characters = await context.Characters
             .Where(c => c.PendingFatigueDamage != 0
                         || c.PendingVitalityDamage != 0
-                        || c.CurrentFatigue < ((c.Drive * 2) - 5 > 1 ? (c.Drive * 2) - 5 : 1))
+                        || c.CurrentFatigue < ((c.Drive * 2) - 5 > 1 ? (c.Drive * 2) - 5 : 1)
+                        || c.CurrentVitality < ((c.Physicality + c.Drive) - 5 > 1 ? (c.Physicality + c.Drive) - 5 : 1))
             .ToListAsync(cancellationToken);
 
         if (characters.Count == 0)
@@ -75,16 +77,18 @@ public class HealthTickBackgroundService : BackgroundService
             return;
         }
 
-        var updatedCount = 0;
-        var now = DateTimeOffset.UtcNow;
-        var baseRegenInterval = TimeSpan.FromSeconds(ProcessingIntervalSeconds);
+    var updatedCount = 0;
+    var now = DateTimeOffset.UtcNow;
+    var baseFatigueRegenInterval = TimeSpan.FromSeconds(ProcessingIntervalSeconds);
+    var baseVitalityRegenInterval = TimeSpan.FromHours(1);
 
         foreach (var character in characters)
         {
             var characterUpdated = false;
             var maxFatigue = Math.Max(1, (character.Drive * 2) - 5);
+            var maxVitality = Math.Max(1, (character.Physicality + character.Drive) - 5);
             var availableVitality = VitalityEffectRules.CalculateAvailableVitality(character.CurrentVitality, character.PendingVitalityDamage);
-            var regenInterval = VitalityEffectRules.GetFatigueRegenInterval(availableVitality, baseRegenInterval);
+            var regenInterval = VitalityEffectRules.GetFatigueRegenInterval(availableVitality, baseFatigueRegenInterval);
 
             if (regenInterval is null)
             {
@@ -112,6 +116,31 @@ public class HealthTickBackgroundService : BackgroundService
                         characterUpdated = true;
                     }
                 }
+            }
+
+            if (character.CurrentVitality > 0)
+            {
+                if (character.LastVitalityRegenAt is null)
+                {
+                    character.LastVitalityRegenAt = now;
+                    characterUpdated = true;
+                }
+
+                if (character.CurrentVitality < maxVitality)
+                {
+                    var lastVitalityRegen = character.LastVitalityRegenAt ?? now;
+                    if (now - lastVitalityRegen >= baseVitalityRegenInterval)
+                    {
+                        character.PendingVitalityDamage = SafeAdd(character.PendingVitalityDamage, -VitalityRegenPerTick);
+                        character.LastVitalityRegenAt = now;
+                        characterUpdated = true;
+                    }
+                }
+            }
+            else if (character.LastVitalityRegenAt is not null)
+            {
+                character.LastVitalityRegenAt = null;
+                characterUpdated = true;
             }
 
             if (ApplyPendingPools(character))

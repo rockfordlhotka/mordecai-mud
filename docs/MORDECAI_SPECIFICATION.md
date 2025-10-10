@@ -156,6 +156,7 @@ While all action resolution uses skills rather than raw attributes, attributes s
     - **FAT = 0**: Character immediately suffers 2 Vitality damage and cannot perform actions until FAT recovers above 0
 - **Vitality (VIT)**: (Physicality + Drive) - 5
   - Represents life force and lethal damage capacity
+  - Baseline recovery restores 1 VIT every hour when the character is alive (VIT > 0)
   - **Low vitality effects** (applies based on current VIT after pending damage):
     - **VIT = 4**: Fatigue recovery slows to 1 point per minute
     - **VIT = 3**: Fatigue recovery slows to 1 point every 30 minutes and requires a Focus skill check (AS + 4dF+) against TV 7 to attempt any action

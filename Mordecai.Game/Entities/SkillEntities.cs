@@ -43,6 +43,11 @@ public class Character
     /// </summary>
     public DateTimeOffset? LastFatigueRegenAt { get; set; }
 
+    /// <summary>
+    /// The most recent time passive vitality recovery was applied.
+    /// </summary>
+    public DateTimeOffset? LastVitalityRegenAt { get; set; }
+
     // Pending damage/healing pools
     public int PendingFatigueDamage { get; set; } = 0;
     public int PendingVitalityDamage { get; set; } = 0;
@@ -80,6 +85,7 @@ public class Character
         PendingFatigueDamage = 0;
         PendingVitalityDamage = 0;
     LastFatigueRegenAt = DateTimeOffset.UtcNow;
+        LastVitalityRegenAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>
