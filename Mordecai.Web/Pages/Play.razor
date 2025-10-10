@@ -9,6 +9,7 @@
 @using Mordecai.Game.Entities
 @using Mordecai.Web.Data
 @using System.Threading
+@using System.Linq
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
@@ -210,6 +211,7 @@
     private string currentUserName = "Adventurer";
     private string characterName = "Unknown";
     private string currentUserId = string.Empty;
+    private bool isCurrentUserAdmin = false;
     private string currentCommand = string.Empty;
     private bool isProcessing = false;
     private ElementReference commandInput;
@@ -261,6 +263,7 @@
         var user = authState.User;
         currentUserName = user?.Identity?.Name ?? "Adventurer";
         currentUserId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+    isCurrentUserAdmin = user?.IsInRole("Admin") ?? false;
 
         if (characterId != Guid.Empty)
         {
@@ -356,7 +359,12 @@
         if (characterId.HasValue && currentRoomId.HasValue)
         {
             MessageBroadcastService.MessageReceived += OnMessageReceived;
-            await MessageBroadcastService.RegisterCharacterListenerAsync(characterId.Value, currentRoomId);
+            await MessageBroadcastService.RegisterCharacterListenerAsync(
+                characterId.Value,
+                currentRoomId,
+                characterName,
+                currentUserName,
+                currentUserId);
             isSubscribed = true;
             _logger?.LogDebug("Play: Registered message listener for character {CharacterId} in room {RoomId}", characterId, currentRoomId);
         }
@@ -599,9 +607,40 @@
                     break;
                     
                 case "who":
+                    var activePlayers = MessageBroadcastService
+                        .GetActiveCharacters()
+                        .OrderBy(info => info.CharacterName, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (activePlayers.Count == 0)
+                    {
+                        AddMessage("No players are currently online.", "text-muted");
+                        break;
+                    }
+
                     AddMessage("Players currently online:", "text-info");
-                    AddMessage($"  {currentUserName} (you)");
-                    AddMessage("1 player total.");
+
+                    foreach (var player in activePlayers)
+                    {
+                        var isSelf = characterId.HasValue && player.CharacterId == characterId.Value;
+                        var line = $"  {player.CharacterName}";
+
+                        if (isSelf)
+                        {
+                            line += " (you)";
+                        }
+
+                        if (isCurrentUserAdmin && !string.IsNullOrWhiteSpace(player.UserDisplayName))
+                        {
+                            line += " - ";
+                            line += player.UserDisplayName;
+                        }
+
+                        AddMessage(line);
+                    }
+
+                    var totalPlayers = activePlayers.Count;
+                    AddMessage($"{totalPlayers} player{(totalPlayers == 1 ? string.Empty : "s")} total.");
                     break;
                     
                 case "quit":

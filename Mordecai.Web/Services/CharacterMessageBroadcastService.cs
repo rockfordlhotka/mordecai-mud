@@ -1,8 +1,14 @@
 using Mordecai.Messaging.Messages;
 using Mordecai.Messaging.Services;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace Mordecai.Web.Services;
+
+/// <summary>
+/// Captures metadata for a character currently connected to the game client.
+/// </summary>
+public sealed record ActiveCharacterInfo(Guid CharacterId, string CharacterName, string? UserDisplayName, string? UserId);
 
 /// <summary>
 /// Manages message subscriptions for connected characters and provides events for Blazor components to subscribe to
@@ -17,6 +23,9 @@ public sealed class CharacterMessageBroadcastService : IDisposable
     
     // Track which characters have active UI components listening
     private readonly ConcurrentDictionary<Guid, int> _activeListeners = new();
+
+    // Track metadata about active characters for presence queries
+    private readonly ConcurrentDictionary<Guid, ActiveCharacterInfo> _activeCharacters = new();
 
     public CharacterMessageBroadcastService(
         IGameMessageSubscriberFactory subscriberFactory,
@@ -34,7 +43,12 @@ public sealed class CharacterMessageBroadcastService : IDisposable
     /// <summary>
     /// Registers interest from a Blazor component for a character's messages
     /// </summary>
-    public async Task RegisterCharacterListenerAsync(Guid characterId, int? currentRoomId = null)
+    public async Task RegisterCharacterListenerAsync(
+        Guid characterId,
+        int? currentRoomId = null,
+        string? characterName = null,
+        string? userDisplayName = null,
+        string? userId = null)
     {
         try
         {
@@ -60,6 +74,9 @@ public sealed class CharacterMessageBroadcastService : IDisposable
                     existingSubscriber.CurrentRoomId = currentRoomId;
                 }
             }
+
+            // Update active character metadata
+            UpdateActiveCharacterInfo(characterId, characterName, userDisplayName, userId);
         }
         catch (Exception ex)
         {
@@ -92,6 +109,8 @@ public sealed class CharacterMessageBroadcastService : IDisposable
                     
                     _logger.LogInformation("Stopped message subscription for character {CharacterId}", characterId);
                 }
+
+                _activeCharacters.TryRemove(characterId, out _);
             }
             else
             {
@@ -104,6 +123,12 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             _logger.LogError(ex, "Failed to unregister character listener for {CharacterId}", characterId);
         }
     }
+
+    /// <summary>
+    /// Gets a snapshot of currently active characters.
+    /// </summary>
+    public IReadOnlyCollection<ActiveCharacterInfo> GetActiveCharacters()
+        => _activeCharacters.Values.ToArray();
 
     /// <summary>
     /// Updates the room ID for a character's subscription
@@ -250,5 +275,43 @@ public sealed class CharacterMessageBroadcastService : IDisposable
         
         _activeSubscriptions.Clear();
         _activeListeners.Clear();
+        _activeCharacters.Clear();
+    }
+
+    private void UpdateActiveCharacterInfo(Guid characterId, string? characterName, string? userDisplayName, string? userId)
+    {
+        _activeCharacters.AddOrUpdate(
+            characterId,
+            _ => CreateActiveCharacterInfo(characterId, characterName, userDisplayName, userId),
+            (_, existing) =>
+            {
+                var updatedCharacterName = string.IsNullOrWhiteSpace(characterName)
+                    ? existing.CharacterName
+                    : characterName.Trim();
+
+                var updatedDisplayName = string.IsNullOrWhiteSpace(userDisplayName)
+                    ? existing.UserDisplayName
+                    : userDisplayName.Trim();
+
+                var updatedUserId = string.IsNullOrWhiteSpace(userId)
+                    ? existing.UserId
+                    : userId.Trim();
+
+                return existing with
+                {
+                    CharacterName = string.IsNullOrWhiteSpace(updatedCharacterName) ? existing.CharacterName : updatedCharacterName,
+                    UserDisplayName = updatedDisplayName,
+                    UserId = updatedUserId
+                };
+            });
+    }
+
+    private static ActiveCharacterInfo CreateActiveCharacterInfo(Guid characterId, string? characterName, string? userDisplayName, string? userId)
+    {
+        var name = string.IsNullOrWhiteSpace(characterName) ? "Unknown" : characterName.Trim();
+        var displayName = string.IsNullOrWhiteSpace(userDisplayName) ? null : userDisplayName.Trim();
+        var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? null : userId.Trim();
+
+        return new ActiveCharacterInfo(characterId, name, displayName, normalizedUserId);
     }
 }
