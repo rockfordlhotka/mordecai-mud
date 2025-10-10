@@ -99,6 +99,7 @@ public class SkillService : ISkillService
         await using var ctx = _contextFactory.CreateDbContext();
 
         var characterSkill = await ctx.CharacterSkills
+            .Include(cs => cs.SkillDefinition)
             .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
 
         if (characterSkill == null)
@@ -107,6 +108,7 @@ public class SkillService : ISkillService
             if (learned == null) return false;
             // re-query into this context to get a tracked instance
             characterSkill = await ctx.CharacterSkills
+                .Include(cs => cs.SkillDefinition)
                 .FirstOrDefaultAsync(cs => cs.CharacterId == characterId && cs.SkillDefinitionId == skillDefinitionId);
             if (characterSkill == null) return false;
         }

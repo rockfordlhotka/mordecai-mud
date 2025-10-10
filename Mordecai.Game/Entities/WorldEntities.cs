@@ -313,6 +313,11 @@ public class RoomExit
     public bool IsHidden { get; set; } = false;
 
     /// <summary>
+    /// Target score required to reveal this hidden exit (used when IsHidden is true)
+    /// </summary>
+    public int HiddenTargetScore { get; set; } = 10;
+
+    /// <summary>
     /// Skill required to use this exit (e.g., climbing, swimming)
     /// </summary>
     public int? SkillRequired { get; set; }

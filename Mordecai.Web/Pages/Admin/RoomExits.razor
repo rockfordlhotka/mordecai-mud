@@ -334,6 +334,22 @@
                             <div class="form-text">Hidden exits require special detection by players.</div>
                         </div>
 
+                        @if (editingExit.IsHidden)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label" for="hiddenTargetScore">Hidden Target Score</label>
+                                <input type="number"
+                                       id="hiddenTargetScore"
+                                       class="form-control"
+                                       min="1"
+                                       max="100"
+                                       @bind="editingExit.HiddenTargetScore" />
+                                <div class="form-text">
+                                    Awareness 4dF+ result required to reveal this exit (typical values around 10-20).
+                                </div>
+                            </div>
+                        }
+
                         <!-- Modal Footer -->
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" @onclick="CloseExitModal">Cancel</button>
@@ -416,7 +432,8 @@
             FromRoomId = RoomId,
             ToRoomId = 0,
             Direction = string.Empty,
-            IsActive = true
+            IsActive = true,
+            HiddenTargetScore = 10
         };
         
         showExitModal = true;
@@ -433,6 +450,7 @@
             ExitDescription = exit.ExitDescription,
             NightExitDescription = exit.NightExitDescription,
             IsHidden = exit.IsHidden,
+            HiddenTargetScore = exit.HiddenTargetScore,
             SkillRequired = exit.SkillRequired,
             SkillLevelRequired = exit.SkillLevelRequired,
             IsActive = exit.IsActive

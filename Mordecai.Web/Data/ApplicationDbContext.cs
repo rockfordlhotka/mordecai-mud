@@ -91,6 +91,8 @@ public class ApplicationDbContext : IdentityDbContext
             entity.HasIndex(re => new { re.FromRoomId, re.Direction });
             entity.HasIndex(re => re.ToRoomId);
             entity.HasIndex(re => re.IsActive);
+            entity.Property(re => re.HiddenTargetScore)
+                .HasDefaultValue(10);
 
             // Configure relationships
             entity.HasOne(re => re.FromRoom)

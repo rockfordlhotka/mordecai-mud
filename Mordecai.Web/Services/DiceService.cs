@@ -13,6 +13,11 @@ public interface IDiceService
     int Roll4dF();
 
     /// <summary>
+    /// Rolls 4dF using exploding dice rules (4dF+) where extreme results trigger additional rolls.
+    /// </summary>
+    int RollExploding4dF();
+
+    /// <summary>
     /// Rolls 4dF with a modifier, ensuring result stays within min/max bounds
     /// </summary>
     int Roll4dFWithModifier(int modifier, int minValue = 1, int maxValue = 20);
@@ -23,13 +28,15 @@ public interface IDiceService
     int RollMultiple4dF(int count);
 }
 
-public class DiceService : IDiceService
+public sealed class DiceService : IDiceService, IDisposable
 {
     private readonly RandomNumberGenerator _rng;
+    private readonly bool _ownsRng;
 
-    public DiceService()
+    public DiceService(RandomNumberGenerator? rng = null)
     {
-        _rng = RandomNumberGenerator.Create();
+        _rng = rng ?? RandomNumberGenerator.Create();
+        _ownsRng = rng is null;
     }
 
     public int Roll4dF()
@@ -43,6 +50,22 @@ public class DiceService : IDiceService
         }
 
         return total;
+    }
+
+    public int RollExploding4dF()
+    {
+        var roll = Roll4dF();
+
+        if (roll == 4)
+        {
+            roll += RollExplodingAdjustment(isPositive: true);
+        }
+        else if (roll == -4)
+        {
+            roll += RollExplodingAdjustment(isPositive: false);
+        }
+
+        return roll;
     }
 
     public int Roll4dFWithModifier(int modifier, int minValue = 1, int maxValue = 20)
@@ -64,6 +87,48 @@ public class DiceService : IDiceService
         return total;
     }
 
+    private int RollExplodingAdjustment(bool isPositive)
+    {
+        var totalAdjustment = 0;
+        var continueRolling = false;
+
+        do
+        {
+            var (adjustment, shouldExplodeAgain) = RollExplodingReroll(isPositive);
+            totalAdjustment += adjustment;
+            continueRolling = shouldExplodeAgain;
+        }
+        while (continueRolling);
+
+        return totalAdjustment;
+    }
+
+    private (int Adjustment, bool ShouldExplodeAgain) RollExplodingReroll(bool isPositive)
+    {
+        var plusCount = 0;
+        var minusCount = 0;
+
+        for (int i = 0; i < 4; i++)
+        {
+            var die = RollSingleFudgeDie();
+            if (die > 0)
+            {
+                plusCount++;
+            }
+            else if (die < 0)
+            {
+                minusCount++;
+            }
+        }
+
+        if (isPositive)
+        {
+            return (plusCount, plusCount == 4);
+        }
+
+        return (-minusCount, minusCount == 4);
+    }
+
     private int RollSingleFudgeDie()
     {
         // Fudge die has 6 faces: 2 blanks (0), 2 plus (+1), 2 minus (-1)
@@ -82,6 +147,9 @@ public class DiceService : IDiceService
 
     public void Dispose()
     {
-        _rng?.Dispose();
+        if (_ownsRng)
+        {
+            _rng.Dispose();
+        }
     }
 }

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Security.Cryptography;
 using Xunit;
 using Mordecai.Web.Services;
 using Mordecai.Web.Models;
@@ -37,6 +39,55 @@ public class DiceServiceTests
         {
             var result = _diceService.Roll4dFWithModifier(modifier, minValue, maxValue);
             Assert.InRange(result, minValue, maxValue);
+        }
+    }
+
+    [Fact]
+    public void RollExploding4dF_Should_AddAdditionalPluses_WhenMaximumRolled()
+    {
+        using var diceService = new DiceService(new StubRandomNumberGenerator(
+            2, 2, 2, 2, // Initial roll: + + + + -> +4
+            2, 3, 0, 4  // Exploding roll: + + blank - -> adds +2 and stops
+        ));
+
+        var result = diceService.RollExploding4dF();
+
+        Assert.Equal(6, result);
+    }
+
+    [Fact]
+    public void RollExploding4dF_Should_AddAdditionalMinuses_WhenMinimumRolled()
+    {
+        using var diceService = new DiceService(new StubRandomNumberGenerator(
+            4, 4, 5, 5, // Initial roll: - - - - -> -4
+            4, 5, 2, 0  // Exploding roll: - - + blank -> subtract 2 and stop
+        ));
+
+        var result = diceService.RollExploding4dF();
+
+        Assert.Equal(-6, result);
+    }
+
+    private sealed class StubRandomNumberGenerator : RandomNumberGenerator
+    {
+        private readonly Queue<byte> _values;
+
+        public StubRandomNumberGenerator(params byte[] values)
+        {
+            _values = new Queue<byte>(values);
+        }
+
+        public override void GetBytes(byte[] data)
+        {
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (_values.Count == 0)
+                {
+                    throw new InvalidOperationException("Not enough random values provided for test.");
+                }
+
+                data[i] = _values.Dequeue();
+            }
         }
     }
 }

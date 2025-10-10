@@ -723,26 +723,32 @@
 
             AddMessage("You carefully search the area for hidden things...", "text-info");
 
-            var diceService = new DiceService();
+            using var diceService = new DiceService();
             var abilityScore = awarenessSkill.CalculateAbilityScore(character);
-            var skillCheck = abilityScore + diceService.Roll4dF();
+            var diceRoll = diceService.RollExploding4dF();
+            var skillCheck = abilityScore + diceRoll;
+            AddMessage($"Awareness check: {abilityScore} (AS) {diceRoll:+0;-0;0} (4dF+) = {skillCheck}", "text-muted");
 
-            var foundHiddenThings = await PerformRoomSearch(skillCheck);
+            var searchOutcome = await PerformRoomSearch(skillCheck);
 
-            var usageType = skillCheck >= 12 ? Mordecai.Web.Data.SkillUsageType.CriticalSuccess : Mordecai.Web.Data.SkillUsageType.RoutineUse;
+            var usageType = diceRoll >= 4
+                ? Mordecai.Web.Data.SkillUsageType.CriticalSuccess
+                : searchOutcome.FoundHiddenExit
+                    ? Mordecai.Web.Data.SkillUsageType.ChallengingUse
+                    : Mordecai.Web.Data.SkillUsageType.RoutineUse;
             var didAdvance = await SkillService.AddSkillUsageAsync(
                 activeCharacterId,
                 awarenessSkillId.Value,
                 usageType,
                 baseUsagePoints: 1,
                 context: "Room Search",
-                details: $"Skill check result: {skillCheck}"
+                details: $"Skill check result: {skillCheck} (AS {abilityScore}, roll {diceRoll:+0;-0;0})"
             );
 
-            if (foundHiddenThings.Any())
+            if (searchOutcome.Discoveries.Any())
             {
                 AddMessage("Your search reveals:", "text-success");
-                foreach (var thing in foundHiddenThings)
+                foreach (var thing in searchOutcome.Discoveries)
                 {
                     AddMessage($"  {thing}", "text-warning");
                 }
@@ -750,6 +756,11 @@
             else
             {
                 AddMessage("You don't find anything hidden here.", "text-muted");
+            }
+
+            if (searchOutcome.HiddenExitsPresent && !searchOutcome.FoundHiddenExit)
+            {
+                AddMessage("Something about this place still feels concealed, but you can't pinpoint it yet.", "text-muted");
             }
 
             if (didAdvance)
@@ -767,46 +778,54 @@
         }
     }
 
-    private async Task<List<string>> PerformRoomSearch(int skillCheckResult)
+    private const int DefaultHiddenExitTargetScore = 10;
+
+    private sealed record RoomSearchResult(
+        List<string> Discoveries,
+        bool FoundHiddenExit,
+        bool HiddenExitsPresent,
+        int HighestTargetValue);
+
+    private async Task<RoomSearchResult> PerformRoomSearch(int skillCheckResult)
     {
         var foundThings = new List<string>();
-        
-        // Get hidden exits in this room
+
         var hiddenExits = await WorldService.GetHiddenExitsFromRoomAsync(currentRoomId!.Value);
-        
+
+        var hiddenExitsPresent = false;
+        var foundHiddenExit = false;
+        var highestTarget = 0;
+
         foreach (var exit in hiddenExits)
         {
-            // Difficulty to find each hidden exit can be based on its properties
-            var difficulty = 10; // Base difficulty
-            
-            // Higher difficulty for exits requiring special skills
-            if (exit.SkillRequired.HasValue)
-            {
-                difficulty += (int)exit.SkillLevelRequired;
-            }
-            
-            // If skill check beats the difficulty, reveal the exit
+            hiddenExitsPresent = true;
+
+            var targetScore = exit.HiddenTargetScore > 0 ? exit.HiddenTargetScore : DefaultHiddenExitTargetScore;
+            var skillRequirementPenalty = exit.SkillRequired.HasValue
+                ? (int)Math.Ceiling(exit.SkillLevelRequired)
+                : 0;
+            var difficulty = targetScore + skillRequirementPenalty;
+            highestTarget = Math.Max(highestTarget, difficulty);
+
             if (skillCheckResult >= difficulty)
             {
+                foundHiddenExit = true;
                 var description = exit.GetExitDescription() ?? $"a hidden passage {exit.Direction}";
                 foundThings.Add($"A hidden exit {exit.Direction}: {description}");
             }
         }
-        
-        // Add other searchable room features based on skill check
+
         if (skillCheckResult >= 15)
         {
-            // Exceptional search might reveal room details or items
             foundThings.Add("subtle wear patterns on the floor suggesting hidden activity");
         }
-        
+
         if (skillCheckResult >= 18)
         {
-            // Legendary search results
             foundThings.Add("faint scratch marks near what might be a concealed mechanism");
         }
-        
-        return foundThings;
+
+        return new RoomSearchResult(foundThings, foundHiddenExit, hiddenExitsPresent, hiddenExitsPresent ? highestTarget : 0);
     }
 
     private async Task<int?> GetAwarenessSkillIdAsync()
