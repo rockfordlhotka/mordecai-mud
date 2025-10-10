@@ -303,6 +303,7 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
                 nameof(ChatMessage) => JsonSerializer.Deserialize<ChatMessage>(messageBody, _jsonOptions),
                 nameof(GlobalChatMessage) => JsonSerializer.Deserialize<GlobalChatMessage>(messageBody, _jsonOptions),
                 nameof(EmoteMessage) => JsonSerializer.Deserialize<EmoteMessage>(messageBody, _jsonOptions),
+                nameof(AdjacentRoomSoundMessage) => JsonSerializer.Deserialize<AdjacentRoomSoundMessage>(messageBody, _jsonOptions),
                 nameof(CombatStarted) => JsonSerializer.Deserialize<CombatStarted>(messageBody, _jsonOptions),
                 nameof(CombatAction) => JsonSerializer.Deserialize<CombatAction>(messageBody, _jsonOptions),
                 nameof(CombatEnded) => JsonSerializer.Deserialize<CombatEnded>(messageBody, _jsonOptions),

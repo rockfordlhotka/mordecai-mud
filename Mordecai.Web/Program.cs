@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Mordecai.Web.Data;
 using Mordecai.Messaging.Extensions;
+using Mordecai.Messaging.Services;
 using Mordecai.Web.Services;
 using Mordecai.Game.Services;
 
@@ -71,6 +72,7 @@ builder.Services.AddScoped<IGameConfigurationService, GameConfigurationService>(
 builder.Services.AddScoped<Mordecai.Game.Services.IRoomService, Mordecai.Game.Services.RoomService>();
 builder.Services.AddScoped<Mordecai.Web.Services.IZoneService, Mordecai.Web.Services.ZoneService>();
 builder.Services.AddScoped<Mordecai.Web.Services.IRoomService, Mordecai.Web.Services.RoomService>();
+builder.Services.AddScoped<IRoomAdjacencyService, RoomAdjacencyService>();
 builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 

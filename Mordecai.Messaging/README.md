@@ -17,6 +17,7 @@ The messaging system provides real-time communication between players in the Mor
 ## Documentation
 
 - **[MESSAGE_SCOPES.md](./MESSAGE_SCOPES.md)** - Comprehensive guide to message scopes (global, zone, room, character) and RabbitMQ routing architecture
+- **[SOUND_PROPAGATION.md](./SOUND_PROPAGATION.md)** - Sound propagation system for adjacent room awareness
 - **[TARGETED_CHAT.md](./TARGETED_CHAT.md)** - Details on targeted chat implementation
 
 ## Message Scope Hierarchy

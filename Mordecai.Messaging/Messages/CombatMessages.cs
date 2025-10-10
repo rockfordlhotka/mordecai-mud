@@ -8,7 +8,8 @@ public sealed record CombatStarted(
     string InitiatorName,
     Guid TargetId,
     string TargetName,
-    int LocationRoomId
+    int LocationRoomId,
+    SoundLevel SoundLevel = SoundLevel.Loud
 ) : GameMessage
 {
     public override int? RoomId => LocationRoomId;
@@ -26,7 +27,8 @@ public sealed record CombatAction(
     string ActionDescription,
     int Damage,
     bool IsHit,
-    string SkillUsed
+    string SkillUsed,
+    SoundLevel SoundLevel = SoundLevel.Normal
 ) : GameMessage
 {
     public override int? RoomId => LocationRoomId;

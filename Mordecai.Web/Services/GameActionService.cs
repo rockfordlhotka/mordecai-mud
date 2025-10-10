@@ -11,15 +11,18 @@ public class GameActionService
 {
     private readonly IGameMessagePublisher _messagePublisher;
     private readonly TargetResolutionService _targetResolution;
+    private readonly ISoundPropagationService _soundPropagation;
     private readonly ILogger<GameActionService> _logger;
 
     public GameActionService(
         IGameMessagePublisher messagePublisher,
         TargetResolutionService targetResolution,
+        ISoundPropagationService soundPropagation,
         ILogger<GameActionService> logger)
     {
         _messagePublisher = messagePublisher;
         _targetResolution = targetResolution;
+        _soundPropagation = soundPropagation;
         _logger = logger;
     }
 
@@ -83,6 +86,8 @@ public class GameActionService
                 }
             }
 
+            var soundLevel = GetSoundLevelForChatType(chatType);
+
             // Create and publish the chat message
             var chatMessage = new ChatMessage(
                 characterId, 
@@ -92,9 +97,25 @@ public class GameActionService
                 chatType,
                 target?.Id,
                 target?.Name,
-                target?.Type);
+                target?.Type,
+                soundLevel);
 
             await _messagePublisher.PublishAsync(chatMessage);
+
+            if (soundLevel != SoundLevel.Silent)
+            {
+                var baseDescription = GetPropagationDescription(chatType);
+                var detailMessage = ShouldIncludeDetailedMessage(chatType) ? message : null;
+                var propagationName = GetPropagationCharacterName(chatType, characterName);
+
+                await _soundPropagation.PropagateSound(
+                    roomId,
+                    soundLevel,
+                    SoundType.Speech,
+                    baseDescription,
+                    propagationName,
+                    detailMessage);
+            }
 
             // Return feedback message for the speaker
             var feedback = target != null 
@@ -227,4 +248,26 @@ public class GameActionService
         ChatType.Emote => "emote",
         _ => "say"
     };
+
+    private static SoundLevel GetSoundLevelForChatType(ChatType chatType) => chatType switch
+    {
+        ChatType.Whisper => SoundLevel.Silent,
+        ChatType.Tell => SoundLevel.Silent,
+        ChatType.Yell => SoundLevel.Loud,
+        ChatType.Emote => SoundLevel.Quiet,
+        _ => SoundLevel.Normal
+    };
+
+    private static string GetPropagationDescription(ChatType chatType) => chatType switch
+    {
+        ChatType.Whisper => "whispering",
+        ChatType.Yell => "someone shouting",
+        ChatType.Emote => "a vocal emote",
+        _ => "someone speaking"
+    };
+
+    private static bool ShouldIncludeDetailedMessage(ChatType chatType) => chatType == ChatType.Yell;
+
+    private static string? GetPropagationCharacterName(ChatType chatType, string characterName)
+        => chatType == ChatType.Yell ? characterName : null;
 }

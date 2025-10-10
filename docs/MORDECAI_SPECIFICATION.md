@@ -599,9 +599,79 @@ This progression system ensures that skill advancement feels rewarding and meani
 
 - **Communication**
   - Global chat channels
-  - Local area communication
-  - Private messaging
+  - Local area communication (say, emote)
+  - Private messaging (tell, whisper)
+  - Yelling/shouting for distance communication
   - Guild/party chat
+  - **Sound Propagation System**: Sounds travel to adjacent rooms based on volume
+
+#### Sound Propagation and Adjacent Room Awareness
+
+The game implements realistic sound propagation where actions in one room can be heard in connected rooms, creating a more immersive and tactical environment.
+
+**Sound Levels:**
+
+- **Silent** (0): No sound propagates (thinking, silent actions)
+- **Quiet** (1): Normal conversation - adjacent rooms hear muffled, indistinct sounds
+- **Normal** (2): Regular speech - adjacent rooms hear clearly but no words
+- **Loud** (3): Yelling/shouting - 1 room away hears words, 2 rooms hear distant sounds
+- **Very Loud** (4): Combat, spells - 2 rooms hear description, 3 rooms hear distant sound
+- **Deafening** (5): Explosions, dragon roars - heard 3+ rooms away
+
+**Communication Commands:**
+
+- **Say** (Quiet/Normal): Normal conversation in current room
+  - Adjacent rooms: "You hear muffled voices" or "You hear someone speaking"
+  - No words discernible outside the source room
+  
+- **Yell/Shout** (Loud): Intentionally loud communication
+  - Current room: Full message heard clearly
+  - 1 room away: Full message heard with direction ("Someone yells from the north: 'Help!'")
+  - 2 rooms away: "You hear distant shouting to the south"
+  
+- **Whisper** (Silent): Private communication, no propagation
+  - Only target character hears the message
+  - No sound travels to adjacent rooms
+
+**Combat and Effect Sounds:**
+
+- **Combat Start** (Loud): "You hear sounds of combat to the east"
+- **Weapon Strikes** (Normal): "You hear the clash of weapons nearby"
+- **Spell Casting** (Normal-VeryLoud): Varies by spell power
+  - Fireballs, lightning (VeryLoud): Heard 2-3 rooms away
+  - Minor spells (Normal): Adjacent rooms only
+- **Explosions** (Deafening): "You hear a thunderous explosion to the west"
+
+**Direction Awareness:**
+
+When sounds propagate, listeners are informed of the general direction:
+- "You hear shouting to the north"
+- "You hear combat sounds from below"
+- "You hear a crash to the southwest"
+
+**Hidden Exits:**
+
+Sounds do NOT propagate through hidden exits, maintaining their concealment. Only visible, non-hidden connections carry sound.
+
+**Tactical Implications:**
+
+- Loud combat attracts attention from nearby rooms
+- Yelling can be used to call for help or warn others
+- Sneaking characters must be aware that combat sounds travel
+- Ambushes can be detected by sounds from adjacent rooms
+- Wizards casting loud spells give away their position
+
+**Sound Types:**
+
+- Speech (talking, yelling, shouting)
+- Combat (weapon strikes, impacts)
+- Magic (spell effects, magical energy)
+- Movement (footsteps, running)
+- Environmental (wind, water, ambient)
+- Music (singing, instruments)
+- Animal (creature sounds)
+- Mechanical (doors, traps, mechanisms)
+- Destruction (breaking, explosions, collapse)
 
 - **Guilds**
   - Player-created organizations

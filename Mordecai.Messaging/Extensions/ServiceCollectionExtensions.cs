@@ -18,6 +18,7 @@ public static class ServiceCollectionExtensions
         // Prefer RabbitMQ-based implementations when available. Fall back to stubs only if RabbitMQ components fail at runtime.
         services.AddSingleton<IGameMessagePublisher, RabbitMqGameMessagePublisher>();
         services.AddSingleton<IGameMessageSubscriberFactory, RabbitMqGameMessageSubscriberFactory>();
+        services.AddScoped<ISoundPropagationService, SoundPropagationService>();
         
         return services;
     }
