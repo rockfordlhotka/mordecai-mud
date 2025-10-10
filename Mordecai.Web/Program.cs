@@ -55,6 +55,7 @@ builder.Services.AddScoped<IDoorInteractionService, DoorInteractionService>();
 builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>();
 
 // Add skill services
+builder.Services.AddScoped<ISkillService, SkillService>();
 builder.Services.AddScoped<SkillService>();
 
 // Add admin services
