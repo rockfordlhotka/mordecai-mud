@@ -661,6 +661,14 @@ Sounds do NOT propagate through hidden exits, maintaining their concealment. Onl
 
 Closed doors consume one propagation step when sound crosses the barrier. If a sound would only have reached the adjacent room, it is blocked entirely. Otherwise, the remaining propagation distance is reduced by one before continuing beyond the door.
 
+**Door Locking Rules:**
+
+- Doors can be freely opened or closed by any character whenever they are unlocked.
+- Device-locked doors require a matching key, gem, or other linked item to lock or unlock the door; only characters holding the bonded item can operate the lock.
+- Spell-locked doors remain secured until the original caster releases the effect or another character successfully counters the spell.
+- Locked doors present a Physicality task value (TV). A character may attempt to force the door open by meeting or exceeding this TV, which breaks the lock and leaves the door open and unlocked.
+- For spell locks, the Physicality TV equals the spell's strength, defined as the caster's success value (SV) from the locking roll (e.g., ability score 8 plus +1 on 4dF results in SV 9 and therefore TV 9 to break).
+
 **Tactical Implications:**
 
 - Loud combat attracts attention from nearby rooms

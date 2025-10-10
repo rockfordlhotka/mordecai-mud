@@ -19,6 +19,7 @@
 @inject ICharacterService CharacterService
 @inject IWorldService WorldService
 @inject SkillService SkillService
+@inject IDoorInteractionService DoorInteractionService
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
 @implements IDisposable
@@ -583,6 +584,15 @@
                 case "drive":
                     await HandleDriveCommand();
                     break;
+
+                case "open":
+                case "close":
+                case "lock":
+                case "unlock":
+                case "break":
+                case "force":
+                    await HandleDoorCommand(firstWord, parts);
+                    break;
                     
                 case "help":
                     AddMessage("Available Commands:", "text-info");
@@ -591,6 +601,9 @@
                     AddMessage("search - Search for hidden things using your awareness skill (costs 1 FAT)");
                     AddMessage("skills - Display your character's skills and progress");
                     AddMessage("drive - Trade a portion of your vitality for fatigue recovery using the Drive skill");
+                    AddMessage("open/close [direction] - Open or close a door");
+                    AddMessage("lock/unlock [direction] [device] - Lock or unlock a door with a device code");
+                    AddMessage("break [direction] - Try to smash through a locked door");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
                     AddMessage("whisper [target] [message] - Whisper quietly to someone in the room");
@@ -772,6 +785,105 @@
         {
             AddMessage($"Error performing Drive conversion: {ex.Message}", "text-danger");
         }
+    }
+
+    private async Task HandleDoorCommand(string verb, string[] parts)
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("You are not currently in a room.", "text-danger");
+            return;
+        }
+
+        var parsed = ParseDoorCommand(parts);
+        if (!parsed.Success)
+        {
+            AddMessage(parsed.Error ?? "Specify a direction.", "text-warning");
+            return;
+        }
+
+        DoorActionResult result;
+        var direction = parsed.Direction!;
+
+        try
+        {
+            result = verb switch
+            {
+                "open" => await DoorInteractionService.OpenAsync(characterId.Value, currentUserId, currentRoomId.Value, direction),
+                "close" => await DoorInteractionService.CloseAsync(characterId.Value, currentUserId, currentRoomId.Value, direction),
+                "lock" => await DoorInteractionService.LockWithDeviceAsync(characterId.Value, currentUserId, currentRoomId.Value, direction, parsed.DeviceCode ?? string.Empty),
+                "unlock" => await DoorInteractionService.UnlockWithDeviceAsync(characterId.Value, currentUserId, currentRoomId.Value, direction, parsed.DeviceCode ?? string.Empty),
+                "break" or "force" => await DoorInteractionService.AttemptBreakLockAsync(characterId.Value, currentUserId, currentRoomId.Value, direction),
+                _ => DoorActionResult.Failure("That action is not supported.")
+            };
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error interacting with the door: {ex.Message}", "text-danger");
+            return;
+        }
+
+        var cssClass = result.Success ? "text-success" : "text-warning";
+        if (!string.IsNullOrWhiteSpace(result.Message))
+        {
+            AddMessage(result.Message, cssClass);
+        }
+
+        if (result.HasCheckDetails)
+        {
+            var roll = result.DiceRoll!.Value;
+            var modifier = roll >= 0 ? $"+{roll}" : roll.ToString();
+            AddMessage($"Physicality check: {result.AbilityScore} {modifier} = {result.Total} vs TV {result.TargetValue}.", result.Success ? "text-info" : "text-muted");
+        }
+
+        if (result.Success)
+        {
+            await RefreshCurrentRoomAsync();
+        }
+    }
+
+    private static (bool Success, string? Direction, string? DeviceCode, string? Error) ParseDoorCommand(string[] parts)
+    {
+        if (parts.Length < 2)
+        {
+            return (false, null, null, "Specify a direction.");
+        }
+
+        var directionIndex = 1;
+        if (parts[1].Equals("door", StringComparison.OrdinalIgnoreCase))
+        {
+            if (parts.Length < 3)
+            {
+                return (false, null, null, "Specify a direction.");
+            }
+            directionIndex = 2;
+        }
+
+        var direction = parts[directionIndex].ToLowerInvariant();
+        string? deviceCode = null;
+
+        if (parts.Length > directionIndex + 1)
+        {
+            deviceCode = string.Join(" ", parts.Skip(directionIndex + 1));
+        }
+
+        return (true, direction, deviceCode, null);
+    }
+
+    private async Task RefreshCurrentRoomAsync()
+    {
+        if (!currentRoomId.HasValue)
+        {
+            return;
+        }
+
+        currentRoom = await WorldService.GetRoomByIdAsync(currentRoomId.Value);
     }
 
     private async Task HandleSearchCommand()
@@ -1109,6 +1221,13 @@
         if (exit == null)
         {
             AddMessage("You cannot go that way.", "text-danger");
+            return;
+        }
+
+        if (exit.IsDoorLocked)
+        {
+            var doorLabel = exit.GetDoorDisplayName();
+            AddMessage($"The {doorLabel} to the {normalizedDirection} is locked.", "text-warning");
             return;
         }
 

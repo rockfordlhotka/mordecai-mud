@@ -335,6 +335,11 @@ public class WorldService : IWorldService
                 return false;
             }
 
+            if (exit.IsDoorLocked)
+            {
+                return false;
+            }
+
             if (exit.IsDoorClosed)
             {
                 return false;

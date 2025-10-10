@@ -99,6 +99,24 @@ public class ApplicationDbContext : IdentityDbContext
                 .HasConversion<int>()
                 .HasDefaultValue(GameEntities.DoorState.None);
 
+            entity.Property(re => re.LockConfiguration)
+                .HasConversion<int>()
+                .HasDefaultValue(GameEntities.DoorLockType.None);
+
+            entity.Property(re => re.IsLocked)
+                .HasDefaultValue(false);
+
+            entity.Property(re => re.LockDeviceCode)
+                .HasMaxLength(100);
+
+            entity.Property(re => re.PhysicalityTargetValue)
+                .HasDefaultValue((int?)null);
+
+            entity.Property(re => re.SpellLockStrength)
+                .HasPrecision(6, 2);
+
+            entity.HasIndex(re => new { re.LockConfiguration, re.IsLocked });
+
             // Configure relationships
             entity.HasOne(re => re.FromRoom)
                 .WithMany(r => r.ExitsFromHere)

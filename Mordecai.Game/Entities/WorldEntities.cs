@@ -14,6 +14,16 @@ public enum DoorState
 }
 
 /// <summary>
+/// Indicates how a doorway can be locked.
+/// </summary>
+public enum DoorLockType
+{
+    None = 0,
+    Device = 1,
+    Spell = 2
+}
+
+/// <summary>
 /// Represents a game world zone containing multiple rooms
 /// </summary>
 public class Zone
@@ -348,6 +358,43 @@ public class RoomExit
     /// </summary>
     public DoorState DoorState { get; set; } = DoorState.None;
 
+    /// <summary>
+    /// Describes how this door may be locked when enabled.
+    /// </summary>
+    public DoorLockType LockConfiguration { get; set; } = DoorLockType.None;
+
+    /// <summary>
+    /// True while the lock is currently engaged.
+    /// </summary>
+    public bool IsLocked { get; set; }
+
+    /// <summary>
+    /// Identifier for the device (key, gem, etc.) that can lock/unlock this door.
+    /// </summary>
+    [StringLength(100)]
+    public string? LockDeviceCode { get; set; }
+
+    /// <summary>
+    /// Target value required to force the door open with the Physicality skill when device-locked.
+    /// </summary>
+    public int? PhysicalityTargetValue { get; set; }
+
+    /// <summary>
+    /// Character that applied the current spell lock, if any.
+    /// </summary>
+    public Guid? SpellLockCasterId { get; set; }
+
+    /// <summary>
+    /// Success value (SV) that resulted from the spell lock attempt.
+    /// </summary>
+    [Column(TypeName = "decimal(6,2)")]
+    public decimal? SpellLockStrength { get; set; }
+
+    /// <summary>
+    /// Timestamp describing when the spell lock was applied.
+    /// </summary>
+    public DateTimeOffset? SpellLockAppliedAt { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     // Navigation properties
@@ -371,6 +418,19 @@ public class RoomExit
         if (!HasDoor)
         {
             return trimmed;
+        }
+
+        if (IsDoorClosed && IsLocked)
+        {
+            var lockedState = $"{GetDoorDisplayName()} (locked)";
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                return lockedState;
+            }
+
+            return trimmed.Contains("(locked)", StringComparison.OrdinalIgnoreCase)
+                ? trimmed
+                : $"{trimmed} (locked)";
         }
 
         var stateText = DoorState switch
@@ -411,6 +471,11 @@ public class RoomExit
     public bool BlocksSound => IsDoorClosed;
 
     /// <summary>
+    /// Returns true when a lock is currently engaged.
+    /// </summary>
+    public bool IsDoorLocked => IsDoorClosed && HasDoor && IsLocked;
+
+    /// <summary>
     /// Gets a friendly display name for the doorway.
     /// </summary>
     public string GetDoorDisplayName()
@@ -426,5 +491,38 @@ public class RoomExit
         }
 
         return "door";
+    }
+
+    /// <summary>
+    /// Returns the Physicality task value required to break the door when locked.
+    /// device locks use <see cref="PhysicalityTargetValue"/> while spell locks use the stored spell strength.
+    /// </summary>
+    public int GetPhysicalityTargetValue()
+    {
+        if (!IsDoorLocked)
+        {
+            return 0;
+        }
+
+        return LockConfiguration switch
+        {
+            DoorLockType.Spell when SpellLockStrength.HasValue => (int)Math.Ceiling(SpellLockStrength.Value),
+            DoorLockType.Device when PhysicalityTargetValue.HasValue => PhysicalityTargetValue.Value,
+            _ => PhysicalityTargetValue ?? 0
+        };
+    }
+
+    /// <summary>
+    /// Clears any active spell lock metadata while keeping structural configuration untouched.
+    /// </summary>
+    public void ClearSpellLock()
+    {
+        SpellLockCasterId = null;
+        SpellLockStrength = null;
+        SpellLockAppliedAt = null;
+        if (LockConfiguration == DoorLockType.Spell)
+        {
+            LockConfiguration = DoorLockType.None;
+        }
     }
 }

@@ -51,6 +51,7 @@ builder.Services.AddGameMessaging();
 
 // Add character creation services
 builder.Services.AddScoped<IDiceService, DiceService>();
+builder.Services.AddScoped<IDoorInteractionService, DoorInteractionService>();
 builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>();
 
 // Add skill services
