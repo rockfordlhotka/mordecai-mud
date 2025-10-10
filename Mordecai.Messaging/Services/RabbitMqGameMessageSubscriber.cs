@@ -313,6 +313,9 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
                 nameof(SystemMessage) => JsonSerializer.Deserialize<SystemMessage>(messageBody, _jsonOptions),
                 nameof(AdminAction) => JsonSerializer.Deserialize<AdminAction>(messageBody, _jsonOptions),
                 nameof(ErrorMessage) => JsonSerializer.Deserialize<ErrorMessage>(messageBody, _jsonOptions),
+                nameof(ZoneEnvironmentMessage) => JsonSerializer.Deserialize<ZoneEnvironmentMessage>(messageBody, _jsonOptions),
+                nameof(RoomEnvironmentMessage) => JsonSerializer.Deserialize<RoomEnvironmentMessage>(messageBody, _jsonOptions),
+                nameof(ZoneEventMessage) => JsonSerializer.Deserialize<ZoneEventMessage>(messageBody, _jsonOptions),
                 _ => null
             };
         }

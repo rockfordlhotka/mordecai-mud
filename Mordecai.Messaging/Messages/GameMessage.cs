@@ -46,5 +46,6 @@ public enum MessageCategory
     Emote,
     Look,
     Inventory,
-    Trade
+    Trade,
+    Environment
 }

@@ -672,6 +672,128 @@ This progression system ensures that skill advancement feels rewarding and meani
   - World simulation and NPC behavior processing
   - Scheduled events and maintenance tasks
 
+#### Message Scopes and Architecture
+
+Mordecai's messaging system operates at multiple hierarchical scopes, each with distinct routing and delivery characteristics. This architecture uses RabbitMQ's topic exchange pattern to efficiently route messages to the appropriate subscribers.
+
+**Message Scope Hierarchy:**
+
+1. **Game-Wide (Global) Messages**
+   - **Scope**: All connected players across the entire game world
+   - **Use Cases**:
+     - Server announcements (restarts, updates, events)
+     - Global chat channels (OOC, Gossip, Newbie)
+     - Admin broadcasts
+     - System-wide events (world boss spawns, server-wide competitions)
+   - **Routing Pattern**: `{category}.{messagetype}.global`
+   - **Examples**:
+     - `system.systemmessage.global` - System announcements
+     - `chat.globalchatmessage.global` - Global chat channels
+     - `system.adminaction.global` - Admin broadcasts
+   - **Implementation**: Messages with `RoomId = null` are treated as global
+
+2. **Zone-Wide Messages**
+   - **Scope**: All players within a specific zone (geographic region)
+   - **Use Cases**:
+     - Zone environmental effects (weather changes, earthquakes)
+     - Zone-specific events (zone boss spawns, local festivals)
+     - Zone announcements (PvP flag changes, zone effects)
+     - Area-wide quests or objectives
+   - **Routing Pattern**: `{category}.{messagetype}.zone.{zoneId}` (future implementation)
+   - **Examples**:
+     - `environment.weatherchange.zone.5` - Weather changes in zone 5
+     - `event.zoneboss.zone.12` - Boss spawn in zone 12
+   - **Implementation**: Future enhancement; requires Zone entity and ZoneId on messages
+
+3. **Room-Wide Messages**
+   - **Scope**: All players in the same room
+   - **Use Cases**:
+     - Local chat (say, emote, whisper within room)
+     - Character movement (enters/leaves)
+     - Combat actions visible to observers
+     - Skill usage and demonstrations
+     - Room environmental effects
+     - NPC interactions and behaviors
+   - **Routing Pattern**: `{category}.{messagetype}.{roomId}`
+   - **Examples**:
+     - `chat.chatmessage.42` - Say/whisper in room 42
+     - `movement.playermoved.42` - Character enters/leaves room 42
+     - `combat.combataction.42` - Combat visible in room 42
+     - `skill.skillused.42` - Skill demonstration in room 42
+   - **Implementation**: Messages with specific `RoomId` value
+
+4. **Character-Level (Targeted) Messages**
+   - **Scope**: Single character or specific set of characters
+   - **Use Cases**:
+     - Private tells/whispers between players
+     - Error messages specific to a character
+     - Personal notifications (skill advancement, quest updates)
+     - Direct NPC dialogue responses
+     - Targeted combat feedback
+   - **Routing Pattern**: Same as scope, but filtered by `TargetCharacterIds`
+   - **Examples**:
+     - `chat.chatmessage.42` with `TargetCharacterIds = [guid1, guid2]`
+     - `system.errormessage.global` with `TargetCharacterIds = [guid1]`
+     - `skill.skillexperiencegained.42` with `TargetCharacterIds = [guid1]`
+   - **Implementation**: Messages include `TargetCharacterIds` array; subscribers filter
+
+**RabbitMQ Topic Exchange Pattern:**
+
+The system uses a single topic exchange (`mordecai.game.events`) with hierarchical routing keys:
+
+```text
+{category}.{messagetype}.{scope}
+
+Where:
+  category     = movement | chat | combat | skill | system | environment
+  messagetype  = specific message class name (lowercase)
+  scope        = global | {roomId} | zone.{zoneId} (future)
+```
+
+**Subscription Model:**
+
+Each connected character maintains a temporary queue bound to multiple routing keys:
+
+- **Global bindings** (always subscribed):
+  - `system.*.global` - System announcements
+  - `chat.globalchatmessage.*` - Global chat channels
+
+- **Room bindings** (dynamic, based on current room):
+  - `movement.*.{roomId}` - Movement in current room
+  - `chat.*.{roomId}` - Local chat in current room
+  - `combat.*.{roomId}` - Combat in current room
+  - `skill.*.{roomId}` - Skill usage in current room
+
+- **Character bindings** (personal):
+  - All messages filtered by `TargetCharacterIds` at subscriber level
+
+**Message Filtering:**
+
+Messages are filtered at two levels:
+
+1. **RabbitMQ Routing**: Topic exchange routes based on routing keys
+2. **Subscriber Filtering**: Each subscriber checks:
+   - Is message targeted? If yes, am I in `TargetCharacterIds`?
+   - Is message room-specific? If yes, am I in that room?
+   - Otherwise, process message (global scope)
+
+**Dynamic Re-subscription:**
+
+When a character moves between rooms:
+
+1. Unbind from old room's routing keys
+2. Bind to new room's routing keys
+3. Update `CurrentRoomId` in subscriber state
+4. All changes occur without interrupting global or targeted message delivery
+
+**Message Priority and Delivery:**
+
+- All messages include `MessagePriority` enum (Low, Normal, High, Critical)
+- All messages include `MessageCategory` enum for UI filtering and styling
+- Messages are persistent (durable) to survive RabbitMQ restarts
+- Acknowledgment-based delivery ensures reliable processing
+- Failed messages are logged and rejected (not requeued to avoid loops)
+
 ### 2. Data Management
 
 - **Entity Framework Core**

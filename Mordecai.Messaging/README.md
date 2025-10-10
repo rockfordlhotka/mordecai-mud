@@ -1,6 +1,6 @@
 # Mordecai MUD - Game Messaging System
 
-> **?? CURRENT STATUS**: Using stub implementations due to RabbitMQ.Client/.NET 9 compatibility issues.  
+> **⚠️ CURRENT STATUS**: Using stub implementations due to RabbitMQ.Client/.NET 9 compatibility issues.  
 > See [MESSAGING_STATUS.md](./MESSAGING_STATUS.md) for details.
 
 ## Overview
@@ -13,6 +13,33 @@ The messaging system provides real-time communication between players in the Mor
 - Combat actions and results
 - Skill usage and experience gains
 - System messages and admin actions
+
+## Documentation
+
+- **[MESSAGE_SCOPES.md](./MESSAGE_SCOPES.md)** - Comprehensive guide to message scopes (global, zone, room, character) and RabbitMQ routing architecture
+- **[TARGETED_CHAT.md](./TARGETED_CHAT.md)** - Details on targeted chat implementation
+
+## Message Scope Hierarchy
+
+Messages in Mordecai operate at four distinct hierarchical scopes:
+
+1. **Game-Wide (Global)**: Server announcements, global chat channels, admin broadcasts
+   - Routing: `{category}.{messagetype}.global`
+   - Example: `system.systemmessage.global`
+
+2. **Zone-Wide** (Future): Environmental effects, zone events, area-wide objectives
+   - Routing: `{category}.{messagetype}.zone.{zoneId}`
+   - Example: `environment.weatherchange.zone.5`
+
+3. **Room-Wide**: Local chat, character movement, combat visible in room, NPC interactions
+   - Routing: `{category}.{messagetype}.{roomId}`
+   - Example: `chat.chatmessage.42`
+
+4. **Character-Level**: Private tells, personal notifications, error messages
+   - Routing: Same as parent scope, filtered by `TargetCharacterIds`
+   - Example: `chat.chatmessage.42` with `TargetCharacterIds = [guid]`
+
+See [MESSAGE_SCOPES.md](./MESSAGE_SCOPES.md) for complete details on implementation, routing patterns, and examples.
 
 ## Current Implementation
 

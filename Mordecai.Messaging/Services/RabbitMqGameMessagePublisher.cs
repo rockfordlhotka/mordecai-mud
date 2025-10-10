@@ -181,6 +181,7 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
             CombatStarted or CombatAction or CombatEnded or HealthChanged => "combat",
             SkillExperienceGained or SkillUsed or SkillLearned => "skill",
             SystemMessage or AdminAction or ErrorMessage => "system",
+            ZoneEnvironmentMessage or RoomEnvironmentMessage or ZoneEventMessage => "environment",
             _ => "general"
         };
     }
