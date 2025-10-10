@@ -330,7 +330,18 @@ public class WorldService : IWorldService
         try
         {
             var exit = await GetExitFromRoomAsync(fromRoomId, direction);
-            return exit != null;
+            if (exit == null)
+            {
+                return false;
+            }
+
+            if (exit.IsDoorClosed)
+            {
+                return false;
+            }
+
+            // TODO: Apply skill requirements and other blockers here.
+            return true;
         }
         catch (Exception ex)
         {

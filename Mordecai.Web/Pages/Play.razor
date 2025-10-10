@@ -1104,16 +1104,22 @@
             _ => direction
         };
 
-        // Check if exit exists
-        var canMove = await WorldService.CanMoveFromRoomAsync(currentRoomId!.Value, normalizedDirection);
-        if (!canMove)
+        // Fetch exit details to evaluate traversal rules
+        var exit = await WorldService.GetExitFromRoomAsync(currentRoomId!.Value, normalizedDirection);
+        if (exit == null)
         {
             AddMessage("You cannot go that way.", "text-danger");
             return;
         }
 
-        // Get destination room
-        var destinationRoom = await WorldService.GetRoomByExitAsync(currentRoomId.Value, normalizedDirection);
+        if (exit.IsDoorClosed)
+        {
+            var doorLabel = exit.GetDoorDisplayName();
+            AddMessage($"The {doorLabel} to the {normalizedDirection} is closed.", "text-warning");
+            return;
+        }
+
+        var destinationRoom = exit.ToRoom ?? await WorldService.GetRoomByExitAsync(currentRoomId.Value, normalizedDirection);
         if (destinationRoom == null)
         {
             AddMessage("That exit seems to lead nowhere.", "text-danger");
@@ -1351,6 +1357,13 @@
         if (exit == null)
         {
             AddMessage($"You see nothing of interest to the {normalizedDirection}.", "text-muted");
+            return;
+        }
+
+        if (exit.IsDoorClosed)
+        {
+            var doorLabel = exit.GetDoorDisplayName();
+            AddMessage($"The {doorLabel} to the {normalizedDirection} is closed; you cannot see through it.", "text-warning");
             return;
         }
 

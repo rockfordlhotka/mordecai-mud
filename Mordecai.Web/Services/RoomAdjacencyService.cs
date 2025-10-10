@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Mordecai.Game.Entities;
 using Mordecai.Messaging.Services;
 using Mordecai.Web.Data;
 
@@ -36,18 +37,23 @@ public sealed class RoomAdjacencyService : IRoomAdjacencyService
 
         await using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-    var results = new List<AdjacentRoomInfo>();
-    var visited = new HashSet<int> { sourceRoomId };
-    var currentLevel = new List<QueueItem> { new(sourceRoomId, EmptyPath) };
+        var results = new List<AdjacentRoomInfo>();
+        var resultMap = new Dictionary<int, AdjacentRoomInfo>();
+        var bestRemaining = new Dictionary<int, int> { [sourceRoomId] = maxDistance };
+        var currentLevel = new List<QueueItem> { new(sourceRoomId, EmptyPath, maxDistance) };
 
-        for (var distance = 0; distance < maxDistance; distance++)
+        while (currentLevel.Count > 0)
         {
-            if (currentLevel.Count == 0)
+            var expandable = currentLevel
+                .Where(item => item.RemainingSteps > 0)
+                .ToList();
+
+            if (expandable.Count == 0)
             {
                 break;
             }
 
-            var roomIds = currentLevel
+            var roomIds = expandable
                 .Select(item => item.RoomId)
                 .Distinct()
                 .ToList();
@@ -56,7 +62,7 @@ public sealed class RoomAdjacencyService : IRoomAdjacencyService
                 .Where(exit => roomIds.Contains(exit.FromRoomId)
                                && exit.IsActive
                                && !exit.IsHidden)
-                .Select(exit => new ExitData(exit.FromRoomId, exit.ToRoomId, exit.Direction))
+                .Select(exit => new ExitData(exit.FromRoomId, exit.ToRoomId, exit.Direction, exit.DoorState))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -71,7 +77,7 @@ public sealed class RoomAdjacencyService : IRoomAdjacencyService
 
             var nextLevel = new List<QueueItem>();
 
-            foreach (var item in currentLevel)
+            foreach (var item in expandable)
             {
                 if (!exitsByRoom.TryGetValue(item.RoomId, out var roomExits))
                 {
@@ -80,27 +86,62 @@ public sealed class RoomAdjacencyService : IRoomAdjacencyService
 
                 foreach (var exit in roomExits)
                 {
-                    if (!visited.Add(exit.ToRoomId))
+                    var penalty = exit.DoorState == DoorState.Closed ? 1 : 0;
+                    var remainingAfterStep = item.RemainingSteps - 1 - penalty;
+
+                    if (remainingAfterStep < 0)
                     {
                         continue;
                     }
 
+                    if (bestRemaining.TryGetValue(exit.ToRoomId, out var existingRemaining)
+                        && remainingAfterStep <= existingRemaining)
+                    {
+                        continue;
+                    }
+
+                    bestRemaining[exit.ToRoomId] = remainingAfterStep;
+
                     var normalizedDirection = NormalizeDirection(exit.Direction);
                     var newPath = AppendDirection(item.PathDirections, normalizedDirection);
-                    var readOnlyPath = newPath.AsReadOnly();
+                    var directionInfo = CalculateDirectionInfo(newPath);
+                    var distanceFromSource = newPath.Count;
 
-                    var directionInfo = CalculateDirectionInfo(readOnlyPath);
-
-                    results.Add(new AdjacentRoomInfo(
-                        exit.ToRoomId,
-                        distance + 1,
-                        directionInfo.FromSource,
-                        directionInfo.FromListener,
-                        readOnlyPath));
-
-                    if (distance + 1 < maxDistance)
+                    if (resultMap.TryGetValue(exit.ToRoomId, out var existingInfo))
                     {
-                        nextLevel.Add(new QueueItem(exit.ToRoomId, readOnlyPath));
+                        if (existingInfo.Distance > distanceFromSource)
+                        {
+                            var updatedInfo = new AdjacentRoomInfo(
+                                exit.ToRoomId,
+                                distanceFromSource,
+                                directionInfo.FromSource,
+                                directionInfo.FromListener,
+                                newPath);
+
+                            resultMap[exit.ToRoomId] = updatedInfo;
+                            var index = results.FindIndex(info => info.RoomId == exit.ToRoomId);
+                            if (index >= 0)
+                            {
+                                results[index] = updatedInfo;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var info = new AdjacentRoomInfo(
+                            exit.ToRoomId,
+                            distanceFromSource,
+                            directionInfo.FromSource,
+                            directionInfo.FromListener,
+                            newPath);
+
+                        resultMap.Add(exit.ToRoomId, info);
+                        results.Add(info);
+                    }
+
+                    if (remainingAfterStep > 0)
+                    {
+                        nextLevel.Add(new QueueItem(exit.ToRoomId, newPath, remainingAfterStep));
                     }
                 }
             }
@@ -242,6 +283,6 @@ public sealed class RoomAdjacencyService : IRoomAdjacencyService
             ["out"] = (0, 0, 0)
         };
 
-    private sealed record ExitData(int FromRoomId, int ToRoomId, string? Direction);
-    private sealed record QueueItem(int RoomId, IReadOnlyList<string> PathDirections);
+    private sealed record ExitData(int FromRoomId, int ToRoomId, string? Direction, DoorState DoorState);
+    private sealed record QueueItem(int RoomId, IReadOnlyList<string> PathDirections, int RemainingSteps);
 }

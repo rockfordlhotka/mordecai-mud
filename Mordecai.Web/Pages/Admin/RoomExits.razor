@@ -120,6 +120,7 @@
                                             <th>Direction</th>
                                             <th>To Room</th>
                                             <th>Description</th>
+                                            <th>Door</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -150,6 +151,19 @@
                                                     else
                                                     {
                                                         <span class="text-muted">No description</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (exit.HasDoor)
+                                                    {
+                                                        <div>@exit.GetDoorDisplayName()</div>
+                                                        <div class="small @(exit.IsDoorClosed ? "text-danger" : "text-success")">
+                                                            @(exit.IsDoorClosed ? "Closed" : "Open")
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">None</span>
                                                     }
                                                 </td>
                                                 <td>
@@ -198,6 +212,7 @@
                                             <th>From Room</th>
                                             <th>Direction</th>
                                             <th>Description</th>
+                                            <th>Door</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -228,6 +243,19 @@
                                                     else
                                                     {
                                                         <span class="text-muted">No description</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (exit.HasDoor)
+                                                    {
+                                                        <div>@exit.GetDoorDisplayName()</div>
+                                                        <div class="small @(exit.IsDoorClosed ? "text-danger" : "text-success")">
+                                                            @(exit.IsDoorClosed ? "Closed" : "Open")
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">None</span>
                                                     }
                                                 </td>
                                                 <td>
@@ -322,6 +350,30 @@
                                    placeholder="Alternative description for nighttime..." maxlength="200" />
                             <div class="form-text">Alternative description for night time (if different).</div>
                         </div>
+
+                        <!-- Door State -->
+                        <div class="mb-3">
+                            <label class="form-label">Door State</label>
+                            <InputSelect class="form-select" @bind-Value="editingExit.DoorState">
+                                <option value="@DoorState.None">No door</option>
+                                <option value="@DoorState.Open">Door (open)</option>
+                                <option value="@DoorState.Closed">Door (closed)</option>
+                            </InputSelect>
+                            <div class="form-text">Select whether this exit is a doorway and its initial state.</div>
+                        </div>
+
+                        @if (editingExit.DoorState != DoorState.None)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Door Display Name</label>
+                                <input type="text"
+                                       class="form-control"
+                                       @bind="editingExit.DoorName"
+                                       maxlength="120"
+                                       placeholder="e.g., iron gate, reed curtain" />
+                                <div class="form-text">Shown in messaging about the door. Leave blank to reuse the exit description.</div>
+                            </div>
+                        }
 
                         <!-- Hidden -->
                         <div class="mb-3">
@@ -433,7 +485,8 @@
             ToRoomId = 0,
             Direction = string.Empty,
             IsActive = true,
-            HiddenTargetScore = 10
+            HiddenTargetScore = 10,
+            DoorState = DoorState.None
         };
         
         showExitModal = true;
@@ -453,7 +506,9 @@
             HiddenTargetScore = exit.HiddenTargetScore,
             SkillRequired = exit.SkillRequired,
             SkillLevelRequired = exit.SkillLevelRequired,
-            IsActive = exit.IsActive
+            IsActive = exit.IsActive,
+            DoorState = exit.DoorState,
+            DoorName = exit.DoorName
         };
         
         showExitModal = true;
@@ -472,6 +527,11 @@
         savingExit = true;
         try
         {
+            if (editingExit.DoorState == DoorState.None)
+            {
+                editingExit.DoorName = null;
+            }
+
             if (editingExit.Id > 0)
             {
                 // Update existing exit

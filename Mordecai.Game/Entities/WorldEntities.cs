@@ -4,6 +4,16 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Mordecai.Game.Entities;
 
 /// <summary>
+/// Tracks whether a doorway blocks passage or sound.
+/// </summary>
+public enum DoorState
+{
+    None = 0,
+    Open = 1,
+    Closed = 2
+}
+
+/// <summary>
 /// Represents a game world zone containing multiple rooms
 /// </summary>
 public class Zone
@@ -327,6 +337,17 @@ public class RoomExit
     /// </summary>
     public decimal SkillLevelRequired { get; set; } = 0;
 
+    /// <summary>
+    /// Optional name shown when players interact with the door.
+    /// </summary>
+    [StringLength(120)]
+    public string? DoorName { get; set; }
+
+    /// <summary>
+    /// Indicates whether a door is present and whether it blocks passage.
+    /// </summary>
+    public DoorState DoorState { get; set; } = DoorState.None;
+
     public bool IsActive { get; set; } = true;
 
     // Navigation properties
@@ -341,10 +362,69 @@ public class RoomExit
     /// </summary>
     public string? GetExitDescription(bool isNight = false)
     {
-        var description = isNight && !string.IsNullOrEmpty(NightExitDescription) 
-            ? NightExitDescription 
+        var description = isNight && !string.IsNullOrEmpty(NightExitDescription)
+            ? NightExitDescription
             : ExitDescription;
 
-        return string.IsNullOrEmpty(description) ? null : description;
+        var trimmed = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+
+        if (!HasDoor)
+        {
+            return trimmed;
+        }
+
+        var stateText = DoorState switch
+        {
+            DoorState.Open => "open",
+            DoorState.Closed => "closed",
+            _ => null
+        };
+
+        if (string.IsNullOrEmpty(stateText))
+        {
+            return trimmed ?? GetDoorDisplayName();
+        }
+
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return $"{GetDoorDisplayName()} ({stateText})";
+        }
+
+        return trimmed.Contains($"({stateText})", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"{trimmed} ({stateText})";
+    }
+
+    /// <summary>
+    /// Returns true when a door is present on the exit.
+    /// </summary>
+    public bool HasDoor => DoorState != DoorState.None;
+
+    /// <summary>
+    /// Returns true when the door is both present and closed.
+    /// </summary>
+    public bool IsDoorClosed => DoorState == DoorState.Closed;
+
+    /// <summary>
+    /// Indicates whether the door blocks sound propagation.
+    /// </summary>
+    public bool BlocksSound => IsDoorClosed;
+
+    /// <summary>
+    /// Gets a friendly display name for the doorway.
+    /// </summary>
+    public string GetDoorDisplayName()
+    {
+        if (!string.IsNullOrWhiteSpace(DoorName))
+        {
+            return DoorName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(ExitDescription))
+        {
+            return ExitDescription.Trim();
+        }
+
+        return "door";
     }
 }

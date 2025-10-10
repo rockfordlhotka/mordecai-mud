@@ -138,7 +138,6 @@ Each non-Human species applies specific modifiers to the base Human attribute ca
 
 While all action resolution uses skills rather than raw attributes, attributes serve several critical functions:
 
-
 1. **Skill Starting Values**: Many skills begin with a base value derived from related attributes
 2. **Health Calculations**: Primary and secondary health pools are calculated from attributes
 3. **Skill Advancement Modifiers**: Higher attributes may provide learning bonuses for related skills
@@ -479,6 +478,10 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Rooms connect to other rooms via exits (north, south, east, west, up, down, and custom directions)
   - Room connections can span zone boundaries for world continuity
   - Hidden areas and secret passages discoverable through exploration or specific conditions
+  - Exits can include physical barriers (doors, gates, shutters) with configurable descriptions and states
+    - Open doors behave like standard exits and allow movement, peeking, and sound travel without penalty
+    - Closed doors block movement and directional look commands entirely, requiring the door to be opened or otherwise bypassed
+    - Closed doors also impede sound propagation by consuming one propagation step (see Sound Propagation)
   - Dynamic weather and time-of-day effects affect room descriptions and gameplay
 
 - **Room Effects System**
@@ -645,6 +648,7 @@ The game implements realistic sound propagation where actions in one room can be
 **Direction Awareness:**
 
 When sounds propagate, listeners are informed of the general direction:
+
 - "You hear shouting to the north"
 - "You hear combat sounds from below"
 - "You hear a crash to the southwest"
@@ -652,6 +656,10 @@ When sounds propagate, listeners are informed of the general direction:
 **Hidden Exits:**
 
 Sounds do NOT propagate through hidden exits, maintaining their concealment. Only visible, non-hidden connections carry sound.
+
+**Doors as Barriers:**
+
+Closed doors consume one propagation step when sound crosses the barrier. If a sound would only have reached the adjacent room, it is blocked entirely. Otherwise, the remaining propagation distance is reduced by one before continuing beyond the door.
 
 **Tactical Implications:**
 

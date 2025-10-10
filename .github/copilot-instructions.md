@@ -2,6 +2,12 @@
 
 This repository builds a skill-based, real-time, text MUD using .NET 9 (Blazor Server + Aspire for dev orchestration) with SQLite (later PostgreSQL), RabbitMQ for async messaging, and OpenTelemetry for observability.
 
+## Environment
+
+This project targets .NET 9 and runs primarily on Blazor Server. It uses Aspire for local development orchestration, including managing dependencies like RabbitMQ.
+
+It is being developed on Windows. Any use of bash or shell scripts should be compatible with mingw git bash. You may use powershell 7 as well.
+
 ## High-Level Architecture
 - Blazor Server web front-end (interactive + server-side rendering)
 - Background services for world simulation, NPC processing, scheduled ticks
@@ -135,4 +141,4 @@ public interface ISkillProgressionService
 If adding new patterns, ensure they align with these principles before expanding.
 
 ---
-Last updated: 2025-01-23
+Last updated: 2025-10-10

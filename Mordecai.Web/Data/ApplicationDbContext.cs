@@ -93,6 +93,11 @@ public class ApplicationDbContext : IdentityDbContext
             entity.HasIndex(re => re.IsActive);
             entity.Property(re => re.HiddenTargetScore)
                 .HasDefaultValue(10);
+            entity.Property(re => re.DoorName)
+                .HasMaxLength(120);
+            entity.Property(re => re.DoorState)
+                .HasConversion<int>()
+                .HasDefaultValue(GameEntities.DoorState.None);
 
             // Configure relationships
             entity.HasOne(re => re.FromRoom)

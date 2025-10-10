@@ -57,7 +57,10 @@ public sealed record RoomExitInfo(
     bool IsHidden,
     bool RequiresSkill,
     string? SkillRequiredName,
-    decimal SkillLevelRequired
+    decimal SkillLevelRequired,
+    bool HasDoor,
+    DoorState DoorState,
+    string? DoorName
 );
 
 /// <summary>
@@ -130,11 +133,14 @@ public class RoomService : IRoomService
         //     exit.Direction,
         //     exit.ToRoomId,
         //     exit.ToRoom.Name,
-        //     exit.GetExitDescription(isNight),
+    //     exit.GetExitDescription(isNight),
         //     exit.IsHidden,
         //     exit.SkillRequired.HasValue,
         //     exit.SkillRequired.HasValue ? "Unknown Skill" : null, // TODO: Look up skill name
-        //     exit.SkillLevelRequired
+    //     exit.SkillLevelRequired,
+    //     exit.HasDoor,
+    //     exit.DoorState,
+    //     exit.DoorName
         // )).ToList();
 
         _logger.LogWarning("GetRoomExitsAsync not yet implemented - requires DbContext integration");
