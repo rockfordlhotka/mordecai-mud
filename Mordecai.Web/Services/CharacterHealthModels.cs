@@ -20,3 +20,18 @@ public sealed record CharacterHealthOperationResult(
     string? FailureReason,
     CharacterHealthSnapshot? Snapshot
 );
+
+/// <summary>
+/// Result payload for the Drive command action.
+/// </summary>
+public sealed record DriveCommandResult(
+    bool Success,
+    string Feedback,
+    int TargetValue,
+    int AbilityScore,
+    int? DiceRoll,
+    int? CheckTotal,
+    int FatigueHealingAmount,
+    int VitalityDamageAmount,
+    CharacterHealthSnapshot? Snapshot
+);

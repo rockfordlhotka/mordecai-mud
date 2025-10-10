@@ -120,6 +120,7 @@ public class HealthTickBackgroundService : BackgroundService
 
         if (pending > 0)
         {
+            var beforeFatigue = character.CurrentFatigue;
             var applied = Math.Min(amount, character.CurrentFatigue);
             character.CurrentFatigue = Math.Max(0, character.CurrentFatigue - applied);
             character.PendingFatigueDamage = Math.Max(0, character.PendingFatigueDamage - amount);
@@ -130,7 +131,13 @@ public class HealthTickBackgroundService : BackgroundService
                 character.PendingVitalityDamage += overflow;
             }
 
-            return applied > 0 || overflow > 0;
+            var fatigueCrash = beforeFatigue > 0 && character.CurrentFatigue == 0;
+            if (fatigueCrash)
+            {
+                character.PendingVitalityDamage = SafeAdd(character.PendingVitalityDamage, 2);
+            }
+
+            return applied > 0 || overflow > 0 || fatigueCrash;
         }
         else
         {

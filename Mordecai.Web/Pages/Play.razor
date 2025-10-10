@@ -87,7 +87,7 @@
                         </div>
                         @if (pendingFat != 0)
                         {
-                            <div class="small text-muted">Pending: @(pendingFat > 0 ? "+" : "")@pendingFat</div>
+                            <div class="small text-muted">Pending: @FormatPendingChange(pendingFat)</div>
                         }
                     </div>
 
@@ -103,7 +103,7 @@
                         </div>
                         @if (pendingVit != 0)
                         {
-                            <div class="small text-muted">Pending: @(pendingVit > 0 ? "+" : "")@pendingVit</div>
+                            <div class="small text-muted">Pending: @FormatPendingChange(pendingVit)</div>
                         }
                     </div>
                 </div>
@@ -388,6 +388,17 @@
         pendingVit = snapshot.PendingVitalityDamage;
     }
 
+    private static string FormatPendingChange(int pending)
+    {
+        if (pending == 0)
+        {
+            return "0";
+        }
+
+        var displayed = -pending;
+        return $"{(displayed > 0 ? "+" : string.Empty)}{displayed}";
+    }
+
     private async Task RefreshCharacterVitalsAsync()
     {
         if (!characterId.HasValue)
@@ -560,6 +571,10 @@
                 case "skills":
                     await HandleSkillsCommand();
                     break;
+
+                case "drive":
+                    await HandleDriveCommand();
+                    break;
                     
                 case "help":
                     AddMessage("Available Commands:", "text-info");
@@ -567,6 +582,7 @@
                     AddMessage("look/l/examine/ex [direction] - Look in a specific direction (e.g., 'look north')");
                     AddMessage("search - Search for hidden things using your awareness skill (costs 1 FAT)");
                     AddMessage("skills - Display your character's skills and progress");
+                    AddMessage("drive - Trade a portion of your vitality for fatigue recovery using the Drive skill");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
                     AddMessage("ooc [message] - Speak on the out-of-character channel");
@@ -656,6 +672,51 @@
         catch (Exception ex)
         {
             AddMessage($"Error processing command: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleDriveCommand()
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        try
+        {
+            var result = await CharacterService.TryPerformDriveConversionAsync(characterId.Value, currentUserId);
+
+            if (!string.IsNullOrWhiteSpace(result.Feedback))
+            {
+                var feedbackClass = result.Success
+                    ? "text-success"
+                    : (!result.DiceRoll.HasValue && result.AbilityScore == 0 ? "text-danger" : "text-warning");
+                AddMessage(result.Feedback, feedbackClass);
+            }
+
+            if (result.DiceRoll.HasValue && result.CheckTotal.HasValue)
+            {
+                AddMessage($"Drive check: AS {result.AbilityScore} {result.DiceRoll.Value:+0;-0;0} (4dF+) = {result.CheckTotal.Value} vs TV {result.TargetValue}.", "text-muted");
+            }
+            else if (result.AbilityScore > 0)
+            {
+                AddMessage($"Drive ability score {result.AbilityScore} vs TV {result.TargetValue}.", "text-muted");
+            }
+
+            if (result.Success)
+            {
+                AddMessage($"Pending health updated: +{result.VitalityDamageAmount} VIT damage, -{result.FatigueHealingAmount} FAT.", "text-info");
+            }
+
+            if (result.Snapshot != null)
+            {
+                ApplyHealthSnapshot(result.Snapshot);
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error performing Drive conversion: {ex.Message}", "text-danger");
         }
     }
 

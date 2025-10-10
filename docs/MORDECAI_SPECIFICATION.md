@@ -28,10 +28,10 @@ Mordecai uses a **4dF (Fudge/Fate Dice)** system as the foundation for all skill
 - **Average result**: 0 (most common outcome)
 - **Probability distribution**: Heavily weighted toward 0, with decreasing probability for extreme results
 
-### Standard 4dF Resolution
+### Skill Check Resolution
 
-- **Skill Check Formula**: `Character Skill + 4dF vs. Target Number or Opposing Skill + 4dF`
-- **Combat Resolution**: `Attack Skill + 4dF vs. Defense Skill + 4dF`
+- **Skill Check Formula**: `Character Skill + 4dF+ vs. Target Number or Opposing Skill + 4dF+`
+- **Combat Resolution**: `Attack Skill + 4dF+ vs. Defense Skill + 4dF+`
 - **Difficulty Modifiers**: Applied as bonuses/penalties to the target number
 - **Margin of Success**: Difference between final results determines outcome quality
 
@@ -61,11 +61,11 @@ For dramatic moments and critical situations, some rolls use **exploding dice** 
 - **Spell Casting**: Particularly powerful or risky magic uses **4dF+**
 - **Crafting**: When attempting masterwork items or using rare materials uses **4dF+**
 - **Social Encounters**: Dramatic persuasion, intimidation, or deception attempts use **4dF+**
-- **Standard Actions**: Most routine actions use standard **4dF** without exploding
+- **Routine Non-Skill Rolls**: Only pure random events (e.g., ambient world generation) may use non-exploding **4dF**; all skill-driven actions use **4dF+**
 
 ### Examples
 
-- **Standard Combat**: Sword skill 12 + **4dF** (+1) = 13 vs. Dodge skill 10 + **4dF** (-1) = 9. Attack succeeds by 4.
+- **Standard Combat**: Sword skill 12 + **4dF+** (+1) = 13 vs. Dodge skill 10 + **4dF+** (-1) = 9. Attack succeeds by 4.
 - **Exploding Success**: Fire Bolt skill 8 + **4dF+** (+4) = 12, then exploding roll 4dF yields 2 more "+" = 14 total. Devastating magical attack!
 - **Exploding Failure**: Lockpicking skill 6 + **4dF+** (-4) = 2, then exploding roll 4dF yields 2 more "-" = 0 total. Lock mechanism jams permanently.
 
@@ -149,6 +149,11 @@ While all action resolution uses skills rather than raw attributes, attributes s
 
 - **Fatigue (FAT)**: (Drive × 2) - 5
   - Represents stamina, exhaustion, and non-lethal damage capacity
+  - **Low fatigue effects** (applies based on current FAT after pending damage):
+    - **FAT = 3**: Must pass a Focus skill check (AS + 4dF+) against target value (TV) 5 or the action fails (no fatigue cost)
+    - **FAT = 2**: Must pass a Focus skill check (AS + 4dF+) against TV 7 or the action fails (no fatigue cost)
+    - **FAT = 1**: Must pass a Focus skill check (AS + 4dF+) against TV 12 or the action fails (no fatigue cost)
+    - **FAT = 0**: Character immediately suffers 2 Vitality damage and cannot perform actions until FAT recovers above 0
 - **Vitality (VIT)**: (Physicality + Drive) - 5
   - Represents life force and lethal damage capacity
 
@@ -232,7 +237,8 @@ During character creation:
       - Each character and NPC has pending FAT and VIT pools that accumulate damage/healing
       - Positive pending values represent damage to be applied over time
       - Negative pending values represent healing to be applied over time
-      - Every 10 seconds, half the pending pool value is applied to current health (rounded to ensure pools reach zero)
+  - **Drive Command**: Characters with Drive ability scores (AS) of 8 or higher can perform a Drive action to trade vitality for fatigue recovery. The action rolls a Drive skill check against TV 8 and, on success, queues 1 point of pending VIT damage and FAT healing equal to `AS - TV + 2`.
+    - Every 3 seconds, half the pending pool value is applied to current health (rounded to ensure pools reach zero)
       - This creates a gradual damage/healing effect rather than instant application
   
   - **Weapon Skills** (learned through practice):
@@ -514,7 +520,7 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Combat actions can target either or both health pools depending on attack type
   - **Pending Damage Pools**: Damage is not applied instantly but goes into pending pools
     - Damage accumulates in pending FAT and VIT pools (positive values)
-    - Every 10 seconds, half the pending damage is applied to current health values
+    - Every 3 seconds, half the pending damage is applied to current health values
     - Multiple attacks can accumulate in pending pools before being applied
     - This creates realistic "bleeding out" or gradual injury effects
   - **Healing System**: Works through the same pending pool mechanism

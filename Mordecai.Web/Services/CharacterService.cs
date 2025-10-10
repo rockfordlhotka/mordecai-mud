@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
+using System.Threading;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Mordecai.Game.Entities;
 using Mordecai.Web.Data;
-using System.Threading;
+using WebSkillUsageType = Mordecai.Web.Data.SkillUsageType;
 
 namespace Mordecai.Web.Services;
 
@@ -16,6 +19,7 @@ public interface ICharacterService
     Task<bool> EnsureCharacterHasStartingSkillsAsync(Guid characterId, string userId);
     Task<CharacterHealthSnapshot?> GetCharacterHealthAsync(Guid characterId, string userId, CancellationToken cancellationToken = default);
     Task<CharacterHealthOperationResult> TryConsumeFatigueAsync(Guid characterId, string userId, int fatigueCost, string? exhaustedMessage = null, CancellationToken cancellationToken = default);
+    Task<DriveCommandResult> TryPerformDriveConversionAsync(Guid characterId, string userId, CancellationToken cancellationToken = default);
 }
 
 public class CharacterService : ICharacterService
@@ -23,17 +27,22 @@ public class CharacterService : ICharacterService
     private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly IWorldService _worldService;
     private readonly SkillService _skillService;
+    private readonly IDiceService _diceService;
     private readonly ILogger<CharacterService> _logger;
+    private int? _cachedFocusSkillDefinitionId;
+    private int? _cachedDriveSkillDefinitionId;
 
     public CharacterService(
         IDbContextFactory<ApplicationDbContext> contextFactory,
         IWorldService worldService,
         SkillService skillService,
+        IDiceService diceService,
         ILogger<CharacterService> logger)
     {
         _contextFactory = contextFactory;
         _worldService = worldService;
         _skillService = skillService;
+        _diceService = diceService;
         _logger = logger;
     }
 
@@ -284,8 +293,26 @@ public class CharacterService : ICharacterService
 
             if (availableFatigue <= 0)
             {
-                var failureReason = exhaustedMessage ?? "You are too exhausted to continue.";
+                var failureReason = exhaustedMessage ?? "You are completely exhausted and collapse.";
+                _logger.LogInformation("Character {CharacterId} attempted to act at zero fatigue.", characterId);
                 return new CharacterHealthOperationResult(false, failureReason, CreateHealthSnapshot(character));
+            }
+
+            if (FatigueEffectRules.TryGetFocusCheck(availableFatigue, out var focusCheck))
+            {
+                var focusOutcome = await EnsureLowFatigueFocusCheckAsync(context, character, focusCheck, availableFatigue, cancellationToken);
+
+                if (!focusOutcome.Passed)
+                {
+                    var failureReason = focusOutcome.FailureReason
+                                        ?? exhaustedMessage
+                                        ?? "You are too exhausted to continue.";
+
+                    _logger.LogInformation("Character {CharacterId} failed low fatigue Focus check: {Details}", characterId, focusOutcome.Details);
+                    return new CharacterHealthOperationResult(false, failureReason, CreateHealthSnapshot(character));
+                }
+
+                _logger.LogDebug("Character {CharacterId} passed low fatigue Focus check: {Details}", characterId, focusOutcome.Details);
             }
 
             try
@@ -309,6 +336,186 @@ public class CharacterService : ICharacterService
         }
     }
 
+    public async Task<DriveCommandResult> TryPerformDriveConversionAsync(Guid characterId, string userId, CancellationToken cancellationToken = default)
+    {
+        const int driveTargetValue = 8;
+
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId, cancellationToken);
+
+            if (character == null)
+            {
+                return new DriveCommandResult(false, "Character not found.", driveTargetValue, 0, null, null, 0, 0, null);
+            }
+
+            var driveSkillId = await GetDriveSkillDefinitionIdAsync(context, cancellationToken);
+            if (!driveSkillId.HasValue)
+            {
+                return new DriveCommandResult(false, "Drive skill definition is missing.", driveTargetValue, 0, null, null, 0, 0, CreateHealthSnapshot(character));
+            }
+
+            var driveSkill = await _skillService.GetCharacterSkillAsync(characterId, driveSkillId.Value);
+            if (driveSkill == null)
+            {
+                return new DriveCommandResult(false, "You have not cultivated your Drive skill yet.", driveTargetValue, 0, null, null, 0, 0, CreateHealthSnapshot(character));
+            }
+
+            var abilityScore = driveSkill.CalculateAbilityScore(character);
+
+            if (abilityScore < driveTargetValue)
+            {
+                await RecordDriveUsageAsync(characterId, driveSkillId.Value, WebSkillUsageType.TrainingPractice, abilityScore, 0, abilityScore, driveTargetValue, "Drive ability too low to activate.");
+                return new DriveCommandResult(false, "Your drive falters; you need an ability score of 8 or higher to channel vitality.", driveTargetValue, abilityScore, null, null, 0, 0, CreateHealthSnapshot(character));
+            }
+
+            var diceRoll = _diceService.RollExploding4dF();
+            var checkTotal = abilityScore + diceRoll;
+            var succeeded = checkTotal >= driveTargetValue;
+            var usageType = DetermineDriveUsageType(diceRoll, succeeded);
+
+            if (!succeeded)
+            {
+                await RecordDriveUsageAsync(characterId, driveSkillId.Value, usageType, abilityScore, diceRoll, checkTotal, driveTargetValue, "Drive conversion failed.");
+                return new DriveCommandResult(false, "You grit your teeth, but the strain refuses to convert your vitality.", driveTargetValue, abilityScore, diceRoll, checkTotal, 0, 0, CreateHealthSnapshot(character));
+            }
+
+            var healingAmount = abilityScore - driveTargetValue + 2;
+            const int damageAmount = 1;
+
+            character.PendingFatigueDamage = SafeAdd(character.PendingFatigueDamage, -healingAmount);
+            character.PendingVitalityDamage = SafeAdd(character.PendingVitalityDamage, damageAmount);
+            character.LastPlayedAt = DateTimeOffset.UtcNow;
+
+            await context.SaveChangesAsync(cancellationToken);
+
+            var snapshot = CreateHealthSnapshot(character);
+
+            await RecordDriveUsageAsync(characterId, driveSkillId.Value, usageType, abilityScore, diceRoll, checkTotal, driveTargetValue, $"Converted {damageAmount} VIT into {healingAmount} FAT.");
+
+            return new DriveCommandResult(true, $"You channel raw endurance, trading {damageAmount} VIT for {healingAmount} FAT recovery.", driveTargetValue, abilityScore, diceRoll, checkTotal, healingAmount, damageAmount, snapshot);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error performing Drive conversion for character {CharacterId}", characterId);
+            return new DriveCommandResult(false, "An error interrupted your attempt to channel vitality.", driveTargetValue, 0, null, null, 0, 0, null);
+        }
+    }
+
+    private async Task<FocusCheckOutcome> EnsureLowFatigueFocusCheckAsync(
+        ApplicationDbContext context,
+        Character character,
+        LowFatigueFocusCheck focusCheck,
+        int availableFatigue,
+        CancellationToken cancellationToken)
+    {
+        var focusSkillId = await GetFocusSkillDefinitionIdAsync(context, cancellationToken);
+        if (!focusSkillId.HasValue)
+        {
+            return FocusCheckSuccess("Focus skill definition missing; skipping check.");
+        }
+
+        var focusSkill = await context.CharacterSkills
+            .Include(cs => cs.SkillDefinition)
+            .FirstOrDefaultAsync(
+                cs => cs.CharacterId == character.Id && cs.SkillDefinitionId == focusSkillId.Value,
+                cancellationToken);
+
+        if (focusSkill == null)
+        {
+            _logger.LogWarning("Character {CharacterId} is missing a Focus skill record. Allowing action.", character.Id);
+            return FocusCheckSuccess("Focus skill record missing; skipping check.");
+        }
+
+        var abilityScore = focusSkill.CalculateAbilityScore(character);
+        var diceRoll = _diceService.RollExploding4dF();
+        var total = abilityScore + diceRoll;
+        var succeeded = total >= focusCheck.TargetValue;
+        var outcomeDetails =
+            $"Focus AS {abilityScore} + {diceRoll:+0;-0;0} (4dF+) = {total} vs TV {focusCheck.TargetValue} (FAT {availableFatigue}).";
+
+        var usageType = availableFatigue switch
+        {
+            2 or 1 => WebSkillUsageType.ChallengingUse,
+            _ => WebSkillUsageType.RoutineUse
+        };
+
+        try
+        {
+            await _skillService.AddSkillUsageAsync(
+                character.Id,
+                focusSkillId.Value,
+                usageType,
+                baseUsagePoints: 1,
+                context: "Low Fatigue Focus Check",
+                details: $"{outcomeDetails} Outcome: {(succeeded ? "success" : "failure")}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record Focus skill usage for character {CharacterId}", character.Id);
+        }
+
+        return succeeded
+            ? FocusCheckSuccess(outcomeDetails)
+            : FocusCheckFailure(focusCheck.FailureMessage, outcomeDetails);
+    }
+
+    private async Task<int?> GetFocusSkillDefinitionIdAsync(ApplicationDbContext context, CancellationToken cancellationToken)
+    {
+        if (_cachedFocusSkillDefinitionId.HasValue)
+        {
+            return _cachedFocusSkillDefinitionId;
+        }
+
+        var focusSkillId = await context.SkillDefinitions
+            .Where(sd => sd.Name == "Focus")
+            .Select(sd => (int?)sd.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (focusSkillId.HasValue)
+        {
+            _cachedFocusSkillDefinitionId = focusSkillId.Value;
+        }
+        else
+        {
+            _logger.LogWarning("Focus skill definition not found when evaluating low fatigue.");
+        }
+
+        return focusSkillId;
+    }
+
+    private async Task<int?> GetDriveSkillDefinitionIdAsync(ApplicationDbContext context, CancellationToken cancellationToken)
+    {
+        if (_cachedDriveSkillDefinitionId.HasValue)
+        {
+            return _cachedDriveSkillDefinitionId;
+        }
+
+        var driveSkillId = await context.SkillDefinitions
+            .Where(sd => sd.Name == "Drive")
+            .Select(sd => (int?)sd.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (driveSkillId.HasValue)
+        {
+            _cachedDriveSkillDefinitionId = driveSkillId.Value;
+        }
+        else
+        {
+            _logger.LogWarning("Drive skill definition not found when executing Drive command.");
+        }
+
+        return driveSkillId;
+    }
+
+    private readonly record struct FocusCheckOutcome(bool Passed, string? FailureReason, string Details);
+
+    private static FocusCheckOutcome FocusCheckSuccess(string details) => new(true, null, details);
+
+    private static FocusCheckOutcome FocusCheckFailure(string failureReason, string details) => new(false, failureReason, details);
+
     private static CharacterHealthSnapshot CreateHealthSnapshot(Character character) => new(
         character.CurrentFatigue,
         character.MaxFatigue,
@@ -316,4 +523,53 @@ public class CharacterService : ICharacterService
         character.CurrentVitality,
         character.MaxVitality,
         character.PendingVitalityDamage);
+
+    private static int SafeAdd(int current, int delta)
+    {
+        try
+        {
+            return checked(current + delta);
+        }
+        catch (OverflowException)
+        {
+            return delta > 0 ? int.MaxValue : int.MinValue;
+        }
+    }
+
+    private static WebSkillUsageType DetermineDriveUsageType(int diceRoll, bool succeeded)
+    {
+        if (diceRoll >= 4)
+        {
+            return WebSkillUsageType.CriticalSuccess;
+        }
+
+        return succeeded ? WebSkillUsageType.RoutineUse : WebSkillUsageType.ChallengingUse;
+    }
+
+    private async Task RecordDriveUsageAsync(
+        Guid characterId,
+        int driveSkillId,
+        WebSkillUsageType usageType,
+        int abilityScore,
+        int diceRoll,
+        int checkTotal,
+        int targetValue,
+        string details)
+    {
+    var detailText = $"Drive check: AS {abilityScore} {diceRoll:+0;-0;0} (4dF+) = {checkTotal} vs TV {targetValue}. {details}";
+        try
+        {
+            await _skillService.AddSkillUsageAsync(
+                characterId,
+                driveSkillId,
+                usageType,
+                baseUsagePoints: 1,
+                context: "Drive Command",
+                details: detailText);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record Drive skill usage for character {CharacterId}", characterId);
+        }
+    }
 }
