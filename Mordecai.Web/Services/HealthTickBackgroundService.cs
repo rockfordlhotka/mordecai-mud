@@ -76,18 +76,50 @@ public class HealthTickBackgroundService : BackgroundService
         }
 
         var updatedCount = 0;
+        var now = DateTimeOffset.UtcNow;
+        var baseRegenInterval = TimeSpan.FromSeconds(ProcessingIntervalSeconds);
 
         foreach (var character in characters)
         {
+            var characterUpdated = false;
             var maxFatigue = Math.Max(1, (character.Drive * 2) - 5);
+            var availableVitality = VitalityEffectRules.CalculateAvailableVitality(character.CurrentVitality, character.PendingVitalityDamage);
+            var regenInterval = VitalityEffectRules.GetFatigueRegenInterval(availableVitality, baseRegenInterval);
 
-            if (character.CurrentFatigue < maxFatigue)
+            if (regenInterval is null)
             {
-                character.PendingFatigueDamage = SafeAdd(character.PendingFatigueDamage, -FatigueRegenPerTick);
-                updatedCount++;
+                if (character.LastFatigueRegenAt.HasValue)
+                {
+                    character.LastFatigueRegenAt = null;
+                    characterUpdated = true;
+                }
+            }
+            else
+            {
+                if (character.LastFatigueRegenAt is null)
+                {
+                    character.LastFatigueRegenAt = now;
+                    characterUpdated = true;
+                }
+
+                if (character.CurrentFatigue < maxFatigue)
+                {
+                    var lastRegen = character.LastFatigueRegenAt ?? now;
+                    if (now - lastRegen >= regenInterval.Value)
+                    {
+                        character.PendingFatigueDamage = SafeAdd(character.PendingFatigueDamage, -FatigueRegenPerTick);
+                        character.LastFatigueRegenAt = now;
+                        characterUpdated = true;
+                    }
+                }
             }
 
             if (ApplyPendingPools(character))
+            {
+                characterUpdated = true;
+            }
+
+            if (characterUpdated)
             {
                 updatedCount++;
             }

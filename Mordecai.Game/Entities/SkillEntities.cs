@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -37,6 +38,11 @@ public class Character
     public int CurrentFatigue { get; set; }
     public int CurrentVitality { get; set; }
 
+    /// <summary>
+    /// The most recent time passive fatigue recovery was applied.
+    /// </summary>
+    public DateTimeOffset? LastFatigueRegenAt { get; set; }
+
     // Pending damage/healing pools
     public int PendingFatigueDamage { get; set; } = 0;
     public int PendingVitalityDamage { get; set; } = 0;
@@ -73,6 +79,7 @@ public class Character
         CurrentVitality = MaxVitality;
         PendingFatigueDamage = 0;
         PendingVitalityDamage = 0;
+    LastFatigueRegenAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>

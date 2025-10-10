@@ -288,6 +288,15 @@ public class CharacterService : ICharacterService
                 return new CharacterHealthOperationResult(false, "Character not found.", null);
             }
 
+            var availableVitality = VitalityEffectRules.CalculateAvailableVitality(character.CurrentVitality, character.PendingVitalityDamage);
+            var vitalityGate = await EnsureVitalityAllowsActionAsync(context, character, availableVitality, cancellationToken);
+
+            if (!vitalityGate.Allowed)
+            {
+                var failureReason = vitalityGate.FailureReason ?? "Your injuries are too severe to act.";
+                return new CharacterHealthOperationResult(false, failureReason, CreateHealthSnapshot(character));
+            }
+
             var pendingFatigueDamage = Math.Max(0, character.PendingFatigueDamage);
             var availableFatigue = character.CurrentFatigue - pendingFatigueDamage;
 
@@ -300,7 +309,15 @@ public class CharacterService : ICharacterService
 
             if (FatigueEffectRules.TryGetFocusCheck(availableFatigue, out var focusCheck))
             {
-                var focusOutcome = await EnsureLowFatigueFocusCheckAsync(context, character, focusCheck, availableFatigue, cancellationToken);
+                var requirement = new FocusCheckRequirement(
+                    focusCheck.TargetValue,
+                    focusCheck.FailureMessage,
+                    "FAT",
+                    availableFatigue,
+                    availableFatigue is 2 or 1 ? WebSkillUsageType.ChallengingUse : WebSkillUsageType.RoutineUse,
+                    "Low Fatigue Focus Check");
+
+                var focusOutcome = await EnsureFocusCheckAsync(context, character, requirement, cancellationToken);
 
                 if (!focusOutcome.Passed)
                 {
@@ -349,6 +366,15 @@ public class CharacterService : ICharacterService
             if (character == null)
             {
                 return new DriveCommandResult(false, "Character not found.", driveTargetValue, 0, null, null, 0, 0, null);
+            }
+
+            var availableVitality = VitalityEffectRules.CalculateAvailableVitality(character.CurrentVitality, character.PendingVitalityDamage);
+            var vitalityGate = await EnsureVitalityAllowsActionAsync(context, character, availableVitality, cancellationToken);
+
+            if (!vitalityGate.Allowed)
+            {
+                var failureReason = vitalityGate.FailureReason ?? "Your injuries are too severe to act.";
+                return new DriveCommandResult(false, failureReason, driveTargetValue, 0, null, null, 0, 0, CreateHealthSnapshot(character));
             }
 
             var driveSkillId = await GetDriveSkillDefinitionIdAsync(context, cancellationToken);
@@ -404,11 +430,10 @@ public class CharacterService : ICharacterService
         }
     }
 
-    private async Task<FocusCheckOutcome> EnsureLowFatigueFocusCheckAsync(
+    private async Task<FocusCheckOutcome> EnsureFocusCheckAsync(
         ApplicationDbContext context,
         Character character,
-        LowFatigueFocusCheck focusCheck,
-        int availableFatigue,
+        FocusCheckRequirement requirement,
         CancellationToken cancellationToken)
     {
         var focusSkillId = await GetFocusSkillDefinitionIdAsync(context, cancellationToken);
@@ -432,24 +457,18 @@ public class CharacterService : ICharacterService
         var abilityScore = focusSkill.CalculateAbilityScore(character);
         var diceRoll = _diceService.RollExploding4dF();
         var total = abilityScore + diceRoll;
-        var succeeded = total >= focusCheck.TargetValue;
+        var succeeded = total >= requirement.TargetValue;
         var outcomeDetails =
-            $"Focus AS {abilityScore} + {diceRoll:+0;-0;0} (4dF+) = {total} vs TV {focusCheck.TargetValue} (FAT {availableFatigue}).";
-
-        var usageType = availableFatigue switch
-        {
-            2 or 1 => WebSkillUsageType.ChallengingUse,
-            _ => WebSkillUsageType.RoutineUse
-        };
+            $"Focus AS {abilityScore} + {diceRoll:+0;-0;0} (4dF+) = {total} vs TV {requirement.TargetValue} ({requirement.ResourceLabel} {requirement.ResourceValue}).";
 
         try
         {
             await _skillService.AddSkillUsageAsync(
                 character.Id,
                 focusSkillId.Value,
-                usageType,
+                requirement.UsageType,
                 baseUsagePoints: 1,
-                context: "Low Fatigue Focus Check",
+                context: requirement.ContextTag,
                 details: $"{outcomeDetails} Outcome: {(succeeded ? "success" : "failure")}");
         }
         catch (Exception ex)
@@ -459,7 +478,48 @@ public class CharacterService : ICharacterService
 
         return succeeded
             ? FocusCheckSuccess(outcomeDetails)
-            : FocusCheckFailure(focusCheck.FailureMessage, outcomeDetails);
+            : FocusCheckFailure(requirement.FailureMessage, outcomeDetails);
+    }
+
+    private async Task<ActionPrerequisiteResult> EnsureVitalityAllowsActionAsync(
+        ApplicationDbContext context,
+        Character character,
+        int availableVitality,
+        CancellationToken cancellationToken)
+    {
+        var restriction = VitalityEffectRules.EvaluateActionRestriction(availableVitality);
+
+        if (!restriction.CanAttemptAction)
+        {
+            var failureReason = restriction.FailureMessage ?? "Your injuries are too severe to act.";
+            _logger.LogInformation("Character {CharacterId} blocked by low vitality: {Reason}", character.Id, failureReason);
+            return new ActionPrerequisiteResult(false, failureReason);
+        }
+
+        if (restriction.FocusCheck.HasValue)
+        {
+            var focusSeed = restriction.FocusCheck.Value;
+            var requirement = new FocusCheckRequirement(
+                focusSeed.TargetValue,
+                focusSeed.FailureMessage,
+                "VIT",
+                availableVitality,
+                WebSkillUsageType.ChallengingUse,
+                "Low Vitality Focus Check");
+
+            var focusOutcome = await EnsureFocusCheckAsync(context, character, requirement, cancellationToken);
+
+            if (!focusOutcome.Passed)
+            {
+                var failureReason = focusOutcome.FailureReason ?? requirement.FailureMessage;
+                _logger.LogInformation("Character {CharacterId} failed low vitality Focus check: {Details}", character.Id, focusOutcome.Details);
+                return new ActionPrerequisiteResult(false, failureReason);
+            }
+
+            _logger.LogDebug("Character {CharacterId} passed low vitality Focus check: {Details}", character.Id, focusOutcome.Details);
+        }
+
+        return new ActionPrerequisiteResult(true, null);
     }
 
     private async Task<int?> GetFocusSkillDefinitionIdAsync(ApplicationDbContext context, CancellationToken cancellationToken)
@@ -480,7 +540,7 @@ public class CharacterService : ICharacterService
         }
         else
         {
-            _logger.LogWarning("Focus skill definition not found when evaluating low fatigue.");
+            _logger.LogWarning("Focus skill definition not found when evaluating a focus check.");
         }
 
         return focusSkillId;
@@ -509,6 +569,8 @@ public class CharacterService : ICharacterService
 
         return driveSkillId;
     }
+
+    private readonly record struct ActionPrerequisiteResult(bool Allowed, string? FailureReason);
 
     private readonly record struct FocusCheckOutcome(bool Passed, string? FailureReason, string Details);
 
