@@ -15,7 +15,7 @@ public interface ICharacterService
     Task<bool> DeleteCharacterAsync(Guid characterId, string userId);
     Task<bool> EnsureCharacterHasStartingSkillsAsync(Guid characterId, string userId);
     Task<CharacterHealthSnapshot?> GetCharacterHealthAsync(Guid characterId, string userId, CancellationToken cancellationToken = default);
-    Task<CharacterHealthOperationResult> TryConsumeFatigueForMovementAsync(Guid characterId, string userId, int fatigueCost, CancellationToken cancellationToken = default);
+    Task<CharacterHealthOperationResult> TryConsumeFatigueAsync(Guid characterId, string userId, int fatigueCost, string? exhaustedMessage = null, CancellationToken cancellationToken = default);
 }
 
 public class CharacterService : ICharacterService
@@ -261,7 +261,7 @@ public class CharacterService : ICharacterService
         }
     }
 
-    public async Task<CharacterHealthOperationResult> TryConsumeFatigueForMovementAsync(Guid characterId, string userId, int fatigueCost, CancellationToken cancellationToken = default)
+    public async Task<CharacterHealthOperationResult> TryConsumeFatigueAsync(Guid characterId, string userId, int fatigueCost, string? exhaustedMessage = null, CancellationToken cancellationToken = default)
     {
         if (fatigueCost <= 0)
         {
@@ -284,7 +284,8 @@ public class CharacterService : ICharacterService
 
             if (availableFatigue <= 0)
             {
-                return new CharacterHealthOperationResult(false, "You are too exhausted to move.", CreateHealthSnapshot(character));
+                var failureReason = exhaustedMessage ?? "You are too exhausted to continue.";
+                return new CharacterHealthOperationResult(false, failureReason, CreateHealthSnapshot(character));
             }
 
             try
@@ -303,7 +304,7 @@ public class CharacterService : ICharacterService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error applying movement fatigue for character {CharacterId}", characterId);
+            _logger.LogError(ex, "Error applying fatigue cost for character {CharacterId}", characterId);
             return new CharacterHealthOperationResult(false, "An error occurred while applying fatigue.", null);
         }
     }

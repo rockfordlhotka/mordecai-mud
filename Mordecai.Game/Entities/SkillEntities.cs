@@ -166,17 +166,27 @@ public class CharacterSkill
     public virtual SkillDefinition SkillDefinition { get; set; } = null!;
 
     /// <summary>
+    /// Calculates the ability score (AS) for this skill using the owning character.
+    /// AS = primary attribute + current level - 5.
+    /// </summary>
+    public int CalculateAbilityScore()
+    {
+        var relatedAttribute = SkillDefinition?.RelatedAttribute;
+        var attributeValue = !string.IsNullOrWhiteSpace(relatedAttribute)
+            ? Character.GetAttributeValue(relatedAttribute!)
+            : 10;
+
+        var abilityScore = attributeValue + CurrentLevel - 5;
+        return Math.Max(0, abilityScore);
+    }
+
+    /// <summary>
     /// Calculates the effective skill level including any bonuses
     /// </summary>
     public int CalculateEffectiveLevel()
     {
-        // Base level from usage
-        int effectiveLevel = CurrentLevel;
-        
-        // TODO: Add attribute bonuses, equipment bonuses, temporary effects, etc.
-        // For now, just return the base level
-        
-        return Math.Max(0, effectiveLevel);
+        // Base effective level is the ability score, additional modifiers can be layered on later.
+        return CalculateAbilityScore();
     }
 
     /// <summary>
@@ -295,7 +305,7 @@ public class SkillDefinition
 
     /// <summary>
     /// Multiplier applied to calculate cost for each subsequent level
-    /// Cost(N ? N+1) = BaseCost × (Multiplier^N)
+    /// Cost(N ? N+1) = BaseCost ï¿½ (Multiplier^N)
     /// </summary>
     public decimal Multiplier { get; set; } = 2.2m;
 

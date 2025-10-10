@@ -565,7 +565,7 @@
                     AddMessage("Available Commands:", "text-info");
                     AddMessage("look/l/examine/ex - Examine your surroundings");
                     AddMessage("look/l/examine/ex [direction] - Look in a specific direction (e.g., 'look north')");
-                    AddMessage("search - Search for hidden things using your awareness skill");
+                    AddMessage("search - Search for hidden things using your awareness skill (costs 1 FAT)");
                     AddMessage("skills - Display your character's skills and progress");
                     AddMessage("say [message] - Speak to everyone in the room");
                     AddMessage("say [target] [message] - Speak to a specific character, NPC, or mob");
@@ -661,11 +661,23 @@
 
     private async Task HandleSearchCommand()
     {
-        AddMessage("You carefully search the area for hidden things...", "text-info");
-        
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("You are not currently in a room to search.", "text-danger");
+            return;
+        }
+
+        var activeCharacterId = characterId.Value;
+        var currentRoomIdValue = currentRoomId.Value;
+
         try
         {
-            // Get the Awareness skill ID dynamically
             var awarenessSkillId = await GetAwarenessSkillIdAsync();
             if (awarenessSkillId == null)
             {
@@ -673,34 +685,60 @@
                 return;
             }
 
-            // Get the character's awareness skill to use for the search
-            var awarenessSkill = await SkillService.GetCharacterSkillAsync(characterId!.Value, awarenessSkillId.Value);
-            
+            var awarenessSkill = await SkillService.GetCharacterSkillAsync(activeCharacterId, awarenessSkillId.Value);
+
             if (awarenessSkill == null)
             {
                 AddMessage("You don't seem to have developed your awareness skill yet.", "text-warning");
                 return;
             }
 
-            // Perform a 4dF skill check using the character's awareness skill
+            var character = await CharacterService.GetCharacterByIdAsync(activeCharacterId, currentUserId);
+            if (character is null)
+            {
+                AddMessage("Unable to load your character data for this action.", "text-danger");
+                return;
+            }
+
+            var fatigueResult = await CharacterService.TryConsumeFatigueAsync(activeCharacterId, currentUserId, 1, "You are too exhausted to search.");
+            if (!fatigueResult.Success)
+            {
+                if (!string.IsNullOrWhiteSpace(fatigueResult.FailureReason))
+                {
+                    AddMessage(fatigueResult.FailureReason, "text-danger");
+                }
+
+                if (fatigueResult.Snapshot != null)
+                {
+                    ApplyHealthSnapshot(fatigueResult.Snapshot);
+                }
+
+                return;
+            }
+
+            if (fatigueResult.Snapshot != null)
+            {
+                ApplyHealthSnapshot(fatigueResult.Snapshot);
+            }
+
+            AddMessage("You carefully search the area for hidden things...", "text-info");
+
             var diceService = new DiceService();
-            var skillCheck = awarenessSkill.CalculateEffectiveLevel() + diceService.Roll4dF();
-            
-            // Determine what we find based on the skill check result
+            var abilityScore = awarenessSkill.CalculateAbilityScore(character);
+            var skillCheck = abilityScore + diceService.Roll4dF();
+
             var foundHiddenThings = await PerformRoomSearch(skillCheck);
-            
-            // Track the skill usage for Awareness
+
             var usageType = skillCheck >= 12 ? Mordecai.Web.Data.SkillUsageType.CriticalSuccess : Mordecai.Web.Data.SkillUsageType.RoutineUse;
             var didAdvance = await SkillService.AddSkillUsageAsync(
-                characterId.Value, 
-                awarenessSkillId.Value, 
+                activeCharacterId,
+                awarenessSkillId.Value,
                 usageType,
                 baseUsagePoints: 1,
                 context: "Room Search",
                 details: $"Skill check result: {skillCheck}"
             );
 
-            // Show results
             if (foundHiddenThings.Any())
             {
                 AddMessage("Your search reveals:", "text-success");
@@ -713,16 +751,14 @@
             {
                 AddMessage("You don't find anything hidden here.", "text-muted");
             }
-            
-            // Notify if skill advanced
+
             if (didAdvance)
             {
-                var newSkill = await SkillService.GetCharacterSkillAsync(characterId.Value, awarenessSkillId.Value);
+                var newSkill = await SkillService.GetCharacterSkillAsync(activeCharacterId, awarenessSkillId.Value);
                 AddMessage($"Your awareness skill has improved to level {newSkill?.Level}!", "text-success");
             }
-            
-            // Announce to other players in the room that this character is searching
-            var searchMessage = new EmoteMessage(characterId.Value, characterName, currentRoomId!.Value, "searches the area carefully");
+
+            var searchMessage = new EmoteMessage(activeCharacterId, characterName, currentRoomIdValue, "searches the area carefully");
             await MessagePublisher.PublishAsync(searchMessage);
         }
         catch (Exception ex)
@@ -950,7 +986,7 @@
             return;
         }
 
-        var fatigueResult = await CharacterService.TryConsumeFatigueForMovementAsync(characterId.Value, currentUserId, 1);
+        var fatigueResult = await CharacterService.TryConsumeFatigueAsync(characterId.Value, currentUserId, 1, "You are too exhausted to move.");
         if (!fatigueResult.Success)
         {
             if (!string.IsNullOrWhiteSpace(fatigueResult.FailureReason))

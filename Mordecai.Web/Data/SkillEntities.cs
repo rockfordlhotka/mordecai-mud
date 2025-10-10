@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -199,7 +200,7 @@ public class SkillDefinition
 
     /// <summary>
     /// Multiplier applied to calculate cost for each subsequent level
-    /// Cost(N ? N+1) = BaseCost × (Multiplier^N)
+    /// Cost(N ? N+1) = BaseCost ï¿½ (Multiplier^N)
     /// </summary>
     public decimal Multiplier { get; set; } = 2.2m;
 
@@ -378,16 +379,28 @@ public class CharacterSkill
     [ForeignKey(nameof(SkillDefinitionId))]
     public virtual SkillDefinition SkillDefinition { get; set; } = null!;
 
+
     /// <summary>
-    /// Calculates the Ability Score: Attribute - 5 + Level
-    /// For attribute skills, uses the character's attribute value
-    /// For other skills, returns just the level (since no direct attribute relationship)
+    /// Calculates the ability score using the owning character's primary attribute for this skill.
+    /// AS = attribute value + skill level - 5 (minimum of 0).
     /// </summary>
-    public int CalculateAbilityScore()
+    /// <param name="character">The character owning this skill.</param>
+    /// <returns>Ability score for the skill.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when character is null.</exception>
+    public int CalculateAbilityScore(Mordecai.Game.Entities.Character character)
     {
-        // For non-attribute skills, just return the level as the ability score
-        // NOTE: For attribute skills, this would need character data which should be loaded separately
-        return Level;
+        if (character is null)
+        {
+            throw new ArgumentNullException(nameof(character));
+        }
+
+        var relatedAttribute = SkillDefinition?.RelatedAttribute;
+        var attributeValue = !string.IsNullOrWhiteSpace(relatedAttribute)
+            ? character.GetAttributeValue(relatedAttribute!)
+            : 10;
+
+        var abilityScore = attributeValue + Level - 5;
+        return Math.Max(0, abilityScore);
     }
 
     /// <summary>

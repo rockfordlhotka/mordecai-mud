@@ -30,6 +30,7 @@
 ### World Design
 - **Room-based world**: Interconnected rooms, multiple zones, dynamic weather/time
 - **Persistence**: Player actions affect world state, items persist, room changes persist
+- **Search interactions**: Awareness-based skill checks that consume 1 FAT per attempt
 
 
 ### Combat Mechanics
