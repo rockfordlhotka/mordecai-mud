@@ -557,12 +557,57 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Equipment stats and magical properties
   - Durability and repair mechanics
   - Set bonuses for matched equipment
+  - Equipment slots: Head, Neck, Shoulders, Chest, Back, Wrists, Hands, Waist, Legs, Feet, Fingers (L/R), MainHand, OffHand, TwoHand
+  - Item binding: BindOnPickup (BOP) and BindOnEquip (BOE) mechanics
+  - Item rarity tiers: Common, Uncommon, Rare, Epic, Legendary
 
 - **Inventory Management**
-  - Limited carrying capacity
-  - Item containers and storage
-  - Trading between players
-  - Auction house system
+  - **Weight and Volume System**
+    - Each item has weight (pounds) and volume (cubic feet)
+    - Base carrying capacity = Physicality × 10 pounds
+    - Base volume capacity = Physicality × 2 cubic feet
+    - Exceeding weight limits reduces movement speed or prevents movement
+    - Exceeding volume limits prevents picking up new items
+  
+  - **Container System**
+    - Containers are special items that can hold other items (bags, backpacks, quivers, chests, boxes)
+    - Each container has maximum weight and volume limits
+    - Some containers are restricted to specific item types
+      - Quivers: only arrows and bolts
+      - Spell component pouches: only spell components
+      - General bags/backpacks: any item type
+    - Containers can be nested (bags within bags, with cumulative restrictions)
+    - Container weight = container's own weight + weight of all contained items
+    - Opening containers requires an action
+  
+  - **Item Categories**
+    - **Weapons**: Swords, axes, maces, polearms, bows, crossbows, daggers, staves, wands
+    - **Armor**: Head, chest, legs, hands, feet, shields
+    - **Containers**: Backpacks, bags, quivers, boxes, chests, trunks
+    - **Consumables**: Potions, scrolls, food, drink
+    - **Treasure**: Gold, gems, valuables
+    - **Keys**: Door keys, chest keys
+    - **Magic Items**: Enchanted equipment, artifacts, wands, scrolls
+    - **Tools**: Lockpicks, crafting tools, torches
+    - **Quest Items**: Special items for quests
+    - **Miscellaneous**: Random objects, curiosities
+  
+  - **Item Properties**
+    - Stackable vs. non-stackable items
+    - Droppable vs. quest-locked items
+    - Tradeable vs. bound items
+    - Custom item naming (for personalization)
+  
+  - **Trading System**
+    - Trade between players
+    - Drop items in rooms for others to find
+    - Auction house system (future)
+
+- **Item Templates vs. Instances**
+  - Item Templates: Blueprints defining base properties (weight, stats, appearance)
+  - Item Instances: Actual items in the game world with current state (durability, location, ownership)
+  - Allows for procedural item generation and customization
+
 
 ### 5. Magic and Spells
 

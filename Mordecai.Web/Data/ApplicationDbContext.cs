@@ -25,6 +25,13 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<GameEntities.RoomEffect> RoomEffects => Set<GameEntities.RoomEffect>();
     public DbSet<GameEntities.RoomEffectApplicationLog> RoomEffectApplicationLogs => Set<GameEntities.RoomEffectApplicationLog>();
     
+    // Items and Inventory System
+    public DbSet<GameEntities.ItemTemplate> ItemTemplates => Set<GameEntities.ItemTemplate>();
+    public DbSet<GameEntities.Item> Items => Set<GameEntities.Item>();
+    public DbSet<GameEntities.ItemSkillBonus> ItemSkillBonuses => Set<GameEntities.ItemSkillBonus>();
+    public DbSet<GameEntities.ItemAttributeModifier> ItemAttributeModifiers => Set<GameEntities.ItemAttributeModifier>();
+    public DbSet<GameEntities.CharacterInventory> CharacterInventories => Set<GameEntities.CharacterInventory>();
+    
     // Use Web entities for skill system (these are the working ones for the UI)
     public DbSet<WebEntities.SkillCategory> SkillCategories => Set<WebEntities.SkillCategory>();
     public DbSet<WebEntities.SkillDefinition> SkillDefinitions => Set<WebEntities.SkillDefinition>();
@@ -280,6 +287,123 @@ public class ApplicationDbContext : IdentityDbContext
             // Configure precision for decimal fields
             entity.Property(sul => sul.UsageMultiplier)
                 .HasPrecision(3, 2);
+        });
+
+        // ItemTemplate configuration
+        builder.Entity<GameEntities.ItemTemplate>(entity =>
+        {
+            entity.HasIndex(it => it.Name);
+            entity.HasIndex(it => it.ItemType);
+            entity.HasIndex(it => it.IsActive);
+            entity.HasIndex(it => it.IsContainer);
+            entity.HasIndex(it => it.Rarity);
+            
+            // Configure precision for decimal fields
+            entity.Property(it => it.Weight)
+                .HasPrecision(10, 2);
+                
+            entity.Property(it => it.Volume)
+                .HasPrecision(10, 2);
+                
+            entity.Property(it => it.ContainerMaxWeight)
+                .HasPrecision(10, 2);
+                
+            entity.Property(it => it.ContainerMaxVolume)
+                .HasPrecision(10, 2);
+                
+            entity.Property(it => it.ContainerWeightReduction)
+                .HasPrecision(4, 2);
+                
+            entity.Property(it => it.ContainerVolumeReduction)
+                .HasPrecision(4, 2);
+        });
+
+        // Item configuration
+        builder.Entity<GameEntities.Item>(entity =>
+        {
+            entity.HasIndex(i => i.ItemTemplateId);
+            entity.HasIndex(i => i.CurrentRoomId);
+            entity.HasIndex(i => i.OwnerCharacterId);
+            entity.HasIndex(i => i.ContainerItemId);
+            entity.HasIndex(i => new { i.OwnerCharacterId, i.IsEquipped });
+            entity.HasIndex(i => i.CreatedAt);
+
+            // Configure relationships
+            entity.HasOne(i => i.ItemTemplate)
+                .WithMany(it => it.Items)
+                .HasForeignKey(i => i.ItemTemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(i => i.CurrentRoom)
+                .WithMany()
+                .HasForeignKey(i => i.CurrentRoomId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(i => i.OwnerCharacter)
+                .WithMany()
+                .HasForeignKey(i => i.OwnerCharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(i => i.ContainerItem)
+                .WithMany(ci => ci.ContainedItems)
+                .HasForeignKey(i => i.ContainerItemId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ItemSkillBonus configuration
+        builder.Entity<GameEntities.ItemSkillBonus>(entity =>
+        {
+            entity.HasIndex(isb => isb.ItemTemplateId);
+            entity.HasIndex(isb => isb.SkillDefinitionId);
+            entity.HasIndex(isb => new { isb.ItemTemplateId, isb.SkillDefinitionId });
+
+            // Configure relationships
+            entity.HasOne(isb => isb.ItemTemplate)
+                .WithMany(it => it.SkillBonuses)
+                .HasForeignKey(isb => isb.ItemTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(isb => isb.SkillDefinition)
+                .WithMany()
+                .HasForeignKey(isb => isb.SkillDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+                
+            // Configure precision for decimal fields
+            entity.Property(isb => isb.BonusValue)
+                .HasPrecision(10, 2);
+        });
+
+        // ItemAttributeModifier configuration
+        builder.Entity<GameEntities.ItemAttributeModifier>(entity =>
+        {
+            entity.HasIndex(iam => iam.ItemTemplateId);
+            entity.HasIndex(iam => iam.AttributeName);
+            entity.HasIndex(iam => new { iam.ItemTemplateId, iam.AttributeName });
+
+            // Configure relationships
+            entity.HasOne(iam => iam.ItemTemplate)
+                .WithMany(it => it.AttributeModifiers)
+                .HasForeignKey(iam => iam.ItemTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // CharacterInventory configuration
+        builder.Entity<GameEntities.CharacterInventory>(entity =>
+        {
+            entity.HasIndex(ci => ci.LastCalculatedAt);
+
+            // Configure relationships
+            entity.HasOne(ci => ci.Character)
+                .WithOne()
+                .HasForeignKey<GameEntities.CharacterInventory>(ci => ci.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Configure precision for decimal fields
+            entity.Property(ci => ci.MaxWeight)
+                .HasPrecision(10, 2);
+                
+            entity.Property(ci => ci.MaxVolume)
+                .HasPrecision(10, 2);
         });
     }
 }

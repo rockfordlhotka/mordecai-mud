@@ -293,31 +293,58 @@ RoomEffectApplicationLog
 ### Items & Equipment
 
 ```sql
--- Template definitions for items
+-- Template definitions for items (the "blueprint" for creating item instances)
 ItemTemplates
 - Id (Primary Key)
 - Name
 - Description
-- ItemType (Weapon, Armor, Consumable, etc.)
-- WeaponType (Sword, Bow, Staff, etc.) -- nullable
-- ArmorSlot (Head, Chest, Legs, etc.) -- nullable
-- Weight
-- Value
+- ShortDescription (brief description for inventory lists)
+- ItemType (Weapon, Armor, Container, Consumable, Treasure, Key, Magic, Food, Drink, Tool, QuestItem, Miscellaneous)
+- WeaponType (Sword, Axe, Mace, Polearm, Bow, Crossbow, Dagger, Staff, Wand) -- nullable
+- ArmorSlot (Head, Neck, Shoulders, Chest, Back, Wrists, Hands, Waist, Legs, Feet, Fingers, MainHand, OffHand, TwoHand) -- nullable
+- Weight (decimal, in pounds)
+- Volume (decimal, in cubic feet)
+- Value (in copper pieces)
 - IsStackable
 - MaxStackSize
+- IsDroppable
+- IsTradeable
+- BindOnPickup
+- BindOnEquip
+- IsContainer (whether this item can hold other items)
+- ContainerMaxWeight (max weight container can hold) -- nullable
+- ContainerMaxVolume (max volume container can hold) -- nullable
+- ContainerAllowedTypes (comma-separated list of allowed item types, e.g., "Weapon,Armor" or empty for any) -- nullable
+- ContainerWeightReduction (weight multiplier for magical containers, 1.0 = normal, 0.1 = 10% weight, default 1.0) -- nullable
+- ContainerVolumeReduction (volume multiplier for magical containers, 1.0 = normal, 0.1 = 10% volume, default 1.0) -- nullable
+- HasDurability
+- MaxDurability -- nullable
+- ConsumableValue (for food/drink restoration) -- nullable
+- MagicLevel -- nullable
+- Rarity (Common, Uncommon, Rare, Epic, Legendary)
+- DisplayOrder
+- IsActive
+- CreatedAt
 - CreatedBy (Foreign Key -> Users.Id)
+- CustomProperties (JSON for special abilities, quest flags, enchantments)
 
 -- Actual item instances in the game world
 Items
-- Id (Primary Key)
+- Id (Primary Key, GUID)
 - ItemTemplateId (Foreign Key -> ItemTemplates.Id)
-- CurrentRoomId (Foreign Key -> Rooms.Id, nullable)
-- OwnerCharacterId (Foreign Key -> Characters.Id, nullable)
-- EquipSlot (nullable, if equipped)
+- CurrentRoomId (Foreign Key -> Rooms.Id, nullable - null if in inventory/container)
+- OwnerCharacterId (Foreign Key -> Characters.Id, nullable - null if in room/other container)
+- ContainerItemId (Foreign Key -> Items.Id, nullable - null if not in a container)
+- EquippedSlot (ArmorSlot enum, nullable - null if not equipped)
 - StackSize
-- Condition (durability)
+- CurrentDurability -- nullable
 - IsEquipped
-- CustomProperties (JSON for magical bonuses, etc.)
+- IsBound (whether item is bound to character)
+- CustomName (player-renamed item) -- nullable
+- CreatedAt
+- LastModifiedAt
+- PickedUpAt
+- CustomProperties (JSON for instance-specific properties like temporary buffs, charges)
 
 -- Item effects on skills
 ItemSkillBonuses
@@ -326,7 +353,47 @@ ItemSkillBonuses
 - SkillDefinitionId (Foreign Key -> SkillDefinitions.Id)
 - BonusType (FlatBonus, PercentageBonus, CooldownReduction)
 - BonusValue
+- Condition (optional requirement for bonus to apply, e.g., "InCombat", "AtNight")
+
+-- Item effects on attributes
+ItemAttributeModifiers
+- Id (Primary Key)
+- ItemTemplateId (Foreign Key -> ItemTemplates.Id)
+- AttributeName (STR, DEX, END, INT, ITT, WIL, PHY)
+- ModifierType (FlatBonus, PercentageBonus)
+- ModifierValue
+- Condition (optional requirement for modifier to apply)
+
+-- Character inventory capacity tracking
+CharacterInventory
+- CharacterId (Primary Key, Foreign Key -> Characters.Id)
+- MaxWeight (maximum weight character can carry, based on Physicality)
+- MaxVolume (maximum volume character can carry)
+- LastCalculatedAt
 ```
+
+**Container System Notes:**
+
+- Containers (bags, backpacks, quivers, chests) are items with `IsContainer = true`
+- Each container has `ContainerMaxWeight` and `ContainerMaxVolume` limits
+- Some containers restrict item types (e.g., quivers only hold arrows/bolts via `ContainerAllowedTypes`)
+- Items can be nested: Items → ContainerItemId → Items (bags in bags)
+- Total character inventory = sum of all directly owned items + recursive container contents
+- Weight/Volume calculations are recursive: containers add their own weight + contained item weights
+- **Magical containers** can reduce effective weight/volume via `ContainerWeightReduction` and `ContainerVolumeReduction` multipliers
+  - Example: Bag of Holding with `ContainerWeightReduction = 0.1` makes items weigh only 10% of normal
+  - Formula: `TotalWeight = ContainerWeight + (ContainedItemsWeight × WeightReduction)`
+
+**Inventory Capacity:**
+
+- Base carrying capacity uses exponential scaling: 50 lbs × (1.15 ^ (Physicality - 10))
+- Base volume capacity uses exponential scaling: 10 cu.ft. × (1.15 ^ (Physicality - 10))
+- Exponential formula reflects the bell-curve rarity of extreme attribute values from 4dF rolls
+- Examples: PHY 6 = ~29 lbs, PHY 10 = 50 lbs, PHY 14 = ~87 lbs
+- Containers can increase effective volume capacity by providing organized storage
+- Exceeding weight limits may reduce movement speed or prevent movement
+- Exceeding volume limits prevents picking up additional items
+
 
 ### Combat System
 
