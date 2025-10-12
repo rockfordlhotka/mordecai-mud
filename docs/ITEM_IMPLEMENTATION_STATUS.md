@@ -194,6 +194,13 @@ Enhance `Mordecai.Web\Pages\Admin\Items.razor`:
 - **Container Designer** - Special UI for designing containers
 - **Equipment Stats Editor** - Edit skill bonuses and attribute modifiers
 
+**Equipment Slot Reference:**
+- Body: Head, Face, Ears, Neck, Shoulders, Back, Chest, Waist, Legs
+- Arms: ArmLeft/Right, WristLeft/Right, HandLeft/Right
+- Weapons: MainHand, OffHand, TwoHand
+- Jewelry: Ears, Neck, FingerLeft1-5, FingerRight1-5 (10 ring slots total)
+- Feet: AnkleLeft/Right, FootLeft/Right
+
 ### Phase 5: Player UI
 
 Enhance `Mordecai.Web\Pages\Play.razor`:

@@ -557,7 +557,7 @@ This progression system ensures that skill advancement feels rewarding and meani
   - Equipment stats and magical properties
   - Durability and repair mechanics
   - Set bonuses for matched equipment
-  - Equipment slots: Head, Neck, Shoulders, Chest, Back, Wrists, Hands, Waist, Legs, Feet, Fingers (L/R), MainHand, OffHand, TwoHand
+  - Equipment slots: Head, Face, Ears, Neck, Shoulders, Back, Chest, Arms (L/R), Wrists (L/R), Hands (L/R), MainHand, OffHand, TwoHand, Fingers (L1-5/R1-5), Waist, Legs, Ankles (L/R), Feet (L/R)
   - Item binding: BindOnPickup (BOP) and BindOnEquip (BOE) mechanics
   - Item rarity tiers: Common, Uncommon, Rare, Epic, Legendary
 

@@ -172,21 +172,25 @@ Each item instance tracks:
 
 Characters can equip items in specific slots:
 
-- **Head** - Helmets, hats, crowns
-- **Neck** - Amulets, necklaces
-- **Shoulders** - Pauldrons, cloaks
-- **Chest** - Armor, robes
-- **Back** - Capes, backpacks
-- **Wrists** - Bracers, bracelets
-- **Hands** - Gauntlets, gloves
+- **Head** - Helmets, hats, crowns, circlets
+- **Face** - Masks, goggles, eyewear
+- **Ears** - Earrings
+- **Neck** - Amulets, necklaces, collars
+- **Shoulders** - Pauldrons, mantles, epaulettes
+- **Back** - Capes, cloaks
+- **Chest** - Armor, robes, shirts, coats (torso)
+- **ArmLeft** / **ArmRight** - Arm armor, bracers
+- **WristLeft** / **WristRight** - Bracelets, wrist guards
+- **HandLeft** / **HandRight** - Gloves, gauntlets (worn on hands)
+- **MainHand** - Primary weapon, wand, tool
+- **OffHand** - Shield, secondary weapon, torch
+- **TwoHand** - Two-handed weapon (occupies both MainHand and OffHand)
+- **FingerLeft1-5** - Left hand rings (5 fingers: thumb through pinky)
+- **FingerRight1-5** - Right hand rings (5 fingers: thumb through pinky)
 - **Waist** - Belts, sashes
-- **Legs** - Greaves, pants
-- **Feet** - Boots, shoes
-- **FingerLeft** - Left ring
-- **FingerRight** - Right ring
-- **MainHand** - Primary weapon
-- **OffHand** - Shield, secondary weapon
-- **TwoHand** - Two-handed weapon (occupies both hands)
+- **Legs** - Greaves, pants, leg armor
+- **AnkleLeft** / **AnkleRight** - Ankle jewelry, armor
+- **FootLeft** / **FootRight** - Boots, shoes
 
 ### Item Bonuses
 

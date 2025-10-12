@@ -43,9 +43,16 @@ Examples: PHY 6 = ~29 lbs | PHY 10 = 50 lbs | PHY 14 = ~87 lbs
 ## Equipment Slots
 
 ```
-Head, Neck, Shoulders, Chest, Back, Wrists, Hands, Waist, Legs, Feet,
-FingerLeft, FingerRight, MainHand, OffHand, TwoHand
+Head, Face, Ears, Neck, Shoulders, Back, Chest,
+ArmLeft, ArmRight, WristLeft, WristRight, HandLeft, HandRight,
+MainHand, OffHand, TwoHand,
+FingerLeft1, FingerLeft2, FingerLeft3, FingerLeft4, FingerLeft5,
+FingerRight1, FingerRight2, FingerRight3, FingerRight4, FingerRight5,
+Waist, Legs,
+AnkleLeft, AnkleRight, FootLeft, FootRight
 ```
+
+**Note**: 10 finger slots total (5 per hand) allows multiple rings
 
 ## Container Properties
 

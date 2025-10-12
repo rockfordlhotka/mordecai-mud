@@ -46,21 +46,38 @@ public enum WeaponType
 public enum ArmorSlot
 {
     None,
-    Head,
-    Neck,
-    Shoulders,
-    Chest,
-    Back,
-    Wrists,
-    Hands,
-    Waist,
-    Legs,
-    Feet,
-    FingerLeft,
-    FingerRight,
-    MainHand,
-    OffHand,
-    TwoHand
+    Head,           // Hats, helms, crowns
+    Face,           // Masks, goggles, eyewear
+    Ears,           // Earrings
+    Neck,           // Necklaces, amulets, collars
+    Shoulders,      // Pauldrons, mantle, epaulettes
+    Back,           // Cloaks, capes
+    Chest,          // Shirts, coats, armor, robes (torso)
+    ArmLeft,        // Left arm armor, bracers
+    ArmRight,       // Right arm armor, bracers
+    WristLeft,      // Left wrist bracelet, bracer
+    WristRight,     // Right wrist bracelet, bracer
+    HandLeft,       // Left glove, gauntlet
+    HandRight,      // Right glove, gauntlet
+    MainHand,       // Primary weapon, tool, wand
+    OffHand,        // Shield, secondary weapon, torch
+    TwoHand,        // Two-handed weapons (greatswords, staves)
+    FingerLeft1,    // Left hand, finger 1 (thumb)
+    FingerLeft2,    // Left hand, finger 2
+    FingerLeft3,    // Left hand, finger 3
+    FingerLeft4,    // Left hand, finger 4
+    FingerLeft5,    // Left hand, finger 5 (pinky)
+    FingerRight1,   // Right hand, finger 1 (thumb)
+    FingerRight2,   // Right hand, finger 2
+    FingerRight3,   // Right hand, finger 3
+    FingerRight4,   // Right hand, finger 4
+    FingerRight5,   // Right hand, finger 5 (pinky)
+    Waist,          // Belts, sashes
+    Legs,           // Pants, leg armor
+    AnkleLeft,      // Left ankle jewelry, armor
+    AnkleRight,     // Right ankle jewelry, armor
+    FootLeft,       // Left boot, shoe
+    FootRight       // Right boot, shoe
 }
 
 /// <summary>

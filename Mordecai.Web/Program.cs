@@ -77,6 +77,7 @@ builder.Services.AddScoped<Mordecai.Web.Services.IRoomService, Mordecai.Web.Serv
 builder.Services.AddScoped<IRoomAdjacencyService, RoomAdjacencyService>();
 builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
+builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 
 // Add room effects service
 builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();

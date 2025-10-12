@@ -20,6 +20,7 @@
 @inject IWorldService WorldService
 @inject SkillService SkillService
 @inject IDoorInteractionService DoorInteractionService
+@inject IEquipmentService EquipmentService
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
 @implements IDisposable
@@ -585,6 +586,28 @@
                     await HandleDriveCommand();
                     break;
 
+                case "inventory":
+                case "inv":
+                case "i":
+                    await HandleInventoryCommand();
+                    break;
+
+                case "equipment":
+                case "eq":
+                    await HandleEquipmentCommand();
+                    break;
+
+                case "equip":
+                case "wear":
+                case "wield":
+                    await HandleEquipCommand(parts);
+                    break;
+
+                case "unequip":
+                case "remove":
+                    await HandleUnequipCommand(parts);
+                    break;
+
                 case "open":
                 case "close":
                 case "lock":
@@ -601,6 +624,10 @@
                     AddMessage("search - Search for hidden things using your awareness skill (costs 1 FAT)");
                     AddMessage("skills - Display your character's skills and progress");
                     AddMessage("drive - Trade a portion of your vitality for fatigue recovery using the Drive skill");
+                    AddMessage("inventory/inv/i - Show items you are carrying");
+                    AddMessage("equipment/eq - Show what you have equipped");
+                    AddMessage("equip/wear/wield [item] - Equip an item from your inventory");
+                    AddMessage("unequip/remove [item] - Unequip an item");
                     AddMessage("open/close [direction] - Open or close a door");
                     AddMessage("lock/unlock [direction] [device] - Lock or unlock a door with a device code");
                     AddMessage("break [direction] - Try to smash through a locked door");
@@ -1522,6 +1549,215 @@
 
         var finalDescription = string.Join(" ", description);
         AddMessage(finalDescription, "text-info");
+    }
+
+    private async Task HandleInventoryCommand()
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        try
+        {
+            var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
+            
+            if (items.Count == 0)
+            {
+                AddMessage("Your inventory is empty.", "text-muted");
+                return;
+            }
+
+            AddMessage("Inventory:", "text-info");
+            foreach (var item in items)
+            {
+                var displayName = string.IsNullOrWhiteSpace(item.CustomName) 
+                    ? item.ItemTemplate.Name 
+                    : $"{item.CustomName} ({item.ItemTemplate.Name})";
+                
+                var equippedTag = item.IsEquipped ? " [EQUIPPED]" : "";
+                var stackInfo = item.StackSize > 1 ? $" x{item.StackSize}" : "";
+                
+                AddMessage($"  {displayName}{stackInfo}{equippedTag}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error retrieving inventory: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleEquipmentCommand()
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        try
+        {
+            var equippedItems = await EquipmentService.GetEquippedItemsAsync(characterId.Value, currentUserId);
+            
+            if (equippedItems.Count == 0)
+            {
+                AddMessage("You have nothing equipped.", "text-muted");
+                return;
+            }
+
+            AddMessage("Currently Equipped:", "text-info");
+            
+            // Group by slot for organized display
+            var itemsBySlot = equippedItems
+                .GroupBy(i => i.EquippedSlot)
+                .OrderBy(g => g.Key);
+
+            foreach (var slotGroup in itemsBySlot)
+            {
+                var slotName = slotGroup.Key.HasValue ? slotGroup.Key.Value.ToString() : "Unknown";
+                
+                foreach (var item in slotGroup)
+                {
+                    var displayName = string.IsNullOrWhiteSpace(item.CustomName)
+                        ? item.ItemTemplate.Name
+                        : $"{item.CustomName} ({item.ItemTemplate.Name})";
+                    
+                    AddMessage($"  {slotName}: {displayName}");
+                    
+                    // Show bonuses if any
+                    if (item.ItemTemplate.SkillBonuses?.Any() == true)
+                    {
+                        foreach (var bonus in item.ItemTemplate.SkillBonuses)
+                        {
+                            AddMessage($"    +{bonus.BonusValue} to {bonus.SkillDefinition.Name}", "text-success");
+                        }
+                    }
+                    
+                    if (item.ItemTemplate.AttributeModifiers?.Any() == true)
+                    {
+                        foreach (var modifier in item.ItemTemplate.AttributeModifiers)
+                        {
+                            AddMessage($"    {modifier.ModifierValue:+0;-0;0} to {modifier.AttributeName}", "text-success");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error retrieving equipment: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleEquipCommand(string[] parts)
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Equip what? Usage: equip [item name]", "text-warning");
+            return;
+        }
+
+        var itemName = string.Join(" ", parts.Skip(1));
+
+        try
+        {
+            // Find the item in the character's inventory by name
+            var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
+            var matchingItem = items.FirstOrDefault(i =>
+                (i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)) ||
+                (i.CustomName != null && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+
+            if (matchingItem == null)
+            {
+                AddMessage($"You don't have '{itemName}' in your inventory.", "text-warning");
+                return;
+            }
+
+            var result = await EquipmentService.EquipAsync(characterId.Value, currentUserId, matchingItem.Id);
+            
+            if (result.Success)
+            {
+                AddMessage(result.Message, "text-success");
+            }
+            else
+            {
+                AddMessage(result.Message, "text-warning");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error equipping item: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleUnequipCommand(string[] parts)
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Unequip what? Usage: unequip [item name or slot]", "text-warning");
+            return;
+        }
+
+        var targetName = string.Join(" ", parts.Skip(1));
+
+        try
+        {
+            // Check if the target is a slot name
+            if (Enum.TryParse<ArmorSlot>(targetName, true, out var slot) && slot != ArmorSlot.None)
+            {
+                var result = await EquipmentService.UnequipSlotAsync(characterId.Value, currentUserId, slot);
+                
+                if (result.Success)
+                {
+                    AddMessage(result.Message, "text-success");
+                }
+                else
+                {
+                    AddMessage(result.Message, "text-warning");
+                }
+                return;
+            }
+
+            // Otherwise, find the item by name
+            var equippedItems = await EquipmentService.GetEquippedItemsAsync(characterId.Value, currentUserId);
+            var matchingItem = equippedItems.FirstOrDefault(i =>
+                (i.ItemTemplate.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase)) ||
+                (i.CustomName != null && i.CustomName.Equals(targetName, StringComparison.OrdinalIgnoreCase)));
+
+            if (matchingItem == null)
+            {
+                AddMessage($"You don't have '{targetName}' equipped.", "text-warning");
+                return;
+            }
+
+            var unequipResult = await EquipmentService.UnequipAsync(characterId.Value, currentUserId, matchingItem.Id);
+            
+            if (unequipResult.Success)
+            {
+                AddMessage(unequipResult.Message, "text-success");
+            }
+            else
+            {
+                AddMessage(unequipResult.Message, "text-warning");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error unequipping item: {ex.Message}", "text-danger");
+        }
     }
 
     private void AddMessage(string message, string cssClass = "")
