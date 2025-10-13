@@ -21,6 +21,7 @@
 @inject SkillService SkillService
 @inject IDoorInteractionService DoorInteractionService
 @inject IEquipmentService EquipmentService
+@inject IItemTemplateService ItemTemplateService
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
 @implements IDisposable
@@ -608,6 +609,14 @@
                     await HandleUnequipCommand(parts);
                     break;
 
+                case "drop":
+                    await HandleDropCommand(parts);
+                    break;
+
+                case "rezz":
+                    await HandleRezzCommand(parts);
+                    break;
+
                 case "open":
                 case "close":
                 case "lock":
@@ -628,6 +637,11 @@
                     AddMessage("equipment/eq - Show what you have equipped");
                     AddMessage("equip/wear/wield [item] - Equip an item from your inventory");
                     AddMessage("unequip/remove [item] - Unequip an item");
+                    AddMessage("drop [item] - Drop an item you are carrying into the room");
+                    if (isCurrentUserAdmin)
+                    {
+                        AddMessage("rezz [item template id or name] - Admin: manifest an item in your primary hand");
+                    }
                     AddMessage("open/close [direction] - Open or close a door");
                     AddMessage("lock/unlock [direction] [device] - Lock or unlock a door with a device code");
                     AddMessage("break [direction] - Try to smash through a locked door");
@@ -811,6 +825,125 @@
         catch (Exception ex)
         {
             AddMessage($"Error performing Drive conversion: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleRezzCommand(string[] parts)
+    {
+        if (!isCurrentUserAdmin)
+        {
+            AddMessage("Only administrators can use the rezz command.", "text-danger");
+            return;
+        }
+
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Usage: rezz [item template id or name]", "text-warning");
+            return;
+        }
+
+        try
+        {
+            var identifier = string.Join(" ", parts.Skip(1));
+            ItemTemplate? template = null;
+
+            if (int.TryParse(parts[1], out var templateId))
+            {
+                template = await ItemTemplateService.GetItemTemplateAsync(templateId);
+            }
+
+            if (template == null)
+            {
+                var templates = await ItemTemplateService.GetItemTemplatesAsync(includeInactive: true);
+                template = templates
+                    .FirstOrDefault(t => t.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (template == null)
+            {
+                AddMessage($"No item template matches '{identifier}'.", "text-warning");
+                return;
+            }
+
+            var creationResult = await EquipmentService.CreateItemForCharacterAsync(characterId.Value, currentUserId, template.Id);
+            var creationClass = creationResult.Success ? "text-success" : "text-warning";
+            AddMessage(creationResult.Message, creationClass);
+
+            if (!creationResult.Success || creationResult.Item == null)
+            {
+                return;
+            }
+
+            var equipResult = await EquipmentService.EquipAsync(characterId.Value, currentUserId, creationResult.Item.Id);
+
+            if (equipResult.Success)
+            {
+                AddMessage("The item manifests in your primary hand.", "text-success");
+            }
+            else
+            {
+                AddMessage($"Item created but could not be equipped: {equipResult.Message}", "text-warning");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error using rezz: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleDropCommand(string[] parts)
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("You have nowhere to drop that.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Drop what? Usage: drop [item name]", "text-warning");
+            return;
+        }
+
+        var itemName = string.Join(" ", parts.Skip(1));
+
+        try
+        {
+            var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
+            var matchingItem = items.FirstOrDefault(i =>
+                i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(i.CustomName) && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+
+            if (matchingItem == null)
+            {
+                AddMessage($"You aren't holding '{itemName}'.", "text-warning");
+                return;
+            }
+
+            var dropResult = await EquipmentService.DropItemAsync(characterId.Value, currentUserId, matchingItem.Id, currentRoomId.Value);
+            var cssClass = dropResult.Success ? "text-success" : "text-warning";
+            AddMessage(dropResult.Message, cssClass);
+
+            if (dropResult.Success)
+            {
+                await RefreshCurrentRoomAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error dropping item: {ex.Message}", "text-danger");
         }
     }
 

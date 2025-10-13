@@ -9,6 +9,8 @@ public interface IEquipmentService
     Task<EquipResult> EquipAsync(Guid characterId, string userId, Guid itemId);
     Task<UnequipResult> UnequipAsync(Guid characterId, string userId, Guid itemId);
     Task<UnequipResult> UnequipSlotAsync(Guid characterId, string userId, ArmorSlot slot);
+    Task<ItemCreationResult> CreateItemForCharacterAsync(Guid characterId, string userId, int itemTemplateId);
+    Task<ItemDropResult> DropItemAsync(Guid characterId, string userId, Guid itemId, int roomId);
     Task<IReadOnlyList<Item>> GetEquippedItemsAsync(Guid characterId, string userId);
     Task<IReadOnlyList<Item>> GetInventoryItemsAsync(Guid characterId, string userId);
     Task<Dictionary<int, int>> GetActiveSkillBonuses(Guid characterId, string userId);
@@ -27,6 +29,119 @@ public class EquipmentService : IEquipmentService
     {
         _contextFactory = contextFactory;
         _logger = logger;
+    }
+
+    public async Task<ItemCreationResult> CreateItemForCharacterAsync(Guid characterId, string userId, int itemTemplateId)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId);
+
+            if (character == null)
+            {
+                return new ItemCreationResult(false, "Character not found.", null);
+            }
+
+            var template = await context.ItemTemplates
+                .FirstOrDefaultAsync(t => t.Id == itemTemplateId);
+
+            if (template == null)
+            {
+                return new ItemCreationResult(false, "Item template not found.", null);
+            }
+
+            var item = new Item
+            {
+                ItemTemplateId = template.Id,
+                ItemTemplate = template,
+                OwnerCharacterId = characterId,
+                StackSize = 1,
+                CurrentRoomId = null,
+                ContainerItemId = null,
+                IsEquipped = false,
+                EquippedSlot = null,
+                IsBound = template.BindOnPickup,
+                CurrentDurability = template.HasDurability ? template.MaxDurability : null,
+                PickedUpAt = DateTimeOffset.UtcNow,
+                LastModifiedAt = DateTimeOffset.UtcNow
+            };
+
+            context.Items.Add(item);
+            await context.SaveChangesAsync();
+
+            _logger.LogInformation("Character {CharacterId} created item {ItemTemplateId} ({ItemName})", characterId, template.Id, template.Name);
+
+            return new ItemCreationResult(true, $"You conjure {template.Name} into existence.", item);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating item template {ItemTemplateId} for character {CharacterId}", itemTemplateId, characterId);
+            return new ItemCreationResult(false, "An error occurred while creating the item.", null);
+        }
+    }
+
+    public async Task<ItemDropResult> DropItemAsync(Guid characterId, string userId, Guid itemId, int roomId)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId);
+
+            if (character == null)
+            {
+                return new ItemDropResult(false, "Character not found.", null);
+            }
+
+            var item = await context.Items
+                .Include(i => i.ItemTemplate)
+                .FirstOrDefaultAsync(i => i.Id == itemId);
+
+            if (item == null)
+            {
+                return new ItemDropResult(false, "Item not found.", null);
+            }
+
+            if (item.OwnerCharacterId != characterId)
+            {
+                return new ItemDropResult(false, "You are not holding that item.", null);
+            }
+
+            if (!item.ItemTemplate.IsDroppable)
+            {
+                return new ItemDropResult(false, $"{item.ItemTemplate.Name} resists being dropped.", item);
+            }
+
+            if (item.ContainerItemId.HasValue)
+            {
+                return new ItemDropResult(false, "Remove the item from its container before dropping it.", item);
+            }
+
+            if (item.IsEquipped)
+            {
+                item.IsEquipped = false;
+                item.EquippedSlot = null;
+            }
+
+            item.OwnerCharacterId = null;
+            item.CurrentRoomId = roomId;
+            item.LastModifiedAt = DateTimeOffset.UtcNow;
+
+            await context.SaveChangesAsync();
+
+            _logger.LogInformation("Character {CharacterId} dropped item {ItemId} in room {RoomId}", characterId, itemId, roomId);
+
+            return new ItemDropResult(true, $"You drop {item.ItemTemplate.Name}.", item);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error dropping item {ItemId} for character {CharacterId}", itemId, characterId);
+            return new ItemDropResult(false, "An error occurred while dropping the item.", null);
+        }
     }
 
     public async Task<EquipResult> EquipAsync(Guid characterId, string userId, Guid itemId)
@@ -437,3 +552,13 @@ public sealed record EquipResult(bool Success, string Message, Item? Item);
 /// Result of an unequip operation
 /// </summary>
 public sealed record UnequipResult(bool Success, string Message, Item? Item);
+
+/// <summary>
+/// Result of an item creation operation
+/// </summary>
+public sealed record ItemCreationResult(bool Success, string Message, Item? Item);
+
+/// <summary>
+/// Result of dropping an item into a room
+/// </summary>
+public sealed record ItemDropResult(bool Success, string Message, Item? Item);
