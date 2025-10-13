@@ -518,37 +518,414 @@ This progression system ensures that skill advancement feels rewarding and meani
 
 ### 3. Combat System
 
-- **Real-Time Combat with Cooldowns**
-  - Continuous real-time combat to accommodate multiplayer and AFK players
-  - Action cooldowns based on weapon type, spell complexity, and skill level
-  - Higher skill levels reduce cooldown times and improve effectiveness
-  - Combat actions resolved through skill checks vs. target's defensive skills
+#### Core Combat Mechanics
 
-- **Health and Damage System**
-  - **Fatigue (FAT)** damage represents exhaustion, stunning, and non-lethal harm
-  - **Vitality (VIT)** damage represents serious injury and life-threatening wounds
-  - Combat actions can target either or both health pools depending on attack type
-  - **Pending Damage Pools**: Damage is not applied instantly but goes into pending pools
-    - Damage accumulates in pending FAT and VIT pools (positive values)
-    - Every 3 seconds, half the pending damage is applied to current health values
-    - Multiple attacks can accumulate in pending pools before being applied
-    - This creates realistic "bleeding out" or gradual injury effects
-  - **Healing System**: Works through the same pending pool mechanism
-    - Healing adds negative values to pending pools (representing recovery)
-    - Negative pending values gradually restore current health over time
-    - Allows for "healing over time" effects and prevents instant full healing
-  - Damage calculations based on weapon type, skill levels, and armor protection
-  - Recovery systems for both health types (rest, healing, medical treatment)
+Combat in Mordecai uses a skill-based resolution system built on the 4dF+ dice mechanic. All combat actions consume Fatigue (FAT), creating a natural pacing mechanism where characters tire from extended fighting.
 
-- **PvE Combat**
+##### Attack and Defense Resolution
+
+**Attack Value (AV)**: For all attacks, the attacker rolls:
+
+- **AV = Ability Score (AS) + 4dF+**
+- The exploding dice mechanic (4dF+) automatically applies to all attack rolls
+
+**Success Value (SV)**: The margin of success or failure:
+
+- **SV = AV - TV (Target Value)**
+- SV ≥ 0 indicates a successful attack
+- Higher SV values result in more damage
+- SV < 0 indicates a failed attack
+- SV ≤ -3 triggers negative consequences (see Result Value System)
+
+##### Melee Combat
+
+**Attacking**: Melee attacks cost **1 FAT** and use the weapon's associated skill.
+
+- Attacker rolls: **Weapon Skill AS + 4dF+** = AV
+- If the defender is not surprised and has FAT > 0, they automatically defend
+
+**Defending**: The defender uses their Dodge (DEX) skill.
+
+- Defender rolls: **Dodge AS + 4dF+** = TV
+- Defending costs **1 FAT**
+- If the attack succeeds (AV ≥ TV), armor and shields may still absorb damage
+
+**Parry Mode**: Characters can enter parry mode as an action.
+
+- While in parry mode, the character uses their primary weapon skill for defense instead of Dodge
+- Parry does NOT cost FAT per defense (unlike Dodge)
+- Parry only works against melee attacks (not ranged)
+- Character must meet minimum skill level to use the equipped weapon
+- Parry mode ends when the character takes another action
+
+**Dual Wielding**: Attacking with both weapons costs **2 FAT** total.
+
+- Primary hand attacks normally: **Weapon Skill AS + 4dF+**
+- Off-hand attacks at penalty: **Weapon Skill AS - 2 + 4dF+**
+
+##### Ranged Combat
+
+**Range Categories**:
+
+- **Range 0**: Melee only
+- **Range 1**: Ranged attacks within the same room
+- **Range 2**: Ranged attacks into adjacent rooms
+
+**Ranged Attack Resolution**:
+
+- Attacker rolls: **Ranged Weapon Skill AS + 4dF+** = AV
+- Target Value starts at **TV = 8** and is modified by circumstances:
+  - Target has taken any action within 3 seconds: **+2 TV**
+  - Target is hiding: **+2 TV**
+  - Target is in an adjacent room: **+2 TV**
+  - Room is crowded (>3 characters/creatures): **+1 TV**
+
+**Ranged Weapon Cooldowns** (based on skill level):
+
+- Level 0: 6 seconds
+- Level 1: 5 seconds
+- Level 2: 4 seconds
+- Level 3: 3 seconds
+- Level 4-5: 2 seconds
+- Level 6-7: 1 second
+- Level 8-9: 0.5 seconds
+- Level 10+: No cooldown
+
+**Ammunition**: Ranged weapons (bows, crossbows) require ammunition (arrows, bolts).
+
+- Ammunition is consumed on each shot
+- Different ammunition types may provide bonuses or special effects
+
+**Thrown Weapons**: Daggers, darts, and other thrown items use the same melee weapon skill.
+
+- Use ranged attack TV modifiers
+- Thrown items are removed from equipped/inventory
+- Can be retrieved from the room after combat
+
+##### Physicality and Damage Bonus
+
+After a successful melee or thrown weapon attack, a **Physicality (STR) skill check** occurs automatically at **0 FAT cost**.
+
+- Roll: **Physicality AS + 4dF+** vs **TV 8**
+- Calculate Result Value: **RV = Physicality Roll - 8**
+- Apply Result Value System (RVS) modifiers to SV or AV
+
+**Result Value System (RVS) Chart**:
+
+| RV | Effect on SV/AV |
+|----|-----------------|
+| -10 to -9 | -3 AV for 3 rounds |
+| -8 to -7 | -2 AV for 2 rounds |
+| -6 to -5 | -2 AV for 1 round |
+| -4 to -3 | -1 AV for 1 round |
+| -2 to +1 | +0 SV (no effect) |
+| +2 to +3 | +1 SV |
+| +4 to +7 | +2 SV |
+| +8 to +11 | +3 SV |
+| +12 to +18 | +4 SV |
+
+**Timed AV Penalties**: RV ≤ -3 applies a timed penalty to all AV rolls:
+
+- Duration shown in rounds (1 round = 3 seconds)
+- Multiple penalties may stack
+- Represents physical overexertion or poor form
+
+**Failed Attacks**: If the initial attack roll results in SV ≤ -3, apply the RVS chart using that SV as the RV to determine timed effects on the character.
+
+##### Defense Sequence
+
+When an attack succeeds (SV ≥ 0), damage is absorbed in the following order:
+
+1. **Shield Defense** (if equipped and location allows):
+   - Costs **1 FAT** per use
+   - Shield skill check: **Shield Skill AS + 4dF+** vs **TV 8**
+   - On success, shield absorbs SV based on its absorption rating for the damage type
+   - Shield durability reduced by absorbed SV
+   - Shields can absorb damage to any hit location
+
+2. **Armor Defense** (if location is armored):
+   - Does NOT cost FAT
+   - Armor skill check: **Armor Skill AS + 4dF+** vs **TV 8**
+   - On success, armor absorbs SV based on its absorption rating for the damage type
+   - Armor durability reduced by absorbed SV
+   - Multiple armor pieces layer: outer garments absorb before inner
+   - Only armor covering the hit location applies
+
+3. **Damage Application**: Any remaining SV after absorption determines damage to the character
+
+##### Hit Locations
+
+Hit location is determined by **1d12** roll:
+
+| Roll | Location | Armor Slots That Protect |
+|------|----------|--------------------------|
+| 1 | Head (roll 1d12 again: 1-6=Head, 7-12=Torso) | Head, Face, Ears, Neck |
+| 2-6 | Torso | Neck, Shoulders, Back, Chest, Waist |
+| 7 | Left Arm | Shoulders, Arms(L), Wrists(L), Hands(L) |
+| 8 | Right Arm | Shoulders, Arms(R), Wrists(R), Hands(R) |
+| 9-10 | Left Leg | Waist, Legs, Ankles(L), Feet(L) |
+| 11-12 | Right Leg | Waist, Legs, Ankles(R), Feet(R) |
+
+**Note**: Shields can defend any hit location, but armor only protects if it covers that specific body part.
+
+#### Damage System
+
+##### Damage Classes
+
+Damage and durability are organized into **classes** representing scale:
+
+- **Class 1**: Normal weapons, human-scale combat
+- **Class 2**: Vehicles, giant creatures, falling trees, light buildings (10× Class 1)
+- **Class 3**: Armored vehicles, structures, dragons (10× Class 2)
+- **Class 4**: Armored structures, starships, high-end magic (10× Class 3)
+
+**Class Interactions**:
+
+- Higher-class armor **completely absorbs** lower-class damage as 1 SV
+  - Example: Class 2 armor treats all Class 1 damage as 1 SV regardless of actual SV
+- Same-class armor absorbs normally
+- Damage that **penetrates** lower-class armor is translated UP in class (×10 multiplier)
+  - Example: Class 2 damage penetrating Class 2 armor becomes Class 1 damage to the character underneath
+- Layered armor prevents class multiplication until damage reaches a lower class
+
+##### SV to Damage Roll Conversion
+
+After final SV is calculated (including absorption), consult the damage roll table:
+
+| SV | Damage Roll | | SV | Damage Roll |
+|----|-------------|---|----|-------------|
+| 0 | 1d6÷3 | | 11 | 3d12 |
+| 1 | 1d6÷2 | | 12 | 4d10 |
+| 2 | 1d6 | | 13 | 4d10 |
+| 3 | 1d8 | | 14 | 4d10 |
+| 4 | 1d10 | | 15 | 1d6 Class+1 |
+| 5 | 1d12 | | 16 | 1d6 Class+1 |
+| 6 | 1d6+1d8 | | 17 | 1d8 Class+1 |
+| 7 | 2d8 | | 18 | 1d8 Class+1 |
+| 8 | 2d10 | | 19 | 1d10 Class+1 |
+| 9 | 2d12 | | 20+ | 1d10 Class+1 |
+| 10 | 3d10 | | | |
+
+**Class Escalation**: At SV 15+, damage rolls occur at the **next higher damage class**.
+
+- Roll the dice shown (1d6, 1d8, 1d10) at Class+1
+- Example: Class 1 attack with SV 15 rolls 1d6 at Class 2 (result: 10-60 damage)
+- Continue up the table at the new class for damage conversion
+
+##### Damage to Health Pools
+
+After rolling damage dice, convert the total to FAT/VIT damage:
+
+| Damage | FAT | VIT | Wounds |
+|--------|-----|-----|--------|
+| 1-4 | = Damage | 0 | 0 |
+| 5 | 5 | 1 | 0 |
+| 6 | 6 | 2 | 0 |
+| 7 | 7 | 4 | 1 |
+| 8 | 8 | 6 | 1 |
+| 9 | 9 | 8 | 1 |
+| 10 | 10 | 10 | 2 |
+| 11 | 11 | 11 | 2 |
+| 12 | 12 | 12 | 2 |
+| 13 | 13 | 13 | 2 |
+| 14 | 14 | 14 | 2 |
+| 15 | 15 | 15 | 3 |
+| 16 | 16 | 16 | 3 |
+| 17 | 17 | 17 | 3 |
+| 18 | 18 | 18 | 3 |
+| 19 | 19 | 19 | 3 |
+| 20 | 20 | 20 | 4 (Apply as Class+1: ×10) |
+| 30 | 30 | 30 | 6 (Apply as Class+1: ×10) |
+| 40 | 40 | 40 | 8 (Apply as Class+1: ×10) |
+| 50 | 50 | 50 | 10 (Apply as Class+1: ×10) |
+| 60 | 60 | 60 | 12 (Apply as Class+1: ×10) |
+
+**Pending Damage Pools**: Damage is not applied instantly but accumulates in pending pools.
+
+- Damage accumulates in pending FAT and VIT pools (positive values)
+- Every 3 seconds, half the pending damage is applied to current health values
+- Multiple attacks can accumulate in pending pools before being applied
+- This creates realistic "bleeding out" or gradual injury effects
+
+**Healing System**: Works through the same pending pool mechanism.
+
+- Healing adds negative values to pending pools (representing recovery)
+- Negative pending values gradually restore current health over time
+- Allows for "healing over time" effects and prevents instant full healing
+
+##### Wounds
+
+**Wound Effects**:
+
+- Wounds are long-term injuries that take **hours** to heal naturally
+- Each wound causes **1 FAT damage every 2 rounds** (6 seconds)
+- Each wound applies **-2 AV penalty** to all actions
+- Wounds stack cumulatively
+
+**Location-Specific Wound Effects**:
+
+- **2 wounds to one arm**: That arm is useless (cannot hold items, use two-handed weapons, etc.)
+- **2 wounds to one leg**: That leg is useless (movement severely impaired)
+- **2 wounds to head**: Severe penalties to perception and mental skills
+- **2 wounds to torso**: Breathing difficulties, additional FAT drain
+
+**Wound Recovery**:
+
+- Natural healing: 1 wound per 4 hours of rest
+- Medical treatment can speed recovery
+- Magical healing can remove wounds instantly
+
+#### Equipment Mechanics
+
+##### Weapon Properties
+
+All weapons have the following properties:
+
+- **Associated Skill**: Specific weapon skill (Swords, Axes, Bows, etc.)
+- **Minimum Skill Level**: Required skill level to use effectively (default: 0)
+- **Damage Type**: Bashing, Cutting, Piercing, Projectile, Energy, Heat, Cold, Acid
+- **Damage Class**: 1-4 (default: 1)
+- **Base SV Modifier**: Added to attack SV after success (can be positive or negative)
+- **AV Modifier**: Bonus or penalty to attack rolls (quality, magic, or heavy weapons)
+- **DEX Modifier**: Affects wielder's Dodge skill (typically negative for heavy weapons)
+- **Range**: 0 (melee), 1 (same room), 2 (adjacent room)
+- **Knockback Capable**: Whether weapon can perform knockback attacks
+- **Durability**: Current/Maximum durability
+- **Two-Handed**: Whether weapon requires both hands
+
+**Two-Handed Weapons**:
+
+- Cannot be used with a shield
+- Typically have higher base SV modifiers
+- May have negative AV modifiers (harder to hit, but devastating damage)
+- Often have negative DEX modifiers
+
+**Knockback Attacks**: Weapons with knockback capability can perform special attacks.
+
+- Knockback is a separate command/action (costs 1 FAT)
+- Instead of causing damage, successful knockback prevents target from acting
+- Duration: **SV seconds** (the success value determines how long target is stunned)
+- Example: Polearms, staves, shields can knockback
+
+##### Armor Properties
+
+All armor pieces have the following properties:
+
+- **Associated Skill**: Armor type skill (Light Armor, Heavy Armor, Shields)
+- **Minimum Skill Level**: Required skill level to use effectively (default: 0)
+- **Hit Locations Covered**: Which body parts this armor protects
+- **Damage Class**: 1-4 (default: 1)
+- **Damage Type Absorption**: SV reduction for each damage type (0-n):
+  - Bashing damage absorbed
+  - Cutting damage absorbed
+  - Piercing damage absorbed
+  - Projectile damage absorbed
+  - Energy damage absorbed
+  - Heat damage absorbed
+  - Cold damage absorbed
+  - Acid damage absorbed
+- **DEX Penalty**: Reduction to Dodge skill AS (0-n)
+- **STR Penalty**: Reduction to Physicality skill AS (0-n)
+- **Durability**: Current/Maximum durability
+- **Layer Priority**: Order in absorption sequence (outer garments before inner)
+
+##### Shield Properties
+
+Shields follow the same property structure as armor with these distinctions:
+
+- **Can defend any hit location** (not location-specific)
+- **Costs 1 FAT per use** (unlike armor)
+- Requires successful skill check to absorb damage
+- May have special properties (buckler vs tower shield, etc.)
+
+##### Durability System
+
+**Durability Loss**:
+
+- **Weapons**: Lose durability equal to SV of damage dealt on successful attacks
+- **Armor/Shields**: Lose durability equal to SV absorbed when defending
+
+**Degraded Performance**:
+
+- **At 50% max durability**: Item begins to degrade
+- **At 25% max durability**:
+  - Weapons: Deal only 50% of base SV bonus
+  - Armor: Absorbs only 50% of rated absorption
+- **At 0 durability**:
+  - Item provides no inherent SV bonuses
+  - Character's skill may still generate some effect
+- **At -50% max durability**: Item is **destroyed** and cannot be repaired
+
+**Durability Restoration**:
+
+- Crafting skills can restore durability
+- Magical repair spells/items
+- Maximum durability may increase or decrease based on crafting success/failure
+- Perfect repairs may increase max durability
+- Failed repairs may decrease max durability
+
+**Cross-Class Damage**:
+
+- Lower-class weapons cannot damage higher-class armor unless SV/damage rolls escalate the attack to a higher class
+- Example: Class 1 weapon must achieve Class 2 damage to affect Class 2 armor
+
+##### Skill Requirements
+
+**Minimum Skill Level**: Both weapons and armor have minimum skill requirements.
+
+- If character's skill level < minimum required:
+  - **Weapons**: Attack penalties, reduced damage, increased failure chance
+  - **Armor**: Reduced absorption, increased DEX/STR penalties, reduced defense effectiveness
+- Meeting exact minimum: Full effectiveness
+- Exceeding minimum: Potential bonuses from higher skill levels
+
+**Skill Advancement**:
+
+- **Weapon Skills**: Advance through successful attacks and practice
+- **Armor Skills**: Advance through successfully absorbing damage
+- **Shield Skills**: Advance through successful blocks
+- All follow standard progression system (Base Cost × Multiplier^Level)
+
+#### Combat Actions and Fatigue Management
+
+**Standard Actions** (cost 1 FAT each unless noted):
+
+- **Melee Attack**: Strike with equipped weapon
+- **Ranged Attack**: Fire ranged weapon (no FAT cost, but has cooldown)
+- **Dodge Defense**: Automatic when attacked in melee (costs 1 FAT)
+- **Shield Block**: Automatic when shield equipped and attack succeeds (costs 1 FAT)
+- **Knockback Attack**: Special weapon attack to stun target (costs 1 FAT)
+- **Dual Attack**: Attack with both weapons (costs 2 FAT)
+- **Enter Parry Mode**: Switch to using weapon skill for defense (costs 1 FAT to enter, then free defenses)
+
+**Fatigue Management**:
+
+- Characters naturally recover 1 FAT every 3 seconds when not taking damage
+- Combat actions consume FAT, creating natural pacing
+- Low FAT reduces combat effectiveness (see Low Fatigue Effects in health system)
+- Exhausted characters (FAT = 0) are vulnerable
+
+**Strategic Considerations**:
+
+- Parry mode valuable for extended melee combat (saves FAT on defense)
+- Ranged weapons don't cost FAT to fire but have cooldowns
+- Heavy armor increases defense but may have DEX penalties affecting initiative
+- Two-handed weapons deal more damage but prevent shield use
+- Managing FAT is crucial for sustained combat effectiveness
+
+#### PvE and PvP Combat
+
+- **PvE Combat**:
   - Diverse monster types with unique abilities
   - Boss encounters in special areas
   - Loot drops and skill advancement opportunities
+  - NPCs follow same combat rules as players
 
-- **PvP Combat**
+- **PvP Combat**:
   - Optional player vs player in designated areas
   - Dueling system for consensual combat
   - Guild wars and factional conflicts
+  - Same mechanics apply to player vs player as PvE
 
 ### 4. Items and Equipment
 
