@@ -1579,7 +1579,8 @@
                 var equippedTag = item.IsEquipped ? " [EQUIPPED]" : "";
                 var stackInfo = item.StackSize > 1 ? $" x{item.StackSize}" : "";
                 
-                AddMessage($"  {displayName}{stackInfo}{equippedTag}");
+                var detail = FormatItemDetail(item);
+                AddMessage($"  {displayName}{stackInfo}{equippedTag}{detail}");
             }
         }
         catch (Exception ex)
@@ -1623,7 +1624,8 @@
                         ? item.ItemTemplate.Name
                         : $"{item.CustomName} ({item.ItemTemplate.Name})";
                     
-                    AddMessage($"  {slotName}: {displayName}");
+                    var detail = FormatItemDetail(item);
+                    AddMessage($"  {slotName}: {displayName}{detail}");
                     
                     // Show bonuses if any
                     if (item.ItemTemplate.SkillBonuses?.Any() == true)
@@ -1781,6 +1783,96 @@
             await ScrollToBottom();
         });
     }
+
+    private static string FormatItemDetail(Item item)
+    {
+        var template = item.ItemTemplate;
+        if (template == null)
+        {
+            return string.Empty;
+        }
+
+        var descriptors = new List<string>();
+
+        if (template.ItemType == ItemType.Weapon && template.WeaponProperties is { } weapon)
+        {
+            descriptors.Add($"Weapon {weapon.DamageType} (CL {(int)weapon.DamageClass})");
+
+            if (weapon.BaseSuccessValueModifier != 0)
+            {
+                descriptors.Add($"SV {FormatSignedValue(weapon.BaseSuccessValueModifier)}");
+            }
+
+            if (weapon.AttackValueModifier != 0)
+            {
+                descriptors.Add($"AV {FormatSignedValue(weapon.AttackValueModifier)}");
+            }
+
+            if (weapon.DodgeModifier != 0)
+            {
+                descriptors.Add($"DEX {FormatSignedValue(weapon.DodgeModifier)}");
+            }
+
+            if (weapon.Range != WeaponRange.Melee)
+            {
+                descriptors.Add($"Range {weapon.Range}");
+            }
+
+            if (weapon.CanKnockback)
+            {
+                descriptors.Add("Knockback");
+            }
+
+            if (weapon.IsTwoHanded)
+            {
+                descriptors.Add("Two-Handed");
+            }
+
+            if (weapon.RequiresAmmunition)
+            {
+                descriptors.Add("Ammo");
+            }
+        }
+        else if (template.ItemType == ItemType.Armor && template.ArmorProperties is { } armor)
+        {
+            descriptors.Add($"Armor (CL {(int)armor.DamageClass})");
+
+            var absorption = new List<string>();
+            if (armor.BashingAbsorption != 0) absorption.Add($"B {armor.BashingAbsorption}");
+            if (armor.CuttingAbsorption != 0) absorption.Add($"C {armor.CuttingAbsorption}");
+            if (armor.PiercingAbsorption != 0) absorption.Add($"P {armor.PiercingAbsorption}");
+            if (armor.ProjectileAbsorption != 0) absorption.Add($"Pr {armor.ProjectileAbsorption}");
+            if (armor.EnergyAbsorption != 0) absorption.Add($"E {armor.EnergyAbsorption}");
+            if (armor.HeatAbsorption != 0) absorption.Add($"H {armor.HeatAbsorption}");
+            if (armor.ColdAbsorption != 0) absorption.Add($"Co {armor.ColdAbsorption}");
+            if (armor.AcidAbsorption != 0) absorption.Add($"A {armor.AcidAbsorption}");
+            if (absorption.Count > 0)
+            {
+                descriptors.Add(string.Join(", ", absorption));
+            }
+
+            if (armor.DodgeModifier != 0)
+            {
+                descriptors.Add($"DEX {FormatSignedValue(armor.DodgeModifier)}");
+            }
+
+            if (armor.StrengthModifier != 0)
+            {
+                descriptors.Add($"STR {FormatSignedValue(armor.StrengthModifier)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(armor.HitLocationCoverage))
+            {
+                descriptors.Add(armor.HitLocationCoverage!);
+            }
+        }
+
+        return descriptors.Count == 0
+            ? string.Empty
+            : $" [{string.Join("; ", descriptors)}]";
+    }
+
+    private static string FormatSignedValue(int value) => value >= 0 ? $"+{value}" : value.ToString();
 
     public void Dispose()
     {

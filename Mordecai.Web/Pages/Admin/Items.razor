@@ -1,15 +1,1197 @@
 @page "/admin/items"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.ComponentModel.DataAnnotations
+@using System.Linq
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Data
+@using Mordecai.Web.Services
+@using WebSkillDefinition = Mordecai.Web.Data.SkillDefinition
 @attribute [Authorize(Policy = "AdminOnly")]
 
-<h1>Item Management</h1>
-<p>This is a placeholder for the item management interface.</p>
-<p>Features to implement:</p>
-<ul>
-    <li>Create weapons, armor, and other items</li>
-    <li>Set item statistics and properties</li>
-    <li>Define item behaviors and effects</li>
-    <li>Manage item rarity and economics</li>
-</ul>
+@inject IItemTemplateService ItemTemplateService
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject AuthenticationStateProvider AuthStateProvider
 
-<a href="/admin" class="btn btn-secondary">Back to Admin Dashboard</a>
+<PageTitle>Item Templates - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="mb-0">
+                    <i class="oi oi-briefcase text-primary me-2"></i>
+                    Item Templates
+                </h1>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-success" @onclick="() => ShowCreateModal(ItemType.Weapon)">
+                        <i class="oi oi-plus"></i>
+                        New Weapon
+                    </button>
+                    <button class="btn btn-primary" @onclick="() => ShowCreateModal(ItemType.Armor)">
+                        <i class="oi oi-plus"></i>
+                        New Armor
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="() => ShowCreateModal(selectedTypeFilter ?? ItemType.Miscellaneous)">
+                        <i class="oi oi-plus"></i>
+                        New Item
+                    </button>
+                    <a href="/admin" class="btn btn-secondary">
+                        <i class="oi oi-arrow-left"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">
+            <i class="oi oi-warning me-2"></i>
+            @errorMessage
+        </div>
+    }
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading item templates...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h5 class="mb-0">
+                                <i class="oi oi-list-rich me-2"></i>
+                                Templates (@FilteredTemplates.Count())
+                            </h5>
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="form-label mb-0" for="filter-type">Item type</label>
+                                <select id="filter-type" class="form-select" style="min-width: 12rem;" @bind="selectedTypeFilterValue">
+                                    <option value="">All types</option>
+                                    @foreach (var itemType in ItemTypeOptions)
+                                    {
+                                        <option value="@itemType">@itemType</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="toggleInactive" @bind="showInactive" />
+                                <label class="form-check-label" for="toggleInactive">Show inactive</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (FilteredTemplates.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Category</th>
+                                            <th>Skill</th>
+                                            <th>Stats</th>
+                                            <th class="text-center">Durability</th>
+                                            <th>Value</th>
+                                            <th>Status</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var template in FilteredTemplates)
+                                        {
+                                            <tr class="@(template.IsActive ? string.Empty : "table-secondary")">
+                                                <td>
+                                                    <strong>@template.Name</strong>
+                                                    @if (!string.IsNullOrWhiteSpace(template.ShortDescription))
+                                                    {
+                                                        <br />
+                                                        <small class="text-muted">@template.ShortDescription</small>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="badge @GetTypeBadgeClass(template.ItemType)">@template.ItemType</span>
+                                                    @if (template.ItemType == ItemType.Weapon && template.WeaponType.HasValue)
+                                                    {
+                                                        <br />
+                                                        <small class="text-muted">@template.WeaponType</small>
+                                                    }
+                                                    @if (template.ArmorSlot.HasValue && template.ArmorSlot != ArmorSlot.None)
+                                                    {
+                                                        <br />
+                                                        <small class="text-muted">Slot: @template.ArmorSlot</small>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (template.ItemType == ItemType.Weapon)
+                                                    {
+                                                        <small>@GetSkillName(template.WeaponProperties?.SkillDefinitionId)</small>
+                                                    }
+                                                    else if (template.ItemType == ItemType.Armor)
+                                                    {
+                                                        <small>@GetSkillName(template.ArmorProperties?.SkillDefinitionId)</small>
+                                                    }
+                                                    else
+                                                    {
+                                                        <small class="text-muted">—</small>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (template.ItemType == ItemType.Weapon && template.WeaponProperties is not null)
+                                                    {
+                                                        <small>@SummarizeWeapon(template.WeaponProperties)</small>
+                                                    }
+                                                    else if (template.ItemType == ItemType.Armor && template.ArmorProperties is not null)
+                                                    {
+                                                        <small>@SummarizeArmor(template.ArmorProperties)</small>
+                                                    }
+                                                    else
+                                                    {
+                                                        <small class="text-muted">—</small>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (template.HasDurability)
+                                                    {
+                                                        <span class="badge bg-info">@template.MaxDurability</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">N/A</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <small>
+                                                        <div>Value: @template.Value</div>
+                                                        <div>Weight: @template.Weight.ToString("0.##")</div>
+                                                    </small>
+                                                </td>
+                                                <td>
+                                                    @if (template.IsActive)
+                                                    {
+                                                        <span class="badge bg-success">Active</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary">Inactive</span>
+                                                    }
+                                                </td>
+                                                <td class="text-end">
+                                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => ShowEditModal(template)">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-4 text-center text-muted">
+                                <i class="oi oi-info display-5"></i>
+                                <p class="mt-3 mb-0">No item templates match the current filters.</p>
+                            </div>
+                        }
+                    </div>
+                    <div class="card-footer text-muted">
+                        <small>
+                            Weapons require Main/Off/Two-Hand slots. Armor uses layered absorption by slot order. All values are stored in the shared item template catalog.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (showModal && editingItem is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="oi oi-pencil me-2"></i>
+                        @(editingItem.Id == 0 ? "Create Item Template" : $"Edit {editingItem.Name}")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <EditForm Model="editingItem" OnValidSubmit="SaveItemTemplate">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger" />
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Name *</label>
+                                <InputText class="form-control" @bind-Value="editingItem.Name" maxlength="100" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Short Description</label>
+                                <InputText class="form-control" @bind-Value="editingItem.ShortDescription" maxlength="200" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Rarity</label>
+                                <InputSelect class="form-select" @bind-Value="editingItem.Rarity">
+                                    @foreach (var rarity in RarityOptions)
+                                    {
+                                        <option value="@rarity">@rarity</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-12">
+                                <label class="form-label">Description *</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="editingItem.Description" maxlength="2000" />
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-4">
+                                <label class="form-label">Item Type</label>
+                                <InputSelect class="form-select" @bind-Value="editingItem.ItemType" @onchange="HandleItemTypeChanged">
+                                    @foreach (var itemType in ItemTypeOptions)
+                                    {
+                                        <option value="@itemType">@itemType</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            @if (editingItem.ItemType == ItemType.Weapon || editingItem.ItemType == ItemType.Armor)
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">Equipment Slot *</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.ArmorSlot">
+                                        @if (editingItem.ItemType == ItemType.Weapon)
+                                        {
+                                            foreach (var slot in WeaponSlotOptions)
+                                            {
+                                                <option value="@slot">@slot</option>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            foreach (var slot in ArmorSlotOptions)
+                                            {
+                                                <option value="@slot">@slot</option>
+                                            }
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Value (copper)</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Value" min="0" />
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Display Order</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.DisplayOrder" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">Value (copper)</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Value" min="0" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Display Order</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.DisplayOrder" />
+                                </div>
+                            }
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-3">
+                                <label class="form-label">Weight (lbs)</label>
+                                <InputNumber class="form-control" @bind-Value="editingItem.Weight" step="0.1" min="0" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Volume (cu. ft.)</label>
+                                <InputNumber class="form-control" @bind-Value="editingItem.Volume" step="0.1" min="0" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Durability</label>
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <input class="form-check-input mt-0" type="checkbox" @bind="editingItem.HasDurability" />
+                                    </div>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.MaxDurability" disabled="@(!editingItem.HasDurability)" min="1" />
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Stacking</label>
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <input class="form-check-input mt-0" type="checkbox" @bind="editingItem.IsStackable" />
+                                    </div>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.MaxStackSize" min="1" disabled="@(!editingItem.IsStackable)" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="droppable" @bind="editingItem.IsDroppable" />
+                                    <label class="form-check-label" for="droppable">Droppable</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="tradeable" @bind="editingItem.IsTradeable" />
+                                    <label class="form-check-label" for="tradeable">Tradeable</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bop" @bind="editingItem.BindOnPickup" />
+                                    <label class="form-check-label" for="bop">Bind on Pickup</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="boe" @bind="editingItem.BindOnEquip" />
+                                    <label class="form-check-label" for="boe">Bind on Equip</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (editingItem.ItemType == ItemType.Weapon)
+                        {
+                            <hr />
+                            <h5>Weapon Properties</h5>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Weapon Type</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.WeaponCategory">
+                                        @foreach (var weaponType in WeaponTypeOptions)
+                                        {
+                                            <option value="@weaponType">@weaponType</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Associated Skill</label>
+                                    <InputSelect class="form-select" TValue="int?" @bind-Value="editingItem.Weapon.SkillDefinitionId">
+                                        <option value="">(None)</option>
+                                        @foreach (var skill in weaponSkillOptions)
+                                        {
+                                            <option value="@skill.Id">@skill.Name</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Minimum Skill Level</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Weapon.MinimumSkillLevel" min="0" />
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-4">
+                                    <label class="form-label">Damage Type</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.Weapon.DamageType">
+                                        @foreach (var damageType in DamageTypeOptions)
+                                        {
+                                            <option value="@damageType">@damageType</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Damage Class</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.Weapon.DamageClass">
+                                        @foreach (var damageClass in DamageClassOptions)
+                                        {
+                                            <option value="@damageClass">@((int)damageClass)</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Range</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.Weapon.Range">
+                                        @foreach (var range in WeaponRangeOptions)
+                                        {
+                                            <option value="@range">@range</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-3">
+                                    <label class="form-label">SV Modifier</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Weapon.BaseSuccessValueModifier" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">AV Modifier</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Weapon.AttackValueModifier" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Dodge Modifier</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Weapon.DodgeModifier" />
+                                </div>
+                                <div class="col-md-3 d-flex align-items-center">
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input" type="checkbox" id="weapon-knockback" @bind="editingItem.Weapon.CanKnockback" />
+                                        <label class="form-check-label" for="weapon-knockback">Knockback capable</label>
+                                    </div>
+                                    <div class="form-check me-3">
+                                        <input class="form-check-input" type="checkbox" id="weapon-twohand" @bind="editingItem.Weapon.IsTwoHanded" />
+                                        <label class="form-check-label" for="weapon-twohand">Two-Handed</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="weapon-ammo" @bind="editingItem.Weapon.RequiresAmmunition" />
+                                        <label class="form-check-label" for="weapon-ammo">Requires ammunition</label>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (editingItem.ItemType == ItemType.Armor)
+                        {
+                            <hr />
+                            <h5>Armor Properties</h5>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Associated Skill</label>
+                                    <InputSelect class="form-select" TValue="int?" @bind-Value="editingItem.Armor.SkillDefinitionId">
+                                        <option value="">(None)</option>
+                                        @foreach (var skill in armorSkillOptions)
+                                        {
+                                            <option value="@skill.Id">@skill.Name</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Minimum Skill Level</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.MinimumSkillLevel" min="0" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Damage Class</label>
+                                    <InputSelect class="form-select" @bind-Value="editingItem.Armor.DamageClass">
+                                        @foreach (var damageClass in DamageClassOptions)
+                                        {
+                                            <option value="@damageClass">@((int)damageClass)</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-3">
+                                    <label class="form-label">Bashing</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.BashingAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Cutting</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.CuttingAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Piercing</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.PiercingAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Projectile</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.ProjectileAbsorption" min="0" />
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-3">
+                                    <label class="form-label">Energy</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.EnergyAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Heat</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.HeatAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Cold</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.ColdAbsorption" min="0" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Acid</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.AcidAbsorption" min="0" />
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-3">
+                                    <label class="form-label">Dodge Modifier</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.DodgeModifier" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Strength Modifier</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.StrengthModifier" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Layer Priority</label>
+                                    <InputNumber class="form-control" @bind-Value="editingItem.Armor.LayerPriority" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Hit Coverage</label>
+                                    <InputText class="form-control" @bind-Value="editingItem.Armor.HitLocationCoverage" maxlength="200" />
+                                    <small class="text-muted">Comma separated slots for layered protection</small>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="row g-3 mt-3">
+                            <div class="col-12">
+                                <label class="form-label">Custom Properties (JSON)</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="editingItem.CustomProperties" maxlength="4000" />
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-3">
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="item-active" @bind="editingItem.IsActive" />
+                                    <label class="form-check-label" for="item-active">Active</label>
+                                </div>
+                            </div>
+                            <div class="col-md-9 text-end">
+                                <small class="text-muted">
+                                    Created @(editingItem.CreatedAt?.ToString("u") ?? "(pending)") by @(editingItem.CreatedBy ?? "(pending)")
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@saving">
+                            @if (saving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            @(editingItem.Id == 0 ? "Create" : "Save Changes")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly ItemType[] ItemTypeOptions = Enum.GetValues<ItemType>();
+    private static readonly string[] RarityOptions = new[] { "Common", "Uncommon", "Rare", "Epic", "Legendary" };
+    private static readonly WeaponType[] WeaponTypeOptions = Enum.GetValues<WeaponType>();
+    private static readonly WeaponRange[] WeaponRangeOptions = Enum.GetValues<WeaponRange>();
+    private static readonly DamageType[] DamageTypeOptions = Enum.GetValues<DamageType>();
+    private static readonly DamageClass[] DamageClassOptions = Enum.GetValues<DamageClass>();
+    private static readonly ArmorSlot[] WeaponSlotOptions = new[] { ArmorSlot.MainHand, ArmorSlot.OffHand, ArmorSlot.TwoHand };
+    private static readonly ArmorSlot[] ArmorSlotOptions = Enum.GetValues<ArmorSlot>().Where(slot => slot != ArmorSlot.None).ToArray();
+
+    private readonly List<ItemTemplate> itemTemplates = new();
+    private List<WebSkillDefinition> weaponSkillOptions = new();
+    private List<WebSkillDefinition> armorSkillOptions = new();
+    private Dictionary<int, string> skillLookup = new();
+    private bool loading = true;
+    private bool showInactive = true;
+    private ItemType? selectedTypeFilter;
+    private string selectedTypeFilterValue
+    {
+        get => _selectedTypeFilterValue;
+        set
+        {
+            _selectedTypeFilterValue = value;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                selectedTypeFilter = null;
+            }
+            else if (Enum.TryParse<ItemType>(value, out var parsed))
+            {
+                selectedTypeFilter = parsed;
+            }
+        }
+    }
+    private string _selectedTypeFilterValue = string.Empty;
+    private bool showModal;
+    private bool saving;
+    private string errorMessage = string.Empty;
+    private ItemTemplateEditorModel? editingItem;
+
+    private IEnumerable<ItemTemplate> FilteredTemplates => itemTemplates
+        .Where(it => showInactive || it.IsActive)
+        .Where(it => !selectedTypeFilter.HasValue || it.ItemType == selectedTypeFilter.Value)
+        .OrderBy(it => it.ItemType)
+        .ThenBy(it => it.DisplayOrder)
+        .ThenBy(it => it.Name);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSkillOptions();
+        await LoadItemTemplates();
+    }
+
+    private async Task LoadSkillOptions()
+    {
+        await using var context = await DbContextFactory.CreateDbContextAsync();
+
+        weaponSkillOptions = await context.SkillDefinitions
+            .Where(sd => sd.IsActive && sd.SkillType == "Weapon")
+            .OrderBy(sd => sd.DisplayOrder)
+            .ThenBy(sd => sd.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        armorSkillOptions = await context.SkillDefinitions
+            .Where(sd => sd.IsActive && (sd.SkillType == "Armor" || sd.SkillType == "Shield"))
+            .OrderBy(sd => sd.DisplayOrder)
+            .ThenBy(sd => sd.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (!armorSkillOptions.Any())
+        {
+            armorSkillOptions = await context.SkillDefinitions
+                .Where(sd => sd.IsActive && sd.SkillType != "Weapon")
+                .OrderBy(sd => sd.DisplayOrder)
+                .ThenBy(sd => sd.Name)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        skillLookup = weaponSkillOptions.Concat(armorSkillOptions)
+            .GroupBy(sd => sd.Id)
+            .ToDictionary(g => g.Key, g => g.First().Name);
+    }
+
+    private async Task LoadItemTemplates()
+    {
+        loading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            itemTemplates.Clear();
+            itemTemplates.AddRange(await ItemTemplateService.GetItemTemplatesAsync(includeInactive: true));
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load item templates: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowCreateModal(ItemType itemType)
+    {
+        editingItem = ItemTemplateEditorModel.Create(itemType);
+        showModal = true;
+        errorMessage = string.Empty;
+    }
+
+    private void ShowEditModal(ItemTemplate template)
+    {
+        editingItem = ItemTemplateEditorModel.FromEntity(template);
+        showModal = true;
+        errorMessage = string.Empty;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        saving = false;
+        editingItem = null;
+    }
+
+    private void HandleItemTypeChanged(ChangeEventArgs _)
+    {
+        editingItem?.ApplyItemTypeDefaults();
+        StateHasChanged();
+    }
+
+    private string GetSkillName(int? skillDefinitionId)
+    {
+        if (skillDefinitionId is null)
+        {
+            return "—";
+        }
+
+        return skillLookup.TryGetValue(skillDefinitionId.Value, out var name)
+            ? name
+            : $"Skill #{skillDefinitionId.Value}";
+    }
+
+    private static string GetTypeBadgeClass(ItemType itemType) => itemType switch
+    {
+        ItemType.Weapon => "bg-primary",
+        ItemType.Armor => "bg-info",
+        _ => "bg-secondary"
+    };
+
+    private static string SummarizeWeapon(WeaponTemplateProperties weapon)
+    {
+        var parts = new List<string>
+        {
+            $"{weapon.DamageType} / CL {(int)weapon.DamageClass}"
+        };
+
+        if (weapon.BaseSuccessValueModifier != 0)
+        {
+            parts.Add($"SV {FormatSigned(weapon.BaseSuccessValueModifier)}");
+        }
+
+        if (weapon.AttackValueModifier != 0)
+        {
+            parts.Add($"AV {FormatSigned(weapon.AttackValueModifier)}");
+        }
+
+        if (weapon.DodgeModifier != 0)
+        {
+            parts.Add($"DEX {FormatSigned(weapon.DodgeModifier)}");
+        }
+
+        if (weapon.Range != WeaponRange.Melee)
+        {
+            parts.Add($"Range {weapon.Range}");
+        }
+
+        if (weapon.CanKnockback)
+        {
+            parts.Add("Knockback");
+        }
+
+        if (weapon.IsTwoHanded)
+        {
+            parts.Add("Two-Handed");
+        }
+
+        if (weapon.RequiresAmmunition)
+        {
+            parts.Add("Ammo");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string SummarizeArmor(ArmorTemplateProperties armor)
+    {
+        var parts = new List<string>
+        {
+            $"CL {(int)armor.DamageClass}"
+        };
+
+        var absorption = new List<string>();
+        if (armor.BashingAbsorption != 0) absorption.Add($"B {armor.BashingAbsorption}");
+        if (armor.CuttingAbsorption != 0) absorption.Add($"C {armor.CuttingAbsorption}");
+        if (armor.PiercingAbsorption != 0) absorption.Add($"P {armor.PiercingAbsorption}");
+        if (armor.ProjectileAbsorption != 0) absorption.Add($"Pr {armor.ProjectileAbsorption}");
+        if (armor.EnergyAbsorption != 0) absorption.Add($"E {armor.EnergyAbsorption}");
+        if (armor.HeatAbsorption != 0) absorption.Add($"H {armor.HeatAbsorption}");
+        if (armor.ColdAbsorption != 0) absorption.Add($"Co {armor.ColdAbsorption}");
+        if (armor.AcidAbsorption != 0) absorption.Add($"A {armor.AcidAbsorption}");
+
+        if (absorption.Count > 0)
+        {
+            parts.Add(string.Join(", ", absorption));
+        }
+
+        if (armor.DodgeModifier != 0)
+        {
+            parts.Add($"DEX {FormatSigned(armor.DodgeModifier)}");
+        }
+
+        if (armor.StrengthModifier != 0)
+        {
+            parts.Add($"STR {FormatSigned(armor.StrengthModifier)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(armor.HitLocationCoverage))
+        {
+            parts.Add(armor.HitLocationCoverage!);
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private async Task SaveItemTemplate()
+    {
+        if (editingItem is null)
+        {
+            return;
+        }
+
+        saving = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userName = authState.User?.Identity?.Name ?? "Admin";
+            var entity = BuildEntity(editingItem, userName);
+
+            if (entity.Id == 0)
+            {
+                await ItemTemplateService.CreateItemTemplateAsync(entity);
+            }
+            else
+            {
+                await ItemTemplateService.UpdateItemTemplateAsync(entity);
+            }
+
+            await LoadItemTemplates();
+            CloseModal();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to save item template: {ex.Message}";
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private static string FormatSigned(int value) => value >= 0 ? $"+{value}" : value.ToString();
+
+    private ItemTemplate BuildEntity(ItemTemplateEditorModel model, string createdBy)
+    {
+        var maxStack = model.IsStackable ? Math.Max(1, model.MaxStackSize) : 1;
+
+        var template = new ItemTemplate
+        {
+            Id = model.Id,
+            Name = model.Name.Trim(),
+            Description = model.Description.Trim(),
+            ShortDescription = string.IsNullOrWhiteSpace(model.ShortDescription) ? null : model.ShortDescription.Trim(),
+            ItemType = model.ItemType,
+            WeaponType = model.ItemType == ItemType.Weapon ? model.WeaponCategory : null,
+            ArmorSlot = model.ItemType is ItemType.Weapon or ItemType.Armor ? model.ArmorSlot : null,
+            Weight = model.Weight,
+            Volume = model.Volume,
+            Value = model.Value,
+            IsStackable = model.IsStackable,
+            MaxStackSize = maxStack,
+            IsDroppable = model.IsDroppable,
+            IsTradeable = model.IsTradeable,
+            BindOnPickup = model.BindOnPickup,
+            BindOnEquip = model.BindOnEquip,
+            IsContainer = false,
+            HasDurability = model.HasDurability,
+            MaxDurability = model.HasDurability ? model.MaxDurability : null,
+            ConsumableValue = null,
+            MagicLevel = null,
+            Rarity = model.Rarity,
+            DisplayOrder = model.DisplayOrder,
+            IsActive = model.IsActive,
+            CreatedAt = model.Id == 0 ? DateTimeOffset.UtcNow : model.CreatedAt ?? DateTimeOffset.UtcNow,
+            CreatedBy = model.Id == 0 ? createdBy : model.CreatedBy ?? createdBy,
+            CustomProperties = string.IsNullOrWhiteSpace(model.CustomProperties) ? null : model.CustomProperties.Trim()
+        };
+
+        if (model.ItemType == ItemType.Weapon)
+        {
+            int? skillDefinitionId = null;
+            if (model.Weapon.SkillDefinitionId is int skillId && skillId > 0)
+            {
+                if (weaponSkillOptions.Any(skill => skill.Id == skillId))
+                {
+                    skillDefinitionId = skillId;
+                }
+            }
+
+            template.WeaponType = model.WeaponCategory;
+
+            template.WeaponProperties = new WeaponTemplateProperties
+            {
+                ItemTemplateId = model.Id,
+                SkillDefinitionId = skillDefinitionId,
+                MinimumSkillLevel = model.Weapon.MinimumSkillLevel,
+                DamageType = model.Weapon.DamageType,
+                DamageClass = model.Weapon.DamageClass,
+                BaseSuccessValueModifier = model.Weapon.BaseSuccessValueModifier,
+                AttackValueModifier = model.Weapon.AttackValueModifier,
+                DodgeModifier = model.Weapon.DodgeModifier,
+                Range = model.Weapon.Range,
+                CanKnockback = model.Weapon.CanKnockback,
+                IsTwoHanded = model.Weapon.IsTwoHanded,
+                RequiresAmmunition = model.Weapon.RequiresAmmunition
+            };
+        }
+
+        if (model.ItemType == ItemType.Armor)
+        {
+            int? skillDefinitionId = null;
+            if (model.Armor.SkillDefinitionId is int skillId && skillId > 0)
+            {
+                if (armorSkillOptions.Any(skill => skill.Id == skillId))
+                {
+                    skillDefinitionId = skillId;
+                }
+            }
+
+            template.ArmorProperties = new ArmorTemplateProperties
+            {
+                ItemTemplateId = model.Id,
+                SkillDefinitionId = skillDefinitionId,
+                MinimumSkillLevel = model.Armor.MinimumSkillLevel,
+                DamageClass = model.Armor.DamageClass,
+                BashingAbsorption = model.Armor.BashingAbsorption,
+                CuttingAbsorption = model.Armor.CuttingAbsorption,
+                PiercingAbsorption = model.Armor.PiercingAbsorption,
+                ProjectileAbsorption = model.Armor.ProjectileAbsorption,
+                EnergyAbsorption = model.Armor.EnergyAbsorption,
+                HeatAbsorption = model.Armor.HeatAbsorption,
+                ColdAbsorption = model.Armor.ColdAbsorption,
+                AcidAbsorption = model.Armor.AcidAbsorption,
+                DodgeModifier = model.Armor.DodgeModifier,
+                StrengthModifier = model.Armor.StrengthModifier,
+                HitLocationCoverage = string.IsNullOrWhiteSpace(model.Armor.HitLocationCoverage) ? null : model.Armor.HitLocationCoverage,
+                LayerPriority = model.Armor.LayerPriority
+            };
+        }
+
+        return template;
+    }
+
+    private sealed class ItemTemplateEditorModel
+    {
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(100)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(2000)]
+        public string Description { get; set; } = string.Empty;
+
+        [StringLength(200)]
+        public string? ShortDescription { get; set; }
+
+        public ItemType ItemType { get; set; } = ItemType.Weapon;
+
+    public WeaponType? WeaponCategory { get; set; } = WeaponType.Sword;
+
+        public ArmorSlot ArmorSlot { get; set; } = ArmorSlot.MainHand;
+
+        [Range(0, double.MaxValue)]
+        public decimal Weight { get; set; } = 1m;
+
+        [Range(0, double.MaxValue)]
+        public decimal Volume { get; set; } = 0.25m;
+
+        [Range(0, int.MaxValue)]
+        public int Value { get; set; }
+
+        public bool IsStackable { get; set; }
+
+        [Range(1, int.MaxValue)]
+        public int MaxStackSize { get; set; } = 1;
+
+        public bool IsDroppable { get; set; } = true;
+        public bool IsTradeable { get; set; } = true;
+        public bool BindOnPickup { get; set; }
+        public bool BindOnEquip { get; set; }
+
+        public bool HasDurability { get; set; } = true;
+
+        [Range(1, int.MaxValue)]
+        public int? MaxDurability { get; set; } = 100;
+
+        [Required]
+        public string Rarity { get; set; } = "Common";
+
+        public int DisplayOrder { get; set; }
+        public bool IsActive { get; set; } = true;
+        public string? CustomProperties { get; set; }
+        public DateTimeOffset? CreatedAt { get; set; }
+        public string? CreatedBy { get; set; }
+
+        public WeaponEditorModel Weapon { get; set; } = WeaponEditorModel.Create();
+        public ArmorEditorModel Armor { get; set; } = ArmorEditorModel.Create();
+
+        public static ItemTemplateEditorModel Create(ItemType itemType)
+        {
+            var model = new ItemTemplateEditorModel
+            {
+                ItemType = itemType,
+                WeaponCategory = itemType == ItemType.Weapon ? WeaponType.Sword : null,
+                ArmorSlot = itemType == ItemType.Weapon ? ArmorSlot.MainHand : itemType == ItemType.Armor ? ArmorSlot.Chest : ArmorSlot.None,
+                HasDurability = itemType is ItemType.Weapon or ItemType.Armor,
+                MaxDurability = itemType is ItemType.Weapon or ItemType.Armor ? 100 : null,
+                Rarity = "Common",
+                IsDroppable = true,
+                IsTradeable = true
+            };
+
+            model.ApplyItemTypeDefaults();
+            return model;
+        }
+
+        public static ItemTemplateEditorModel FromEntity(ItemTemplate template)
+        {
+            var model = new ItemTemplateEditorModel
+            {
+                Id = template.Id,
+                Name = template.Name,
+                Description = template.Description,
+                ShortDescription = template.ShortDescription,
+                ItemType = template.ItemType,
+                WeaponCategory = template.WeaponType,
+                ArmorSlot = template.ArmorSlot ?? ArmorSlot.None,
+                Weight = template.Weight,
+                Volume = template.Volume,
+                Value = template.Value,
+                IsStackable = template.IsStackable,
+                MaxStackSize = template.MaxStackSize,
+                IsDroppable = template.IsDroppable,
+                IsTradeable = template.IsTradeable,
+                BindOnPickup = template.BindOnPickup,
+                BindOnEquip = template.BindOnEquip,
+                HasDurability = template.HasDurability,
+                MaxDurability = template.MaxDurability,
+                Rarity = template.Rarity,
+                DisplayOrder = template.DisplayOrder,
+                IsActive = template.IsActive,
+                CustomProperties = template.CustomProperties,
+                CreatedAt = template.CreatedAt,
+                CreatedBy = template.CreatedBy,
+                Weapon = template.WeaponProperties is not null
+                    ? WeaponEditorModel.FromEntity(template.WeaponProperties)
+                    : WeaponEditorModel.Create(),
+                Armor = template.ArmorProperties is not null
+                    ? ArmorEditorModel.FromEntity(template.ArmorProperties)
+                    : ArmorEditorModel.Create()
+            };
+
+            model.ApplyItemTypeDefaults();
+            return model;
+        }
+
+        public void ApplyItemTypeDefaults()
+        {
+            Weapon ??= WeaponEditorModel.Create();
+            Armor ??= ArmorEditorModel.Create();
+
+            if (ItemType == ItemType.Weapon)
+            {
+                WeaponCategory ??= WeaponType.Sword;
+                if (ArmorSlot is not ArmorSlot.MainHand and not ArmorSlot.OffHand and not ArmorSlot.TwoHand)
+                {
+                    ArmorSlot = ArmorSlot.MainHand;
+                }
+
+                if (HasDurability && MaxDurability is null)
+                {
+                    MaxDurability = 100;
+                }
+            }
+            else
+            {
+                WeaponCategory = null;
+            }
+
+            if (ItemType == ItemType.Armor)
+            {
+                if (ArmorSlot == ArmorSlot.None)
+                {
+                    ArmorSlot = ArmorSlot.Chest;
+                }
+            }
+            else if (ItemType != ItemType.Weapon)
+            {
+                ArmorSlot = ArmorSlot.None;
+            }
+
+            if (ItemType is not ItemType.Weapon and not ItemType.Armor)
+            {
+                HasDurability = false;
+            }
+
+            if (!HasDurability)
+            {
+                MaxDurability = null;
+            }
+
+        }
+    }
+
+    private sealed class WeaponEditorModel
+    {
+        public int? SkillDefinitionId { get; set; }
+        public int MinimumSkillLevel { get; set; }
+        public DamageType DamageType { get; set; } = DamageType.Cutting;
+        public DamageClass DamageClass { get; set; } = DamageClass.Class1;
+        public int BaseSuccessValueModifier { get; set; }
+        public int AttackValueModifier { get; set; }
+        public int DodgeModifier { get; set; }
+        public WeaponRange Range { get; set; } = WeaponRange.Melee;
+        public bool CanKnockback { get; set; }
+        public bool IsTwoHanded { get; set; }
+        public bool RequiresAmmunition { get; set; }
+
+        public static WeaponEditorModel Create() => new();
+
+        public static WeaponEditorModel FromEntity(WeaponTemplateProperties weapon) => new()
+        {
+            SkillDefinitionId = weapon.SkillDefinitionId,
+            MinimumSkillLevel = weapon.MinimumSkillLevel,
+            DamageType = weapon.DamageType,
+            DamageClass = weapon.DamageClass,
+            BaseSuccessValueModifier = weapon.BaseSuccessValueModifier,
+            AttackValueModifier = weapon.AttackValueModifier,
+            DodgeModifier = weapon.DodgeModifier,
+            Range = weapon.Range,
+            CanKnockback = weapon.CanKnockback,
+            IsTwoHanded = weapon.IsTwoHanded,
+            RequiresAmmunition = weapon.RequiresAmmunition
+        };
+    }
+
+    private sealed class ArmorEditorModel
+    {
+        public int? SkillDefinitionId { get; set; }
+        public int MinimumSkillLevel { get; set; }
+        public DamageClass DamageClass { get; set; } = DamageClass.Class1;
+        public int BashingAbsorption { get; set; }
+        public int CuttingAbsorption { get; set; }
+        public int PiercingAbsorption { get; set; }
+        public int ProjectileAbsorption { get; set; }
+        public int EnergyAbsorption { get; set; }
+        public int HeatAbsorption { get; set; }
+        public int ColdAbsorption { get; set; }
+        public int AcidAbsorption { get; set; }
+        public int DodgeModifier { get; set; }
+        public int StrengthModifier { get; set; }
+        public string? HitLocationCoverage { get; set; }
+        public int LayerPriority { get; set; }
+
+        public static ArmorEditorModel Create() => new();
+
+        public static ArmorEditorModel FromEntity(ArmorTemplateProperties armor) => new()
+        {
+            SkillDefinitionId = armor.SkillDefinitionId,
+            MinimumSkillLevel = armor.MinimumSkillLevel,
+            DamageClass = armor.DamageClass,
+            BashingAbsorption = armor.BashingAbsorption,
+            CuttingAbsorption = armor.CuttingAbsorption,
+            PiercingAbsorption = armor.PiercingAbsorption,
+            ProjectileAbsorption = armor.ProjectileAbsorption,
+            EnergyAbsorption = armor.EnergyAbsorption,
+            HeatAbsorption = armor.HeatAbsorption,
+            ColdAbsorption = armor.ColdAbsorption,
+            AcidAbsorption = armor.AcidAbsorption,
+            DodgeModifier = armor.DodgeModifier,
+            StrengthModifier = armor.StrengthModifier,
+            HitLocationCoverage = armor.HitLocationCoverage,
+            LayerPriority = armor.LayerPriority
+        };
+    }
+}

@@ -81,6 +81,42 @@ public enum ArmorSlot
 }
 
 /// <summary>
+/// Damage types supported by weapons, armor, and combat resolution
+/// </summary>
+public enum DamageType
+{
+    Bashing,
+    Cutting,
+    Piercing,
+    Projectile,
+    Energy,
+    Heat,
+    Cold,
+    Acid
+}
+
+/// <summary>
+/// Scaling tiers for damage and absorption interactions
+/// </summary>
+public enum DamageClass
+{
+    Class1 = 1,
+    Class2 = 2,
+    Class3 = 3,
+    Class4 = 4
+}
+
+/// <summary>
+/// Effective range bands for weapon templates
+/// </summary>
+public enum WeaponRange
+{
+    Melee = 0,
+    SameRoom = 1,
+    AdjacentRoom = 2
+}
+
+/// <summary>
 /// Template definitions for items - the "blueprint" for creating item instances
 /// </summary>
 public class ItemTemplate
@@ -242,6 +278,8 @@ public class ItemTemplate
     public string? CustomProperties { get; set; }
 
     // Navigation properties
+    public virtual WeaponTemplateProperties? WeaponProperties { get; set; }
+    public virtual ArmorTemplateProperties? ArmorProperties { get; set; }
     public virtual ICollection<Item> Items { get; set; } = new List<Item>();
     public virtual ICollection<ItemSkillBonus> SkillBonuses { get; set; } = new List<ItemSkillBonus>();
     public virtual ICollection<ItemAttributeModifier> AttributeModifiers { get; set; } = new List<ItemAttributeModifier>();
@@ -392,6 +430,108 @@ public class Item
     /// </summary>
     [NotMapped]
     public bool IsBroken => ItemTemplate.HasDurability && CurrentDurability.HasValue && CurrentDurability.Value <= 0;
+}
+
+/// <summary>
+/// Extended configuration for weapon item templates
+/// </summary>
+public class WeaponTemplateProperties
+{
+    [Key]
+    [ForeignKey(nameof(ItemTemplate))]
+    public int ItemTemplateId { get; set; }
+
+    public int? SkillDefinitionId { get; set; }
+
+    /// <summary>
+    /// Minimum effective skill level required to wield the weapon without penalties
+    /// </summary>
+    public int MinimumSkillLevel { get; set; } = 0;
+
+    public DamageType DamageType { get; set; } = DamageType.Cutting;
+
+    public DamageClass DamageClass { get; set; } = DamageClass.Class1;
+
+    /// <summary>
+    /// Flat modifier applied to the success value after a hit is confirmed
+    /// </summary>
+    public int BaseSuccessValueModifier { get; set; } = 0;
+
+    /// <summary>
+    /// Modifier applied directly to the attack value roll
+    /// </summary>
+    public int AttackValueModifier { get; set; } = 0;
+
+    /// <summary>
+    /// Modifier applied to the wielder's dodge ability while the weapon is equipped
+    /// </summary>
+    public int DodgeModifier { get; set; } = 0;
+
+    public WeaponRange Range { get; set; } = WeaponRange.Melee;
+
+    public bool CanKnockback { get; set; } = false;
+
+    public bool IsTwoHanded { get; set; } = false;
+
+    /// <summary>
+    /// Whether the weapon consumes ammunition on use
+    /// </summary>
+    public bool RequiresAmmunition { get; set; } = false;
+
+    // Navigation properties
+    public virtual ItemTemplate ItemTemplate { get; set; } = null!;
+}
+
+/// <summary>
+/// Extended configuration for armor item templates
+/// </summary>
+public class ArmorTemplateProperties
+{
+    [Key]
+    [ForeignKey(nameof(ItemTemplate))]
+    public int ItemTemplateId { get; set; }
+
+    public int? SkillDefinitionId { get; set; }
+
+    /// <summary>
+    /// Minimum effective skill level required to wear the armor without penalties
+    /// </summary>
+    public int MinimumSkillLevel { get; set; } = 0;
+
+    public DamageClass DamageClass { get; set; } = DamageClass.Class1;
+
+    public int BashingAbsorption { get; set; } = 0;
+    public int CuttingAbsorption { get; set; } = 0;
+    public int PiercingAbsorption { get; set; } = 0;
+    public int ProjectileAbsorption { get; set; } = 0;
+    public int EnergyAbsorption { get; set; } = 0;
+    public int HeatAbsorption { get; set; } = 0;
+    public int ColdAbsorption { get; set; } = 0;
+    public int AcidAbsorption { get; set; } = 0;
+
+    /// <summary>
+    /// Modifier applied to dodge while this armor is equipped (negative values apply penalties)
+    /// </summary>
+    public int DodgeModifier { get; set; } = 0;
+
+    /// <summary>
+    /// Modifier applied to physicality while this armor is equipped (negative values apply penalties)
+    /// </summary>
+    public int StrengthModifier { get; set; } = 0;
+
+    /// <summary>
+    /// Comma-separated list of armor slots covered for layered damage mitigation
+    /// </summary>
+    [StringLength(200)]
+    public string? HitLocationCoverage { get; set; }
+
+    /// <summary>
+    /// Determines processing order when multiple armor pieces overlap (higher values resolve later)
+    /// </summary>
+    public int LayerPriority { get; set; } = 0;
+
+    // Navigation properties
+    public virtual ItemTemplate ItemTemplate { get; set; } = null!;
 }
 
 /// <summary>

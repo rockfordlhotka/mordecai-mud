@@ -266,6 +266,10 @@ public class EquipmentService : IEquipmentService
 
             return await context.Items
                 .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.WeaponProperties)
+                .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.ArmorProperties)
+                .Include(i => i.ItemTemplate)
                     .ThenInclude(it => it.SkillBonuses)
                 .Include(i => i.ItemTemplate)
                     .ThenInclude(it => it.AttributeModifiers)
@@ -299,6 +303,9 @@ public class EquipmentService : IEquipmentService
             // Get all items owned by the character (not in a room, not in a container)
             return await context.Items
                 .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.WeaponProperties)
+                .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.ArmorProperties)
                 .Where(i => 
                     i.OwnerCharacterId == characterId && 
                     !i.CurrentRoomId.HasValue &&

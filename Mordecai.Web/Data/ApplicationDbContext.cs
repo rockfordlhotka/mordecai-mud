@@ -30,6 +30,8 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<GameEntities.Item> Items => Set<GameEntities.Item>();
     public DbSet<GameEntities.ItemSkillBonus> ItemSkillBonuses => Set<GameEntities.ItemSkillBonus>();
     public DbSet<GameEntities.ItemAttributeModifier> ItemAttributeModifiers => Set<GameEntities.ItemAttributeModifier>();
+    public DbSet<GameEntities.WeaponTemplateProperties> WeaponTemplateProperties => Set<GameEntities.WeaponTemplateProperties>();
+    public DbSet<GameEntities.ArmorTemplateProperties> ArmorTemplateProperties => Set<GameEntities.ArmorTemplateProperties>();
     public DbSet<GameEntities.CharacterInventory> CharacterInventories => Set<GameEntities.CharacterInventory>();
     
     // Use Web entities for skill system (these are the working ones for the UI)
@@ -348,6 +350,57 @@ public class ApplicationDbContext : IdentityDbContext
                 .WithMany(ci => ci.ContainedItems)
                 .HasForeignKey(i => i.ContainerItemId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Weapon template configuration
+        builder.Entity<GameEntities.WeaponTemplateProperties>(entity =>
+        {
+            entity.ToTable("WeaponTemplates");
+            entity.HasKey(w => w.ItemTemplateId);
+
+            entity.HasIndex(w => w.SkillDefinitionId);
+            entity.Property(w => w.DamageType)
+                .HasConversion<int>();
+            entity.Property(w => w.DamageClass)
+                .HasConversion<int>();
+            entity.Property(w => w.Range)
+                .HasConversion<int>();
+
+            entity.HasOne(w => w.ItemTemplate)
+                .WithOne(it => it.WeaponProperties)
+                .HasForeignKey<GameEntities.WeaponTemplateProperties>(w => w.ItemTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<WebEntities.SkillDefinition>()
+                .WithMany()
+                .HasForeignKey(w => w.SkillDefinitionId)
+                .HasConstraintName("FK_WeaponTemplates_SkillDefinitions_SkillDefinitionId")
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Armor template configuration
+        builder.Entity<GameEntities.ArmorTemplateProperties>(entity =>
+        {
+            entity.ToTable("ArmorTemplates");
+            entity.HasKey(a => a.ItemTemplateId);
+
+            entity.HasIndex(a => a.SkillDefinitionId);
+            entity.HasIndex(a => a.LayerPriority);
+            entity.Property(a => a.DamageClass)
+                .HasConversion<int>();
+            entity.Property(a => a.HitLocationCoverage)
+                .HasMaxLength(200);
+
+            entity.HasOne(a => a.ItemTemplate)
+                .WithOne(it => it.ArmorProperties)
+                .HasForeignKey<GameEntities.ArmorTemplateProperties>(a => a.ItemTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<WebEntities.SkillDefinition>()
+                .WithMany()
+                .HasForeignKey(a => a.SkillDefinitionId)
+                .HasConstraintName("FK_ArmorTemplates_SkillDefinitions_SkillDefinitionId")
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ItemSkillBonus configuration

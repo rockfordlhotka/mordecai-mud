@@ -78,6 +78,7 @@ builder.Services.AddScoped<IRoomAdjacencyService, RoomAdjacencyService>();
 builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
+builder.Services.AddScoped<IItemTemplateService, ItemTemplateService>();
 
 // Add room effects service
 builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();

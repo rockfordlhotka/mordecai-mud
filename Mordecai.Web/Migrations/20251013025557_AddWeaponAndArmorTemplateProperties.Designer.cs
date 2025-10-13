@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Mordecai.Web.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Mordecai.Web.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251013025557_AddWeaponAndArmorTemplateProperties")]
+    partial class AddWeaponAndArmorTemplateProperties
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1771,13 +1774,14 @@ namespace Mordecai.Web.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Mordecai.Web.Data.SkillDefinition", null)
+                    b.HasOne("Mordecai.Game.Entities.SkillDefinition", "SkillDefinition")
                         .WithMany()
                         .HasForeignKey("SkillDefinitionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_ArmorTemplates_SkillDefinitions_SkillDefinitionId");
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ItemTemplate");
+
+                    b.Navigation("SkillDefinition");
                 });
 
             modelBuilder.Entity("Mordecai.Game.Entities.Character", b =>
@@ -1980,13 +1984,14 @@ namespace Mordecai.Web.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Mordecai.Web.Data.SkillDefinition", null)
+                    b.HasOne("Mordecai.Game.Entities.SkillDefinition", "SkillDefinition")
                         .WithMany()
                         .HasForeignKey("SkillDefinitionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_WeaponTemplates_SkillDefinitions_SkillDefinitionId");
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ItemTemplate");
+
+                    b.Navigation("SkillDefinition");
                 });
 
             modelBuilder.Entity("Mordecai.Web.Data.CharacterSkill", b =>
