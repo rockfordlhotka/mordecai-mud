@@ -11,8 +11,10 @@ public interface IEquipmentService
     Task<UnequipResult> UnequipSlotAsync(Guid characterId, string userId, ArmorSlot slot);
     Task<ItemCreationResult> CreateItemForCharacterAsync(Guid characterId, string userId, int itemTemplateId);
     Task<ItemDropResult> DropItemAsync(Guid characterId, string userId, Guid itemId, int roomId);
+    Task<ItemPickupResult> PickUpItemAsync(Guid characterId, string userId, Guid itemId, int roomId);
     Task<IReadOnlyList<Item>> GetEquippedItemsAsync(Guid characterId, string userId);
     Task<IReadOnlyList<Item>> GetInventoryItemsAsync(Guid characterId, string userId);
+    Task<IReadOnlyList<Item>> GetRoomItemsAsync(int roomId);
     Task<Dictionary<int, int>> GetActiveSkillBonuses(Guid characterId, string userId);
     Task<Dictionary<string, int>> GetActiveAttributeModifiers(Guid characterId, string userId);
     Task<int> CalculateEffectiveAttributeValue(Guid characterId, string userId, string attributeName, int baseValue);
@@ -141,6 +143,77 @@ public class EquipmentService : IEquipmentService
         {
             _logger.LogError(ex, "Error dropping item {ItemId} for character {CharacterId}", itemId, characterId);
             return new ItemDropResult(false, "An error occurred while dropping the item.", null);
+        }
+    }
+
+    public async Task<ItemPickupResult> PickUpItemAsync(Guid characterId, string userId, Guid itemId, int roomId)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            var character = await context.Characters
+                .FirstOrDefaultAsync(c => c.Id == characterId && c.UserId == userId);
+
+            if (character == null)
+            {
+                return new ItemPickupResult(false, "Character not found.", null);
+            }
+
+            var item = await context.Items
+                .Include(i => i.ItemTemplate)
+                .FirstOrDefaultAsync(i => i.Id == itemId);
+
+            if (item == null)
+            {
+                return new ItemPickupResult(false, "Item not found.", null);
+            }
+
+            if (item.OwnerCharacterId.HasValue)
+            {
+                return new ItemPickupResult(false, "Someone already has that item.", item);
+            }
+
+            if (item.CurrentRoomId != roomId)
+            {
+                return new ItemPickupResult(false, "That item is not here.", item);
+            }
+
+            if (item.ContainerItemId.HasValue)
+            {
+                return new ItemPickupResult(false, "You need to remove it from its container first.", item);
+            }
+
+            item.OwnerCharacterId = characterId;
+            item.CurrentRoomId = null;
+            item.LastModifiedAt = DateTimeOffset.UtcNow;
+            item.PickedUpAt = DateTimeOffset.UtcNow;
+            item.IsEquipped = false;
+            item.EquippedSlot = null;
+
+            if (item.ItemTemplate?.BindOnPickup == true)
+            {
+                item.IsBound = true;
+            }
+
+            await context.SaveChangesAsync();
+
+            var baseName = item.ItemTemplate?.Name ?? "item";
+            var displayName = string.IsNullOrWhiteSpace(item.CustomName)
+                ? baseName
+                : $"{item.CustomName} ({baseName})";
+
+            if (item.StackSize > 1)
+            {
+                displayName = $"{displayName} x{item.StackSize}";
+            }
+
+            return new ItemPickupResult(true, $"You pick up {displayName}.", item);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error picking up item {ItemId} for character {CharacterId}", itemId, characterId);
+            return new ItemPickupResult(false, "An error occurred while picking up the item.", null);
         }
     }
 
@@ -437,6 +510,33 @@ public class EquipmentService : IEquipmentService
         }
     }
 
+    public async Task<IReadOnlyList<Item>> GetRoomItemsAsync(int roomId)
+    {
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.Items
+                .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.WeaponProperties)
+                .Include(i => i.ItemTemplate)
+                    .ThenInclude(it => it.ArmorProperties)
+                .Where(i =>
+                    i.CurrentRoomId == roomId &&
+                    !i.OwnerCharacterId.HasValue &&
+                    !i.ContainerItemId.HasValue)
+                .OrderByDescending(i => i.IsEquipped)
+                .ThenBy(i => i.ItemTemplate.Name)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting room items for room {RoomId}", roomId);
+            return Array.Empty<Item>();
+        }
+    }
+
     public async Task<Dictionary<int, int>> GetActiveSkillBonuses(Guid characterId, string userId)
     {
         try
@@ -562,3 +662,8 @@ public sealed record ItemCreationResult(bool Success, string Message, Item? Item
 /// Result of dropping an item into a room
 /// </summary>
 public sealed record ItemDropResult(bool Success, string Message, Item? Item);
+
+/// <summary>
+/// Result of picking up an item from a room
+/// </summary>
+public sealed record ItemPickupResult(bool Success, string Message, Item? Item);

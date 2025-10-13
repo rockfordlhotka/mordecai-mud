@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mordecai.Game.Entities;
@@ -151,6 +152,196 @@ public sealed class EquipmentServiceItemTests
         Assert.Equal(roomId, persisted.CurrentRoomId);
         Assert.False(persisted.IsEquipped);
         Assert.Null(persisted.EquippedSlot);
+    }
+
+    [Fact]
+    public async Task PickUpItemAsync_ShouldAssignOwnershipAndClearRoom()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase($"Equipment_Pick_{Guid.NewGuid()}")
+            .Options;
+        var factory = new TestDbContextFactory(options);
+        var characterId = Guid.NewGuid();
+        var userId = Guid.NewGuid().ToString();
+        var itemId = Guid.NewGuid();
+        const int roomId = 11;
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using (var context = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            context.Characters.Add(new Character
+            {
+                Id = characterId,
+                Name = "Picker",
+                UserId = userId,
+                CurrentFatigue = 5,
+                CurrentVitality = 5,
+                PendingFatigueDamage = 0,
+                PendingVitalityDamage = 0
+            });
+
+            var template = new ItemTemplate
+            {
+                Id = 5,
+                Name = "Ground Dagger",
+                Description = "A dagger ready to be claimed.",
+                ItemType = ItemType.Weapon,
+                ArmorSlot = ArmorSlot.MainHand,
+                Weight = 0.5m,
+                Volume = 0.25m,
+                Value = 15,
+                IsDroppable = true,
+                BindOnPickup = true,
+                CreatedBy = "tests",
+                WeaponType = WeaponType.Dagger,
+                WeaponProperties = new WeaponTemplateProperties
+                {
+                    ItemTemplateId = 5,
+                    DamageType = DamageType.Piercing,
+                    DamageClass = DamageClass.Class1
+                }
+            };
+
+            context.ItemTemplates.Add(template);
+
+            context.Items.Add(new Item
+            {
+                Id = itemId,
+                ItemTemplateId = template.Id,
+                ItemTemplate = template,
+                CurrentRoomId = roomId,
+                StackSize = 1,
+                IsBound = false,
+                PickedUpAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+            });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var service = new EquipmentService(factory, NullLogger<EquipmentService>.Instance);
+        var result = await service.PickUpItemAsync(characterId, userId, itemId, roomId);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Item);
+
+        await using var verificationContext = await factory.CreateDbContextAsync(cancellationToken);
+        var persisted = await verificationContext.Items.SingleAsync(i => i.Id == itemId, cancellationToken);
+        Assert.Equal(characterId, persisted.OwnerCharacterId);
+        Assert.Null(persisted.CurrentRoomId);
+        Assert.False(persisted.IsEquipped);
+        Assert.Null(persisted.EquippedSlot);
+        Assert.True(persisted.IsBound);
+        Assert.NotEqual(default, persisted.PickedUpAt);
+        Assert.True(persisted.PickedUpAt >= DateTimeOffset.UtcNow.AddMinutes(-1));
+    }
+
+    [Fact]
+    public async Task GetRoomItemsAsync_ShouldReturnOnlyFloorItems()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase($"Equipment_Room_{Guid.NewGuid()}")
+            .Options;
+        var factory = new TestDbContextFactory(options);
+        const int roomId = 7;
+        var otherRoomId = 99;
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using (var context = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            context.ItemTemplates.Add(new ItemTemplate
+            {
+                Id = 1,
+                Name = "Floor Coin",
+                Description = "A coin on the floor.",
+                ItemType = ItemType.Treasure,
+                Weight = 0.1m,
+                Volume = 0.1m,
+                Value = 1,
+                IsDroppable = true,
+                CreatedBy = "tests"
+            });
+
+            context.ItemTemplates.Add(new ItemTemplate
+            {
+                Id = 2,
+                Name = "Pocket Gem",
+                Description = "A gem in inventory.",
+                ItemType = ItemType.Treasure,
+                Weight = 0.1m,
+                Volume = 0.1m,
+                Value = 5,
+                IsDroppable = true,
+                CreatedBy = "tests"
+            });
+
+            context.ItemTemplates.Add(new ItemTemplate
+            {
+                Id = 3,
+                Name = "Wooden Crate",
+                Description = "A crate acting as a container.",
+                ItemType = ItemType.Container,
+                Weight = 5m,
+                Volume = 3m,
+                Value = 2,
+                IsDroppable = true,
+                CreatedBy = "tests"
+            });
+
+            var containerId = Guid.NewGuid();
+
+            context.Items.AddRange(
+                new Item
+                {
+                    Id = Guid.NewGuid(),
+                    ItemTemplateId = 1,
+                    CurrentRoomId = roomId,
+                    StackSize = 1
+                },
+                new Item
+                {
+                    Id = Guid.NewGuid(),
+                    ItemTemplateId = 2,
+                    OwnerCharacterId = Guid.NewGuid(),
+                    StackSize = 1
+                },
+                new Item
+                {
+                    Id = Guid.NewGuid(),
+                    ItemTemplateId = 1,
+                    CurrentRoomId = otherRoomId,
+                    StackSize = 1
+                },
+                new Item
+                {
+                    Id = containerId,
+                    ItemTemplateId = 3,
+                    CurrentRoomId = roomId,
+                    StackSize = 1
+                },
+                new Item
+                {
+                    Id = Guid.NewGuid(),
+                    ItemTemplateId = 1,
+                    ContainerItemId = containerId,
+                    StackSize = 1
+                });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var service = new EquipmentService(factory, NullLogger<EquipmentService>.Instance);
+        var roomItems = await service.GetRoomItemsAsync(roomId);
+
+        Assert.Equal(2, roomItems.Count);
+        Assert.Equal(1, roomItems.Count(item => item.ItemTemplateId == 1));
+        Assert.Contains(roomItems, item => item.ItemTemplateId == 3);
+        Assert.All(roomItems, item =>
+        {
+            Assert.Equal(roomId, item.CurrentRoomId);
+            Assert.False(item.OwnerCharacterId.HasValue);
+            Assert.False(item.ContainerItemId.HasValue);
+        });
+        Assert.DoesNotContain(roomItems, item => item.ItemTemplateId == 2);
     }
 
     private sealed class TestDbContextFactory : IDbContextFactory<ApplicationDbContext>

@@ -198,6 +198,8 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             SkillExperienceGained skillXp => $"You gain {skillXp.ExperienceGained} experience in {skillXp.SkillName}.",
             SkillUsed skillUsed => $"{skillUsed.CharacterName} uses {skillUsed.SkillName}.",
             SkillLearned skillLearned => $"You have learned the {skillLearned.SkillName} skill!",
+            ItemDropped itemDropped => FormatItemDroppedMessage(itemDropped),
+            ItemPickedUp itemPickedUp => FormatItemPickedUpMessage(itemPickedUp),
             
             SystemMessage system => $"[SYSTEM] {system.Message}",
             AdminAction admin => $"[ADMIN] {admin.AdminName}: {admin.Action}",
@@ -257,6 +259,34 @@ public sealed class CharacterMessageBroadcastService : IDisposable
         "down" => "above",
         _ => "somewhere"
     };
+
+    private static string FormatItemDroppedMessage(ItemDropped itemDropped)
+    {
+        var itemLabel = string.IsNullOrWhiteSpace(itemDropped.CustomName)
+            ? itemDropped.ItemName
+            : $"{itemDropped.CustomName} ({itemDropped.ItemName})";
+
+        if (itemDropped.StackSize > 1)
+        {
+            itemLabel = $"{itemDropped.StackSize}x {itemLabel}";
+        }
+
+        return $"{itemDropped.CharacterName} drops {itemLabel}.";
+    }
+
+    private static string FormatItemPickedUpMessage(ItemPickedUp itemPickedUp)
+    {
+        var itemLabel = string.IsNullOrWhiteSpace(itemPickedUp.CustomName)
+            ? itemPickedUp.ItemName
+            : $"{itemPickedUp.CustomName} ({itemPickedUp.ItemName})";
+
+        if (itemPickedUp.StackSize > 1)
+        {
+            itemLabel = $"{itemPickedUp.StackSize}x {itemLabel}";
+        }
+
+        return $"{itemPickedUp.CharacterName} picks up {itemLabel}.";
+    }
 
     public void Dispose()
     {

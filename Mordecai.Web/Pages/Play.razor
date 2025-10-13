@@ -2,6 +2,7 @@
 @page "/play"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using System
 @using System.Security.Claims
 @using Mordecai.Web.Services
 @using Mordecai.Messaging.Services
@@ -550,8 +551,25 @@
         await Task.Delay(100);
 
         var cmd = command.ToLower().Trim();
-        var parts = command.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var firstWord = parts.Length > 0 ? parts[0].ToLower() : "";
+        var partsList = command.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+        if (partsList.Count > 0 &&
+            (string.Equals(partsList[0], "pickup", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(partsList[0], "take", StringComparison.OrdinalIgnoreCase)))
+        {
+            partsList[0] = "get";
+        }
+
+        if (partsList.Count > 1 &&
+            string.Equals(partsList[0], "pick", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(partsList[1], "up", StringComparison.OrdinalIgnoreCase))
+        {
+            partsList.RemoveAt(1); // remove "up"
+            partsList[0] = "get";
+        }
+
+        var parts = partsList.ToArray();
+        var firstWord = parts.Length > 0 ? parts[0].ToLowerInvariant() : string.Empty;
         
         try
         {
@@ -572,6 +590,7 @@
                         // Look around the room
                         var roomDescription = await WorldService.GetRoomDescriptionAsync(currentRoom.Id);
                         AddMessage(roomDescription, "text-success");
+                        await ShowRoomItemsAsync(currentRoom.Id);
                     }
                     break;
 
@@ -613,6 +632,10 @@
                     await HandleDropCommand(parts);
                     break;
 
+                case "get":
+                    await HandleGetCommand(parts);
+                    break;
+
                 case "rezz":
                     await HandleRezzCommand(parts);
                     break;
@@ -638,6 +661,7 @@
                     AddMessage("equip/wear/wield [item] - Equip an item from your inventory");
                     AddMessage("unequip/remove [item] - Unequip an item");
                     AddMessage("drop [item] - Drop an item you are carrying into the room");
+                    AddMessage("get [item] - Pick up an item from the ground");
                     if (isCurrentUserAdmin)
                     {
                         AddMessage("rezz [item template id or name] - Admin: manifest an item in your primary hand");
@@ -938,12 +962,72 @@
 
             if (dropResult.Success)
             {
+                if (dropResult.Item != null && !IsCharacterHidden())
+                {
+                    await PublishItemDropMessageAsync(dropResult.Item);
+                }
+
                 await RefreshCurrentRoomAsync();
             }
         }
         catch (Exception ex)
         {
             AddMessage($"Error dropping item: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleGetCommand(string[] parts)
+    {
+        if (!characterId.HasValue)
+        {
+            AddMessage("Character not loaded.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("There's nothing here to take.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Get what? Usage: get [item name]", "text-warning");
+            return;
+        }
+
+        var itemName = string.Join(" ", parts.Skip(1));
+
+        try
+        {
+            var items = await EquipmentService.GetRoomItemsAsync(currentRoomId.Value);
+            var matchingItem = items.FirstOrDefault(i =>
+                i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(i.CustomName) && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+
+            if (matchingItem == null)
+            {
+                AddMessage($"You don't see '{itemName}' here.", "text-warning");
+                return;
+            }
+
+            var pickupResult = await EquipmentService.PickUpItemAsync(characterId.Value, currentUserId, matchingItem.Id, currentRoomId.Value);
+            var cssClass = pickupResult.Success ? "text-success" : "text-warning";
+            AddMessage(pickupResult.Message, cssClass);
+
+            if (pickupResult.Success)
+            {
+                if (pickupResult.Item != null && !IsCharacterHidden())
+                {
+                    await PublishItemPickupMessageAsync(pickupResult.Item);
+                }
+
+                await RefreshCurrentRoomAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error picking up item: {ex.Message}", "text-danger");
         }
     }
 
@@ -1915,6 +1999,87 @@
             StateHasChanged();
             await ScrollToBottom();
         });
+    }
+
+    private async Task ShowRoomItemsAsync(int roomId)
+    {
+        try
+        {
+            var items = await EquipmentService.GetRoomItemsAsync(roomId);
+
+            if (items.Count == 0)
+            {
+                AddMessage("Nothing catches your eye on the ground.", "text-muted");
+                return;
+            }
+
+            AddMessage("On the ground you see:", "text-info");
+
+            foreach (var item in items)
+            {
+                var displayName = string.IsNullOrWhiteSpace(item.CustomName)
+                    ? item.ItemTemplate.Name
+                    : $"{item.CustomName} ({item.ItemTemplate.Name})";
+
+                var stackInfo = item.StackSize > 1 ? $" x{item.StackSize}" : string.Empty;
+                var detail = FormatItemDetail(item);
+                AddMessage($"  {displayName}{stackInfo}{detail}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error listing room items: {ex.Message}", "text-danger");
+        }
+    }
+
+    private bool IsCharacterHidden()
+    {
+        return activeEffects.Any(effect =>
+            string.Equals(effect.EffectType, "Hidden", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(effect.EffectType, "Stealth", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(effect.Name, "Hidden", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task PublishItemDropMessageAsync(Item item)
+    {
+        if (!characterId.HasValue || !currentRoomId.HasValue)
+        {
+            return;
+        }
+
+        var itemName = item.ItemTemplate?.Name ?? "item";
+        var stackSize = Math.Max(1, item.StackSize);
+
+        var message = new ItemDropped(
+            characterId.Value,
+            characterName,
+            currentRoomId.Value,
+            itemName,
+            stackSize,
+            item.CustomName);
+
+        await MessagePublisher.PublishAsync(message);
+    }
+
+    private async Task PublishItemPickupMessageAsync(Item item)
+    {
+        if (!characterId.HasValue || !currentRoomId.HasValue)
+        {
+            return;
+        }
+
+        var itemName = item.ItemTemplate?.Name ?? "item";
+        var stackSize = Math.Max(1, item.StackSize);
+
+        var message = new ItemPickedUp(
+            characterId.Value,
+            characterName,
+            currentRoomId.Value,
+            itemName,
+            stackSize,
+            item.CustomName);
+
+        await MessagePublisher.PublishAsync(message);
     }
 
     private static string FormatItemDetail(Item item)
