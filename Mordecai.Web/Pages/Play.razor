@@ -44,9 +44,18 @@
             {
                 <span>@currentRoom.Zone.Name - @currentRoom.Name</span>
             }
+            else if (currentRoomId.HasValue)
+            {
+                <span>Room ID: @currentRoomId</span>
+            }
+
+            @if (isCurrentUserAdmin)
+            {
+                <span class="badge bg-warning text-dark ms-2">Admin</span>
+            }
         </div>
     </div>
-    
+
     <div class="play-page-content">
         <!-- Character Status Panel -->
         <div class="character-panel d-none d-md-block">
@@ -55,7 +64,7 @@
                     <h5 class="text-success mb-1">@characterName</h5>
                     <small class="text-muted">@currentUserName</small>
                 </div>
-                
+
                 <!-- Location Info -->
                 @if (currentRoom != null)
                 {
@@ -79,7 +88,7 @@
                 <!-- Character Stats -->
                 <div class="character-stats mb-3">
                     <h6 class="text-warning mb-2">Vitals</h6>
-                    
+
                     <!-- FAT (Fatigue) -->
                     <div class="vital-bar mb-2">
                         <div class="d-flex justify-content-between small mb-1">
@@ -87,7 +96,7 @@
                             <span>@currentFat / @maxFat</span>
                         </div>
                         <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-warning" 
+                            <div class="progress-bar bg-warning"
                                  style="width: @(maxFat > 0 ? (currentFat * 100.0 / maxFat) : 0)%"></div>
                         </div>
                         @if (pendingFat != 0)
@@ -103,7 +112,7 @@
                             <span>@currentVit / @maxVit</span>
                         </div>
                         <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-danger" 
+                            <div class="progress-bar bg-danger"
                                  style="width: @(maxVit > 0 ? (currentVit * 100.0 / maxVit) : 0)%"></div>
                         </div>
                         @if (pendingVit != 0)
@@ -229,6 +238,7 @@
     private Task? _healthRefreshTask;
     private CancellationTokenSource? _healthRefreshCts;
     private static readonly TimeSpan HealthRefreshInterval = TimeSpan.FromSeconds(3);
+    private PendingItemSelection? pendingSelection;
 
     // Character vital stats - now loads from actual character data
     private int currentFat = 0;
@@ -267,7 +277,7 @@
         var user = authState.User;
         currentUserName = user?.Identity?.Name ?? "Adventurer";
         currentUserId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
-    isCurrentUserAdmin = user?.IsInRole("Admin") ?? false;
+        isCurrentUserAdmin = user?.IsInRole("Admin") ?? false;
 
         if (characterId != Guid.Empty)
         {
@@ -946,14 +956,39 @@
         try
         {
             var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
-            var matchingItem = items.FirstOrDefault(i =>
-                i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(i.CustomName) && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+            Item? matchingItem;
 
-            if (matchingItem == null)
+            if (TryResolveSelection("drop", SelectionScope.Inventory, itemName, items, out var selectedItem, out var selectionError))
             {
-                AddMessage($"You aren't holding '{itemName}'.", "text-warning");
-                return;
+                if (selectedItem == null)
+                {
+                    AddMessage(selectionError ?? "Unable to use that selection.", "text-warning");
+                    return;
+                }
+
+                matchingItem = selectedItem;
+            }
+            else
+            {
+                var match = ResolveItemByName(items, itemName);
+
+                switch (match.Status)
+                {
+                    case ItemMatchStatus.NotFound:
+                        pendingSelection = null;
+                        AddMessage($"You aren't holding anything matching '{itemName}'.", "text-warning");
+                        return;
+                    case ItemMatchStatus.Ambiguous:
+                        PresentSelectionOptions("drop", SelectionScope.Inventory, match.Matches);
+                        return;
+                    case ItemMatchStatus.Success:
+                        pendingSelection = null;
+                        matchingItem = match.Item!;
+                        break;
+                    default:
+                        AddMessage("Unable to determine which item to drop.", "text-warning");
+                        return;
+                }
             }
 
             var dropResult = await EquipmentService.DropItemAsync(characterId.Value, currentUserId, matchingItem.Id, currentRoomId.Value);
@@ -1001,14 +1036,39 @@
         try
         {
             var items = await EquipmentService.GetRoomItemsAsync(currentRoomId.Value);
-            var matchingItem = items.FirstOrDefault(i =>
-                i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(i.CustomName) && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+            Item? matchingItem;
 
-            if (matchingItem == null)
+            if (TryResolveSelection("get", SelectionScope.Room, itemName, items, out var selectedItem, out var selectionError))
             {
-                AddMessage($"You don't see '{itemName}' here.", "text-warning");
-                return;
+                if (selectedItem == null)
+                {
+                    AddMessage(selectionError ?? "Unable to use that selection.", "text-warning");
+                    return;
+                }
+
+                matchingItem = selectedItem;
+            }
+            else
+            {
+                var match = ResolveItemByName(items, itemName);
+
+                switch (match.Status)
+                {
+                    case ItemMatchStatus.NotFound:
+                        pendingSelection = null;
+                        AddMessage($"You don't see anything matching '{itemName}' here.", "text-warning");
+                        return;
+                    case ItemMatchStatus.Ambiguous:
+                        PresentSelectionOptions("get", SelectionScope.Room, match.Matches);
+                        return;
+                    case ItemMatchStatus.Success:
+                        pendingSelection = null;
+                        matchingItem = match.Item!;
+                        break;
+                    default:
+                        AddMessage("Unable to determine which item to pick up.", "text-warning");
+                        return;
+                }
             }
 
             var pickupResult = await EquipmentService.PickUpItemAsync(characterId.Value, currentUserId, matchingItem.Id, currentRoomId.Value);
@@ -1889,14 +1949,39 @@
         {
             // Find the item in the character's inventory by name
             var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
-            var matchingItem = items.FirstOrDefault(i =>
-                (i.ItemTemplate.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase)) ||
-                (i.CustomName != null && i.CustomName.Equals(itemName, StringComparison.OrdinalIgnoreCase)));
+            Item? matchingItem;
 
-            if (matchingItem == null)
+            if (TryResolveSelection("equip", SelectionScope.Inventory, itemName, items, out var selectedItem, out var selectionError))
             {
-                AddMessage($"You don't have '{itemName}' in your inventory.", "text-warning");
-                return;
+                if (selectedItem == null)
+                {
+                    AddMessage(selectionError ?? "Unable to use that selection.", "text-warning");
+                    return;
+                }
+
+                matchingItem = selectedItem;
+            }
+            else
+            {
+                var match = ResolveItemByName(items, itemName);
+
+                switch (match.Status)
+                {
+                    case ItemMatchStatus.NotFound:
+                        pendingSelection = null;
+                        AddMessage($"You don't have anything matching '{itemName}' in your inventory.", "text-warning");
+                        return;
+                    case ItemMatchStatus.Ambiguous:
+                        PresentSelectionOptions("equip", SelectionScope.Inventory, match.Matches);
+                        return;
+                    case ItemMatchStatus.Success:
+                        pendingSelection = null;
+                        matchingItem = match.Item!;
+                        break;
+                    default:
+                        AddMessage("Unable to determine which item to equip.", "text-warning");
+                        return;
+                }
             }
 
             var result = await EquipmentService.EquipAsync(characterId.Value, currentUserId, matchingItem.Id);
@@ -1950,16 +2035,41 @@
                 return;
             }
 
-            // Otherwise, find the item by name
+            // Otherwise, find the item by name or selection
             var equippedItems = await EquipmentService.GetEquippedItemsAsync(characterId.Value, currentUserId);
-            var matchingItem = equippedItems.FirstOrDefault(i =>
-                (i.ItemTemplate.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase)) ||
-                (i.CustomName != null && i.CustomName.Equals(targetName, StringComparison.OrdinalIgnoreCase)));
+            Item? matchingItem;
 
-            if (matchingItem == null)
+            if (TryResolveSelection("unequip", SelectionScope.Equipped, targetName, equippedItems, out var selectedItem, out var selectionError))
             {
-                AddMessage($"You don't have '{targetName}' equipped.", "text-warning");
-                return;
+                if (selectedItem == null)
+                {
+                    AddMessage(selectionError ?? "Unable to use that selection.", "text-warning");
+                    return;
+                }
+
+                matchingItem = selectedItem;
+            }
+            else
+            {
+                var match = ResolveItemByName(equippedItems, targetName);
+
+                switch (match.Status)
+                {
+                    case ItemMatchStatus.NotFound:
+                        pendingSelection = null;
+                        AddMessage($"You don't have anything matching '{targetName}' equipped.", "text-warning");
+                        return;
+                    case ItemMatchStatus.Ambiguous:
+                        PresentSelectionOptions("unequip", SelectionScope.Equipped, match.Matches);
+                        return;
+                    case ItemMatchStatus.Success:
+                        pendingSelection = null;
+                        matchingItem = match.Item!;
+                        break;
+                    default:
+                        AddMessage("Unable to determine which item to unequip.", "text-warning");
+                        return;
+                }
             }
 
             var unequipResult = await EquipmentService.UnequipAsync(characterId.Value, currentUserId, matchingItem.Id);
@@ -2038,6 +2148,259 @@
             string.Equals(effect.EffectType, "Hidden", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(effect.EffectType, "Stealth", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(effect.Name, "Hidden", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private enum ItemMatchStatus
+    {
+        NotFound,
+        Ambiguous,
+        Success
+    }
+
+    private sealed record ItemMatchResult(ItemMatchStatus Status, Item? Item, IReadOnlyList<string> Candidates, IReadOnlyList<Item> Matches);
+
+    private enum SelectionScope
+    {
+        Inventory,
+        Equipped,
+        Room
+    }
+
+    private sealed record SelectionOption(Guid ItemId, string Label);
+
+    private sealed record PendingItemSelection(string CommandKey, SelectionScope Scope, IReadOnlyList<SelectionOption> Options, DateTimeOffset CreatedAt);
+
+    private ItemMatchResult ResolveItemByName(IEnumerable<Item> items, string searchTerm)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            return new ItemMatchResult(ItemMatchStatus.NotFound, null, Array.Empty<string>(), Array.Empty<Item>());
+        }
+
+        var normalizedTerm = searchTerm.Trim();
+        var lowerTerm = normalizedTerm.ToLowerInvariant();
+        var matches = new List<(Item Item, int Weight)>();
+
+        foreach (var item in items)
+        {
+            if (item.ItemTemplate == null)
+            {
+                continue;
+            }
+
+            var searchNames = GetItemSearchNames(item);
+
+            if (searchNames.Any(name => string.Equals(name, normalizedTerm, StringComparison.OrdinalIgnoreCase)))
+            {
+                matches.Add((item, 0));
+                continue;
+            }
+
+            var tokenSet = searchNames
+                .SelectMany(ExtractSearchTokens)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (tokenSet.Contains(lowerTerm))
+            {
+                matches.Add((item, 1));
+                continue;
+            }
+
+            if (searchNames.Any(name => name.Contains(normalizedTerm, StringComparison.OrdinalIgnoreCase)))
+            {
+                matches.Add((item, 2));
+            }
+        }
+
+        if (matches.Count == 0)
+        {
+            return new ItemMatchResult(ItemMatchStatus.NotFound, null, Array.Empty<string>(), Array.Empty<Item>());
+        }
+
+        var bestWeight = matches.Min(match => match.Weight);
+        var bestMatches = matches
+            .Where(match => match.Weight == bestWeight)
+            .Select(match => match.Item)
+            .Distinct()
+            .ToList();
+
+        if (bestMatches.Count == 1)
+        {
+            var item = bestMatches[0];
+            return new ItemMatchResult(ItemMatchStatus.Success, item, new[] { GetItemLabel(item) }, bestMatches);
+        }
+
+        var candidateNames = bestMatches
+            .Select(GetItemLabel)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new ItemMatchResult(ItemMatchStatus.Ambiguous, null, candidateNames, bestMatches);
+    }
+
+    private static IEnumerable<string> GetItemSearchNames(Item item)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(item.CustomName))
+        {
+            names.Add(item.CustomName.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.ItemTemplate?.Name))
+        {
+            names.Add(item.ItemTemplate!.Name.Trim());
+        }
+
+        var label = GetItemLabel(item);
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            names.Add(label.Trim());
+        }
+
+        return names;
+    }
+
+    private static IEnumerable<string> ExtractSearchTokens(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Array.Empty<string>();
+        }
+
+    char[] separators = { ' ', '-', '_', '\'', '"', ',', '.', ';', ':', '(', ')', '[', ']', '{', '}', '/', '\\', '|' };
+        return value
+            .Split(separators, StringSplitOptions.RemoveEmptyEntries)
+            .Select(token => token.ToLowerInvariant());
+    }
+
+    private static string GetItemLabel(Item item)
+    {
+        var templateName = item.ItemTemplate?.Name;
+        var customName = item.CustomName;
+
+        string label;
+
+        if (!string.IsNullOrWhiteSpace(customName) && !string.IsNullOrWhiteSpace(templateName))
+        {
+            label = $"{customName} ({templateName})";
+        }
+        else if (!string.IsNullOrWhiteSpace(customName))
+        {
+            label = customName;
+        }
+        else if (!string.IsNullOrWhiteSpace(templateName))
+        {
+            label = templateName;
+        }
+        else
+        {
+            label = "item";
+        }
+
+        if (item.StackSize > 1)
+        {
+            label = $"{label} x{item.StackSize}";
+        }
+
+        return label;
+    }
+
+    private bool TryResolveSelection(string commandKey, SelectionScope scope, string searchTerm, IReadOnlyList<Item> items, out Item? selectedItem, out string? failureMessage)
+    {
+        selectedItem = null;
+        failureMessage = null;
+
+        if (!IsSelectionSpecifier(searchTerm, out var index))
+        {
+            return false;
+        }
+
+        if (pendingSelection is not { } selection ||
+            !string.Equals(selection.CommandKey, commandKey, StringComparison.OrdinalIgnoreCase) ||
+            selection.Scope != scope)
+        {
+            failureMessage = "No pending selection matches that number. Describe the item again to see options.";
+            return true;
+        }
+
+        if (index < 1 || index > selection.Options.Count)
+        {
+            failureMessage = $"Select a number between 1 and {selection.Options.Count}.";
+            return true;
+        }
+
+        var option = selection.Options[index - 1];
+        var item = items.FirstOrDefault(i => i.Id == option.ItemId);
+
+        if (item == null)
+        {
+            failureMessage = "That item is no longer available. Try again.";
+            pendingSelection = null;
+            return true;
+        }
+
+        selectedItem = item;
+        pendingSelection = null;
+        return true;
+    }
+
+    private static bool IsSelectionSpecifier(string value, out int index)
+    {
+        index = 0;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var trimmed = value.Trim();
+
+        if (trimmed.StartsWith('#'))
+        {
+            trimmed = trimmed[1..];
+        }
+
+        return int.TryParse(trimmed, out index) && index > 0;
+    }
+
+    private void PresentSelectionOptions(string commandKey, SelectionScope scope, IReadOnlyList<Item> ambiguousItems)
+    {
+        var options = ambiguousItems
+            .Select(item => new SelectionOption(item.Id, GetItemLabelWithContext(item, scope)))
+            .ToList();
+
+        if (options.Count == 0)
+        {
+            return;
+        }
+
+        pendingSelection = new PendingItemSelection(commandKey.ToLowerInvariant(), scope, options, DateTimeOffset.UtcNow);
+
+        AddMessage("Multiple items match that description:", "text-warning");
+
+        for (var i = 0; i < options.Count; i++)
+        {
+            AddMessage($"  {i + 1}. {options[i].Label}", "text-info");
+        }
+
+        AddMessage($"Type '{commandKey} 1' to choose the first item, '{commandKey} 2' for the second, and so on.", "text-muted");
+    }
+
+    private static string GetItemLabelWithContext(Item item, SelectionScope scope)
+    {
+        var label = GetItemLabel(item);
+
+        return scope switch
+        {
+            SelectionScope.Inventory when item.IsEquipped && item.EquippedSlot.HasValue => $"{label} [equipped: {item.EquippedSlot.Value}]",
+            SelectionScope.Inventory when item.IsEquipped => $"{label} [equipped]",
+            SelectionScope.Inventory => $"{label} [inventory]",
+            SelectionScope.Equipped when item.EquippedSlot.HasValue => $"{label} [slot: {item.EquippedSlot.Value}]",
+            SelectionScope.Equipped => $"{label} [equipped]",
+            SelectionScope.Room => $"{label} [ground]",
+            _ => label
+        };
     }
 
     private async Task PublishItemDropMessageAsync(Item item)

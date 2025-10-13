@@ -25,6 +25,68 @@ public class EquipmentService : IEquipmentService
     private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
     private readonly ILogger<EquipmentService> _logger;
 
+    private static readonly Dictionary<string, ArmorSlot> CoverageSlotLookup = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["head"] = ArmorSlot.Head,
+        ["skull"] = ArmorSlot.Head,
+        ["face"] = ArmorSlot.Face,
+        ["eyes"] = ArmorSlot.Face,
+        ["ears"] = ArmorSlot.Ears,
+        ["neck"] = ArmorSlot.Neck,
+        ["shoulders"] = ArmorSlot.Shoulders,
+        ["back"] = ArmorSlot.Back,
+        ["torso"] = ArmorSlot.Chest,
+        ["chest"] = ArmorSlot.Chest,
+        ["upper body"] = ArmorSlot.Chest,
+        ["abdomen"] = ArmorSlot.Chest,
+        ["waist"] = ArmorSlot.Waist,
+        ["belt"] = ArmorSlot.Waist,
+        ["arms"] = ArmorSlot.ArmLeft,
+        ["left arm"] = ArmorSlot.ArmLeft,
+        ["right arm"] = ArmorSlot.ArmRight,
+        ["wrists"] = ArmorSlot.WristLeft,
+        ["hands"] = ArmorSlot.HandLeft,
+        ["gloves"] = ArmorSlot.HandLeft,
+        ["legs"] = ArmorSlot.Legs,
+        ["thighs"] = ArmorSlot.Legs,
+        ["shins"] = ArmorSlot.Legs,
+        ["feet"] = ArmorSlot.FootLeft,
+        ["boots"] = ArmorSlot.FootLeft,
+        ["ankles"] = ArmorSlot.AnkleLeft
+    };
+
+    private static readonly (string Keyword, ArmorSlot Slot)[] NameSlotHints =
+    {
+        ("helmet", ArmorSlot.Head),
+        ("helm", ArmorSlot.Head),
+        ("mask", ArmorSlot.Face),
+        ("hood", ArmorSlot.Head),
+        ("circlet", ArmorSlot.Head),
+        ("earring", ArmorSlot.Ears),
+        ("amulet", ArmorSlot.Neck),
+        ("cloak", ArmorSlot.Back),
+        ("cape", ArmorSlot.Back),
+        ("robe", ArmorSlot.Chest),
+        ("shirt", ArmorSlot.Chest),
+        ("tunic", ArmorSlot.Chest),
+        ("vest", ArmorSlot.Chest),
+        ("armor", ArmorSlot.Chest),
+        ("breastplate", ArmorSlot.Chest),
+        ("tabard", ArmorSlot.Chest),
+        ("sash", ArmorSlot.Waist),
+        ("belt", ArmorSlot.Waist),
+        ("glove", ArmorSlot.HandLeft),
+        ("gauntlet", ArmorSlot.HandLeft),
+        ("bracer", ArmorSlot.WristLeft),
+        ("grip", ArmorSlot.HandLeft),
+        ("greaves", ArmorSlot.Legs),
+        ("pants", ArmorSlot.Legs),
+        ("leggings", ArmorSlot.Legs),
+        ("boots", ArmorSlot.FootLeft),
+        ("shoe", ArmorSlot.FootLeft),
+        ("ring", ArmorSlot.FingerLeft1)
+    };
+
     public EquipmentService(
         IDbContextFactory<ApplicationDbContext> contextFactory,
         ILogger<EquipmentService> logger)
@@ -262,6 +324,22 @@ public class EquipmentService : IEquipmentService
 
             // Determine which slot to equip to
             var targetSlot = item.ItemTemplate.ArmorSlot ?? ArmorSlot.None;
+
+            if (targetSlot == ArmorSlot.None && item.ItemTemplate.ItemType == ItemType.Armor)
+            {
+                targetSlot = InferArmorSlotFromTemplate(item.ItemTemplate);
+
+                if (targetSlot != ArmorSlot.None)
+                {
+                    item.ItemTemplate.ArmorSlot = targetSlot;
+                    _logger.LogWarning(
+                        "Item template {TemplateId} ({TemplateName}) lacked an armor slot. Inferred {ArmorSlot} from metadata.",
+                        item.ItemTemplate.Id,
+                        item.ItemTemplate.Name,
+                        targetSlot);
+                }
+            }
+
             if (targetSlot == ArmorSlot.None)
             {
                 return new EquipResult(false, $"{item.ItemTemplate.Name} cannot be equipped.", item);
@@ -640,6 +718,84 @@ public class EquipmentService : IEquipmentService
         }
 
         return baseValue;
+    }
+
+    private static ArmorSlot InferArmorSlotFromTemplate(ItemTemplate template)
+    {
+        if (template.ArmorProperties?.HitLocationCoverage is { } coverage && !string.IsNullOrWhiteSpace(coverage))
+        {
+            var candidates = coverage.Split(new[] { ',', ';', '/', '\\', '|' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var rawCandidate in candidates)
+            {
+                var candidate = rawCandidate.Trim();
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (CoverageSlotLookup.TryGetValue(candidate, out var mappedSlot))
+                {
+                    return mappedSlot;
+                }
+
+                var lowered = candidate.ToLowerInvariant();
+
+                if (lowered.Contains("chest") || lowered.Contains("torso") || lowered.Contains("body"))
+                {
+                    return ArmorSlot.Chest;
+                }
+
+                if (lowered.Contains("leg"))
+                {
+                    return ArmorSlot.Legs;
+                }
+
+                if (lowered.Contains("arm"))
+                {
+                    return ArmorSlot.ArmLeft;
+                }
+
+                if (lowered.Contains("hand") || lowered.Contains("glove"))
+                {
+                    return ArmorSlot.HandLeft;
+                }
+
+                if (lowered.Contains("foot") || lowered.Contains("boot"))
+                {
+                    return ArmorSlot.FootLeft;
+                }
+
+                if (lowered.Contains("waist") || lowered.Contains("belt"))
+                {
+                    return ArmorSlot.Waist;
+                }
+
+                if (lowered.Contains("neck"))
+                {
+                    return ArmorSlot.Neck;
+                }
+
+                if (lowered.Contains("head") || lowered.Contains("helm") || lowered.Contains("hood"))
+                {
+                    return ArmorSlot.Head;
+                }
+            }
+        }
+
+        var nameSource = template.ShortDescription ?? template.Name;
+        if (!string.IsNullOrWhiteSpace(nameSource))
+        {
+            var loweredName = nameSource.ToLowerInvariant();
+            foreach (var (keyword, slot) in NameSlotHints)
+            {
+                if (loweredName.Contains(keyword))
+                {
+                    return slot;
+                }
+            }
+        }
+
+        return ArmorSlot.None;
     }
 }
 

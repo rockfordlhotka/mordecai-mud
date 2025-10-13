@@ -236,6 +236,155 @@ public sealed class EquipmentServiceItemTests
     }
 
     [Fact]
+    public async Task EquipAsync_ShouldAllowArmorWithChestSlot()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase($"Equipment_EquipArmor_{Guid.NewGuid()}")
+            .Options;
+        var factory = new TestDbContextFactory(options);
+        var characterId = Guid.NewGuid();
+        var userId = Guid.NewGuid().ToString();
+        var itemId = Guid.NewGuid();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using (var context = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            context.Characters.Add(new Character
+            {
+                Id = characterId,
+                Name = "Armorer",
+                UserId = userId,
+                CurrentFatigue = 5,
+                CurrentVitality = 5,
+                PendingFatigueDamage = 0,
+                PendingVitalityDamage = 0
+            });
+
+            var template = new ItemTemplate
+            {
+                Id = 9,
+                Name = "Padded Vest",
+                Description = "Simple padded armor for the torso.",
+                ItemType = ItemType.Armor,
+                ArmorSlot = ArmorSlot.Chest,
+                Weight = 3m,
+                Volume = 1.2m,
+                Value = 12,
+                IsDroppable = true,
+                CreatedBy = "tests",
+                ArmorProperties = new ArmorTemplateProperties
+                {
+                    ItemTemplateId = 9,
+                    DamageClass = DamageClass.Class1,
+                    BashingAbsorption = 1,
+                    CuttingAbsorption = 1,
+                    PiercingAbsorption = 1
+                }
+            };
+
+            context.ItemTemplates.Add(template);
+
+            context.Items.Add(new Item
+            {
+                Id = itemId,
+                ItemTemplateId = template.Id,
+                ItemTemplate = template,
+                OwnerCharacterId = characterId,
+                StackSize = 1
+            });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var service = new EquipmentService(factory, NullLogger<EquipmentService>.Instance);
+        var result = await service.EquipAsync(characterId, userId, itemId);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Item);
+
+        await using var verificationContext = await factory.CreateDbContextAsync(cancellationToken);
+        var persisted = await verificationContext.Items.SingleAsync(i => i.Id == itemId, cancellationToken);
+        Assert.True(persisted.IsEquipped);
+        Assert.Equal(ArmorSlot.Chest, persisted.EquippedSlot);
+    }
+
+    [Fact]
+    public async Task EquipAsync_ShouldInferArmorSlotWhenMissing()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase($"Equipment_InferSlot_{Guid.NewGuid()}")
+            .Options;
+        var factory = new TestDbContextFactory(options);
+        var characterId = Guid.NewGuid();
+        var userId = Guid.NewGuid().ToString();
+        var itemId = Guid.NewGuid();
+        const int templateId = 10;
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using (var context = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            context.Characters.Add(new Character
+            {
+                Id = characterId,
+                Name = "Infernal",
+                UserId = userId,
+                CurrentFatigue = 5,
+                CurrentVitality = 5,
+                PendingFatigueDamage = 0,
+                PendingVitalityDamage = 0
+            });
+
+            var template = new ItemTemplate
+            {
+                Id = templateId,
+                Name = "Linen Shirt",
+                Description = "A simple linen shirt covering the chest.",
+                ItemType = ItemType.Armor,
+                ArmorSlot = null,
+                Weight = 1.5m,
+                Volume = 0.8m,
+                IsDroppable = true,
+                CreatedBy = "tests",
+                ArmorProperties = new ArmorTemplateProperties
+                {
+                    ItemTemplateId = templateId,
+                    DamageClass = DamageClass.Class1,
+                    HitLocationCoverage = "Chest, Torso"
+                }
+            };
+
+            context.ItemTemplates.Add(template);
+
+            context.Items.Add(new Item
+            {
+                Id = itemId,
+                ItemTemplateId = template.Id,
+                ItemTemplate = template,
+                OwnerCharacterId = characterId,
+                StackSize = 1
+            });
+
+            await context.SaveChangesAsync(cancellationToken);
+        }
+
+        var service = new EquipmentService(factory, NullLogger<EquipmentService>.Instance);
+        var result = await service.EquipAsync(characterId, userId, itemId);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Item);
+
+        await using (var verificationContext = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            var persistedItem = await verificationContext.Items.SingleAsync(i => i.Id == itemId, cancellationToken);
+            Assert.True(persistedItem.IsEquipped);
+            Assert.Equal(ArmorSlot.Chest, persistedItem.EquippedSlot);
+
+            var template = await verificationContext.ItemTemplates.SingleAsync(t => t.Id == templateId, cancellationToken);
+            Assert.Equal(ArmorSlot.Chest, template.ArmorSlot);
+        }
+    }
+
+    [Fact]
     public async Task GetRoomItemsAsync_ShouldReturnOnlyFloorItems()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
