@@ -984,7 +984,6 @@ Shields follow the same property structure as armor with these distinctions:
   - Item Instances: Actual items in the game world with current state (durability, location, ownership)
   - Allows for procedural item generation and customization
 
-
 ### 5. Magic and Spells
 
 - **Individual Spell Skills System**
@@ -1200,10 +1199,10 @@ Closed doors consume one propagation step when sound crosses the barrier. If a s
   - Trading between players with currency exchange
   - Auction house system (future) with listing fees in copper/silver
 
-````````
+```markdown
 
 # Response
-````````markdown
+
 # Mordecai MUD - Game Design Specification
 
 ## Project Overview
