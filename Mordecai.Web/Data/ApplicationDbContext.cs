@@ -58,6 +58,12 @@ public class ApplicationDbContext : IdentityDbContext
                 .WithMany()
                 .HasForeignKey(c => c.CurrentRoomId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // Configure currency properties with default values
+            entity.Property(c => c.CopperCoins).HasDefaultValue(0);
+            entity.Property(c => c.SilverCoins).HasDefaultValue(0);
+            entity.Property(c => c.GoldCoins).HasDefaultValue(0);
+            entity.Property(c => c.PlatinumCoins).HasDefaultValue(0);
         });
 
         // Zone configuration

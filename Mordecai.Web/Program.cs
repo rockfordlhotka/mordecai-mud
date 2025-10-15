@@ -79,6 +79,7 @@ builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IItemTemplateService, ItemTemplateService>();
+builder.Services.AddScoped<ICurrencyService, CurrencyService>();
 
 // Add room effects service
 builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();

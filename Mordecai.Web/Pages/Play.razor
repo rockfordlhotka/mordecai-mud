@@ -25,6 +25,7 @@
 @inject IItemTemplateService ItemTemplateService
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
+@inject ICurrencyService CurrencyService
 @implements IDisposable
 
 <PageTitle>Play Mordecai MUD</PageTitle>
@@ -1838,15 +1839,40 @@
 
         try
         {
+            // Get the character to access currency
+            var character = await CharacterService.GetCharacterByIdAsync(characterId.Value, currentUserId);
+            if (character == null)
+            {
+                AddMessage("Unable to load character data.", "text-danger");
+                return;
+            }
+
+            // Display currency first
+            AddMessage("Currency:", "text-info");
+            var currencyDisplay = CurrencyService.FormatCoins(
+                character.CopperCoins,
+                character.SilverCoins,
+                character.GoldCoins,
+                character.PlatinumCoins);
+            AddMessage($"  {currencyDisplay}", "text-warning");
+
+            // Calculate coin weight
+            var coinWeight = character.CoinWeight;
+            if (coinWeight > 0)
+            {
+                AddMessage($"  (Coin weight: {coinWeight:F2} lbs)", "text-muted");
+            }
+
+            // Get items
             var items = await EquipmentService.GetInventoryItemsAsync(characterId.Value, currentUserId);
             
             if (items.Count == 0)
             {
-                AddMessage("Your inventory is empty.", "text-muted");
+                AddMessage("\nYour inventory is empty.", "text-muted");
                 return;
             }
 
-            AddMessage("Inventory:", "text-info");
+            AddMessage("\nInventory:", "text-info");
             foreach (var item in items)
             {
                 var displayName = string.IsNullOrWhiteSpace(item.CustomName) 

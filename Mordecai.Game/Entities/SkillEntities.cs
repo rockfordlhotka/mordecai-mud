@@ -52,6 +52,13 @@ public class Character
     public int PendingFatigueDamage { get; set; } = 0;
     public int PendingVitalityDamage { get; set; } = 0;
 
+    // Currency (stored as individual coin counts)
+    // Total value in copper = Copper + (Silver * 20) + (Gold * 400) + (Platinum * 8000)
+    public int CopperCoins { get; set; } = 0;
+    public int SilverCoins { get; set; } = 0;
+    public int GoldCoins { get; set; } = 0;
+    public int PlatinumCoins { get; set; } = 0;
+
     // Current location
     public int? CurrentRoomId { get; set; }
 
@@ -76,6 +83,18 @@ public class Character
     public int AttributeTotal => Physicality + Dodge + Drive + Reasoning + Awareness + Focus + Bearing;
 
     /// <summary>
+    /// Calculates total wealth in copper pieces
+    /// </summary>
+    [NotMapped]
+    public int TotalCopperValue => CopperCoins + (SilverCoins * 20) + (GoldCoins * 400) + (PlatinumCoins * 8000);
+
+    /// <summary>
+    /// Calculates weight of carried coins in pounds (100 coins = 1 pound)
+    /// </summary>
+    [NotMapped]
+    public decimal CoinWeight => (CopperCoins + SilverCoins + GoldCoins + PlatinumCoins) / 100.0m;
+
+    /// <summary>
     /// Initializes health pools based on attributes (for new characters)
     /// </summary>
     public void InitializeHealth()
@@ -84,7 +103,7 @@ public class Character
         CurrentVitality = MaxVitality;
         PendingFatigueDamage = 0;
         PendingVitalityDamage = 0;
-    LastFatigueRegenAt = DateTimeOffset.UtcNow;
+        LastFatigueRegenAt = DateTimeOffset.UtcNow;
         LastVitalityRegenAt = DateTimeOffset.UtcNow;
     }
 
