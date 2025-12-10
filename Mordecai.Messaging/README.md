@@ -1,8 +1,5 @@
 # Mordecai MUD - Game Messaging System
 
-> **⚠️ CURRENT STATUS**: Using stub implementations due to RabbitMQ.Client/.NET 9 compatibility issues.  
-> See [MESSAGING_STATUS.md](./MESSAGING_STATUS.md) for details.
-
 ## Overview
 
 The messaging system provides real-time communication between players in the Mordecai MUD. It handles:
@@ -44,27 +41,27 @@ See [MESSAGE_SCOPES.md](./MESSAGE_SCOPES.md) for complete details on implementat
 
 ## Current Implementation
 
-**Status**: Using stub/mock implementations that log message operations but don't provide real-time functionality.
+**Status**: RabbitMQ is the active message broker for real-time communication.
 
 ### Available Implementations
 
 | Implementation | Status | Description |
 |---|---|---|
-| `StubGameMessagePublisher` | ? Active | Logs message publishing attempts |
-| `StubGameMessageSubscriber` | ? Active | Logs subscription attempts |
-| RabbitMQ Implementation | ?? Disabled | Backed up due to .NET 9 compatibility issues |
+| `RabbitMqGameMessagePublisher` | Active | Publishes messages to RabbitMQ exchanges |
+| `RabbitMqGameMessageSubscriber` | Active | Subscribes to messages from RabbitMQ queues |
 
 ## Architecture
 
 ```
 ???????????????????    ????????????????????    ???????????????????
-?   Game Actions  ?????? Message Publisher ?????? Stub Logger     ?
-?   (Chat, Move)  ?    ?                  ?    ? (Development)   ?
+?   Game Actions  ?????? RabbitMQ Publisher ?????? RabbitMQ Broker ?
+?   (Chat, Move)  ?    ?                  ?    ? (exchanges)     ?
 ???????????????????    ????????????????????    ???????????????????
-
+                                     ?
+                                     ?
 ???????????????????    ????????????????????    ???????????????????
-? Blazor Component?????? Message Subscriber?????? No Messages     ?
-?   (Play.razor)  ?    ?                  ?    ? (Stub Mode)     ?
+? Blazor Component?????? RabbitMQ Subscriber?????? RabbitMQ Broker ?
+?   (Play.razor)  ?    ?                  ?    ? (queues)        ?
 ???????????????????    ????????????????????    ???????????????????
 ```
 
@@ -101,16 +98,7 @@ All message types are defined and ready for use:
 
 ## Configuration
 
-### Current (Stub Mode)
-No configuration required. Services are registered automatically:
-
-```csharp
-// In Program.cs - already configured
-builder.Services.AddGameMessaging(); // Uses stubs automatically
-```
-
-### Future (RabbitMQ Mode)
-When RabbitMQ is restored, configuration will support:
+The messaging services are registered automatically. When RabbitMQ is used, configuration will support:
 
 ```json
 {
@@ -129,7 +117,7 @@ When RabbitMQ is restored, configuration will support:
 The messaging API remains the same regardless of implementation:
 
 ```csharp
-// Publishing a message (currently logs only)
+// Publishing a message
 await messagePublisher.PublishAsync(new ChatMessage
 {
     CharacterId = characterId,
@@ -139,11 +127,11 @@ await messagePublisher.PublishAsync(new ChatMessage
     ChatType = ChatType.Say
 });
 
-// Subscribing to messages (currently no-op)
+// Subscribing to messages
 var subscriber = subscriberFactory.CreateSubscriber(characterId, roomId);
 subscriber.MessageReceived += async (message) =>
 {
-    // Handle received message (not called in stub mode)
+    // Handle received message
     await UpdateUIWithMessage(message);
 };
 await subscriber.StartAsync();
@@ -151,73 +139,41 @@ await subscriber.StartAsync();
 
 ## Development Impact
 
-### What Works Now ?
-- Game starts without messaging errors
-- All game mechanics except real-time multiplayer
+### What Works Now
+- Game starts with real-time messaging
+- All game mechanics including real-time multiplayer features
 - Character creation and management
 - Room navigation and descriptions
-- Skill systems and combat (single-player)
+- Skill systems and combat (multiplayer)
 - Admin tools and content management
 
-### What Needs Real Messaging ?
-- Multi-player chat and communication  
+### What Needs Real Messaging? (This section is now largely obsolete as real messaging is active, but kept for historical context or future considerations)
+- Multi-player chat and communication
 - Real-time movement notifications
 - Live combat between players
 - Global channels and announcements
 - Cross-character skill demonstrations
 
-## Future Restoration Options
-
-### Option 1: Fix RabbitMQ Compatibility
-- Research RabbitMQ.Client versions compatible with .NET 9
-- Update package and restore backed-up implementations
-- Benefit: Keeps existing architecture
-
-### Option 2: Switch to SignalR
-- Use built-in ASP.NET Core SignalR hubs
-- Create SignalR-based publisher/subscriber implementations
-- Benefit: Native Blazor integration, no external dependencies
-
-### Option 3: Use Redis Pub/Sub  
-- Implement Redis-based messaging
-- Better performance at scale than RabbitMQ
-- Benefit: Simpler setup, proven reliability
-
-### Option 4: Custom WebSocket Solution
-- Direct WebSocket communication between clients
-- Custom message routing in the web application
-- Benefit: Full control, minimal dependencies
-
 ## Testing
 
 ### Current Testing
 ```bash
-# Build and run - should work without errors
+# Start RabbitMQ server first.
+# Build and run
 dotnet build
 dotnet run --project Mordecai.Web
 
-# Check logs for stub message operations
-# Look for "Stub: Would publish message..." entries
+# Open multiple browser tabs
+# Create different characters in each tab
+# Test chat, movement, and interactions between characters
+# Verify real-time message delivery
 ```
-
-### Future Testing (With Real Messaging)
-1. Start RabbitMQ server
-2. Open multiple browser tabs
-3. Create different characters in each tab
-4. Test chat, movement, and interactions between characters
-5. Verify real-time message delivery
 
 ## Troubleshooting
 
-### Current Issues
-- **No real-time messaging**: Expected behavior with stub implementations
-- **Messages only logged**: Check application logs to see message operations
-
-### When Restoring RabbitMQ
-- **Connection refused**: Ensure RabbitMQ server is running
-- **Authentication failed**: Check username/password configuration  
-- **Missing exchange**: Will be created automatically on first connection
+### RabbitMQ Issues
+- **Connection refused**: Ensure RabbitMQ server is running and accessible. Check firewall settings.
+- **Authentication failed**: Verify username and password in configuration.
+- **Missing exchange/queue**: These should be created automatically. If not, check RabbitMQ logs for errors during startup or connection.
 
 ---
-
-**Next Steps**: Choose and implement one of the restoration options above to enable full multiplayer functionality.

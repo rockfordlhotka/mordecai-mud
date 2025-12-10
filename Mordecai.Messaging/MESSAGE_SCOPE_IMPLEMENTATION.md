@@ -229,7 +229,6 @@ For offline delivery:
 - **Main Spec**: See "Message Scopes and Architecture" in `docs/MORDECAI_SPECIFICATION.md`
 - **Detailed Guide**: See `Mordecai.Messaging/MESSAGE_SCOPES.md`
 - **Targeted Chat**: See `Mordecai.Messaging/TARGETED_CHAT.md`
-- **Messaging Status**: See `Mordecai.Messaging/MESSAGING_STATUS.md` (if exists)
 
 ---
 
@@ -244,4 +243,4 @@ For offline delivery:
 
 ---
 
-Last updated: 2025-01-23
+Last updated: 2025-12-09
