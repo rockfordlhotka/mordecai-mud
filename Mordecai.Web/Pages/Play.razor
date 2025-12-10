@@ -377,7 +377,7 @@
             await MessageBroadcastService.RegisterCharacterListenerAsync(
                 characterId.Value,
                 currentRoomId,
-                currentRoom.ZoneId,
+                currentRoom!.ZoneId,
                 characterName,
                 currentUserName,
                 currentUserId);
@@ -1578,7 +1578,7 @@
 
         // Update current room
         var oldRoomId = currentRoomId.Value;
-        var oldZoneId = currentRoom.ZoneId;
+        var oldZoneId = currentRoom!.ZoneId;
         currentRoomId = destinationRoom.Id;
         currentRoom = destinationRoom;
 

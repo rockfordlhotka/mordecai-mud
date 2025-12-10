@@ -4,15 +4,27 @@ namespace Mordecai.Messaging.Messages;
 /// Published for zone-wide environmental effects (weather, time of day, etc.)
 /// Future implementation - requires ZoneId property on GameMessage base class
 /// </summary>
-public sealed record ZoneEnvironmentMessage(
-    int ZoneId,
-    string EffectType,
-    string Description,
-    TimeSpan? Duration = null
-) : GameMessage
+public sealed record ZoneEnvironmentMessage : GameMessage
 {
+    public ZoneEnvironmentMessage(
+        int? zoneId,
+        string effectType,
+        string description,
+        TimeSpan? duration = null
+    )
+    {
+        ZoneId = zoneId;
+        EffectType = effectType;
+        Description = description;
+        Duration = duration;
+    }
+
+    public string EffectType { get; init; }
+    public string Description { get; init; }
+    public TimeSpan? Duration { get; init; }
+
     public override int? RoomId => null; // Zone messages don't use RoomId
-    // Future: public int ZoneId { get; init; } on GameMessage base class
+    public override int? ZoneId { get; init; }
 }
 
 /// <summary>
@@ -33,16 +45,30 @@ public sealed record RoomEnvironmentMessage(
 /// Published when a zone-wide event occurs
 /// Future implementation - requires ZoneId property on GameMessage base class
 /// </summary>
-public sealed record ZoneEventMessage(
-    int ZoneId,
-    string EventType,
-    string EventName,
-    string Description,
-    MessagePriority Priority = MessagePriority.Normal
-) : GameMessage
+public sealed record ZoneEventMessage : GameMessage
 {
+    public ZoneEventMessage(
+        int? zoneId,
+        string eventType,
+        string eventName,
+        string description,
+        MessagePriority priority = MessagePriority.Normal
+    )
+    {
+        ZoneId = zoneId;
+        EventType = eventType;
+        EventName = eventName;
+        Description = description;
+        Priority = priority;
+    }
+
+    public string EventType { get; init; }
+    public string EventName { get; init; }
+    public string Description { get; init; }
+    public MessagePriority Priority { get; init; }
+
     public override int? RoomId => null;
-    // Future: public int ZoneId { get; init; } on GameMessage base class
+    public override int? ZoneId { get; init; }
 }
 
 /// <summary>
