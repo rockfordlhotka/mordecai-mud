@@ -34,6 +34,11 @@ public interface IGameMessageSubscriber : IDisposable
     int? CurrentRoomId { get; set; }
     
     /// <summary>
+    /// Current zone ID of the character (for filtering zone-based messages)
+    /// </summary>
+    int? CurrentZoneId { get; set; }
+
+    /// <summary>
     /// Event fired when a relevant message is received
     /// </summary>
     event Func<GameMessage, Task>? MessageReceived;
@@ -52,6 +57,11 @@ public interface IGameMessageSubscriber : IDisposable
     /// Updates the room subscriptions when a character moves
     /// </summary>
     Task UpdateRoomAsync(int? newRoomId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the zone subscriptions when a character moves
+    /// </summary>
+    Task UpdateZoneAsync(int? newZoneId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -62,5 +72,5 @@ public interface IGameMessageSubscriberFactory
     /// <summary>
     /// Creates a new subscriber for the specified character
     /// </summary>
-    IGameMessageSubscriber CreateSubscriber(Guid characterId, int? initialRoomId = null);
+    IGameMessageSubscriber CreateSubscriber(Guid characterId, int? initialRoomId = null, int? initialZoneId = null);
 }

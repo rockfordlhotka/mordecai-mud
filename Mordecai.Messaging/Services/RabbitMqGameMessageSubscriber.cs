@@ -25,17 +25,20 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
 
     public Guid CharacterId { get; }
     public int? CurrentRoomId { get; set; }
+    public int? CurrentZoneId { get; set; }
 
     public event Func<GameMessage, Task>? MessageReceived;
 
     public RabbitMqGameMessageSubscriber(
         Guid characterId,
         int? initialRoomId,
+        int? initialZoneId,
         IConfiguration configuration,
         ILogger<RabbitMqGameMessageSubscriber> logger)
     {
         CharacterId = characterId;
         CurrentRoomId = initialRoomId;
+        CurrentZoneId = initialZoneId;
         _logger = logger;
         _exchangeName = "mordecai.game.events";
         _queueName = $"character.{characterId}";
@@ -142,8 +145,8 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             _channel.BasicConsume(_queueName, autoAck: false, consumer: _consumer);
 
             _started = true;
-            _logger.LogInformation("Started message subscription for character {CharacterId} in room {RoomId}", 
-                CharacterId, CurrentRoomId);
+            _logger.LogInformation("Started message subscription for character {CharacterId} in room {RoomId} and zone {ZoneId}", 
+                CharacterId, CurrentRoomId, CurrentZoneId);
         }
         catch (Exception ex)
         {
@@ -193,6 +196,12 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             if (CurrentRoomId.HasValue)
             {
                 BindToRoomMessages(CurrentRoomId.Value);
+            }
+
+            // Bind to zone-specific messages if in a zone
+            if (CurrentZoneId.HasValue)
+            {
+                BindToZoneMessages(CurrentZoneId.Value);
             }
 
             // Bind to character-specific messages (errors, private tells, etc.)
@@ -246,6 +255,56 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         };
 
         foreach (var routingKey in roomRoutingKeys)
+        {
+            try
+            {
+                _channel.QueueUnbind(_queueName, _exchangeName, routingKey, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to unbind from routing key {RoutingKey}", routingKey);
+            }
+        }
+    }
+
+    private void BindToZoneMessages(int zoneId)
+    {
+        if (_channel == null)
+            return;
+
+        try
+        {
+            var zoneRoutingKeys = new[]
+            {
+                $"environment.*.zone.{zoneId}",
+                $"event.*.zone.{zoneId}"
+            };
+
+            foreach (var routingKey in zoneRoutingKeys)
+            {
+                _channel.QueueBind(_queueName, _exchangeName, routingKey);
+            }
+
+            _logger.LogDebug("Bound character {CharacterId} to zone {ZoneId} messages", CharacterId, zoneId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to bind to zone messages for character {CharacterId}", CharacterId);
+        }
+    }
+
+    private void UnbindFromZoneMessages(int zoneId)
+    {
+        if (_channel == null)
+            return;
+
+        var zoneRoutingKeys = new[]
+        {
+            $"environment.*.zone.{zoneId}",
+            $"event.*.zone.{zoneId}"
+        };
+
+        foreach (var routingKey in zoneRoutingKeys)
         {
             try
             {
@@ -334,6 +393,11 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
             return message.TargetCharacterIds.Contains(CharacterId);
         }
 
+        if (message.ZoneId.HasValue)
+        {
+            return CurrentZoneId == message.ZoneId.Value;
+        }
+
         if (message.RoomId.HasValue)
         {
             return CurrentRoomId == message.RoomId.Value;
@@ -366,6 +430,35 @@ public sealed class RabbitMqGameMessageSubscriber : IGameMessageSubscriber
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update room subscription for character {CharacterId}", CharacterId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateZoneAsync(int? newZoneId, CancellationToken cancellationToken = default)
+    {
+        if (CurrentZoneId == newZoneId || !_started)
+            return Task.CompletedTask;
+
+        try
+        {
+            if (CurrentZoneId.HasValue)
+            {
+                UnbindFromZoneMessages(CurrentZoneId.Value);
+            }
+
+            if (newZoneId.HasValue)
+            {
+                BindToZoneMessages(newZoneId.Value);
+            }
+
+            CurrentZoneId = newZoneId;
+            _logger.LogDebug("Updated character {CharacterId} zone subscription from {OldZone} to {NewZone}",
+                CharacterId, CurrentZoneId, newZoneId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update zone subscription for character {CharacterId}", CharacterId);
         }
 
         return Task.CompletedTask;

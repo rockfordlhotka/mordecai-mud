@@ -167,9 +167,18 @@ public sealed class RabbitMqGameMessagePublisher : IGameMessagePublisher, IDispo
     {
         var messageType = typeof(T).Name.ToLowerInvariant();
         var category = GetMessageCategory(message);
-        var roomPart = message.RoomId?.ToString() ?? "global";
-        
-        return $"{category}.{messageType}.{roomPart}";
+
+        string scope;
+        if (message.ZoneId.HasValue)
+        {
+            scope = $"zone.{message.ZoneId.Value}";
+        }
+        else
+        {
+            scope = message.RoomId?.ToString() ?? "global";
+        }
+
+        return $"{category}.{messageType}.{scope}";
     }
 
     private static string GetMessageCategory<T>(T message) where T : GameMessage

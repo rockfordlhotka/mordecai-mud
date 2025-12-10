@@ -46,6 +46,7 @@ public sealed class CharacterMessageBroadcastService : IDisposable
     public async Task RegisterCharacterListenerAsync(
         Guid characterId,
         int? currentRoomId = null,
+        int? currentZoneId = null,
         string? characterName = null,
         string? userDisplayName = null,
         string? userId = null)
@@ -58,7 +59,7 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             // Create subscription if this is the first listener
             if (!_activeSubscriptions.ContainsKey(characterId))
             {
-                var subscriber = _subscriberFactory.CreateSubscriber(characterId, currentRoomId);
+                var subscriber = _subscriberFactory.CreateSubscriber(characterId, currentRoomId, currentZoneId);
                 subscriber.MessageReceived += async (message) => await OnMessageReceivedAsync(characterId, message);
                 
                 await subscriber.StartAsync();
@@ -68,10 +69,17 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             }
             else
             {
-                // Update room if needed
-                if (currentRoomId.HasValue && _activeSubscriptions.TryGetValue(characterId, out var existingSubscriber))
+                // Update room and zone if needed
+                if (_activeSubscriptions.TryGetValue(characterId, out var existingSubscriber))
                 {
-                    existingSubscriber.CurrentRoomId = currentRoomId;
+                    if (currentRoomId.HasValue)
+                    {
+                        existingSubscriber.CurrentRoomId = currentRoomId;
+                    }
+                    if (currentZoneId.HasValue)
+                    {
+                        existingSubscriber.CurrentZoneId = currentZoneId;
+                    }
                 }
             }
 
@@ -139,6 +147,18 @@ public sealed class CharacterMessageBroadcastService : IDisposable
         {
             subscriber.CurrentRoomId = newRoomId;
             _logger.LogDebug("Updated character {CharacterId} room to {RoomId}", characterId, newRoomId);
+        }
+    }
+
+    /// <summary>
+    /// Updates the zone ID for a character's subscription
+    /// </summary>
+    public void UpdateCharacterZone(Guid characterId, int? newZoneId)
+    {
+        if (_activeSubscriptions.TryGetValue(characterId, out var subscriber))
+        {
+            subscriber.CurrentZoneId = newZoneId;
+            _logger.LogDebug("Updated character {CharacterId} zone to {ZoneId}", characterId, newZoneId);
         }
     }
 

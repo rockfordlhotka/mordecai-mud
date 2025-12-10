@@ -19,9 +19,9 @@ public sealed class RabbitMqGameMessageSubscriberFactory : IGameMessageSubscribe
         _loggerFactory = loggerFactory;
     }
 
-    public IGameMessageSubscriber CreateSubscriber(Guid characterId, int? initialRoomId = null)
+    public IGameMessageSubscriber CreateSubscriber(Guid characterId, int? initialRoomId = null, int? initialZoneId = null)
     {
         var logger = _loggerFactory.CreateLogger<RabbitMqGameMessageSubscriber>();
-        return new RabbitMqGameMessageSubscriber(characterId, initialRoomId, _configuration, logger);
+        return new RabbitMqGameMessageSubscriber(characterId, initialRoomId, initialZoneId, _configuration, logger);
     }
 }

@@ -14,6 +14,11 @@ public abstract record GameMessage
     /// Room ID where this message is relevant (null for global messages)
     /// </summary>
     public virtual int? RoomId { get; init; }
+
+    /// <summary>
+    /// Zone ID where this message is relevant (null for global or room-specific messages)
+    /// </summary>
+    public virtual int? ZoneId { get; init; }
     
     /// <summary>
     /// Character IDs that should receive this message (null means all characters in the room/global scope)

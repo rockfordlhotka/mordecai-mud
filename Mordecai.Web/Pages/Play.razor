@@ -377,6 +377,7 @@
             await MessageBroadcastService.RegisterCharacterListenerAsync(
                 characterId.Value,
                 currentRoomId,
+                currentRoom.ZoneId,
                 characterName,
                 currentUserName,
                 currentUserId);
@@ -1577,6 +1578,7 @@
 
         // Update current room
         var oldRoomId = currentRoomId.Value;
+        var oldZoneId = currentRoom.ZoneId;
         currentRoomId = destinationRoom.Id;
         currentRoom = destinationRoom;
 
@@ -1585,6 +1587,10 @@
 
         // Update message subscription
         MessageBroadcastService.UpdateCharacterRoom(characterId.Value, currentRoomId);
+        if (oldZoneId != currentRoom.ZoneId)
+        {
+            MessageBroadcastService.UpdateCharacterZone(characterId.Value, currentRoom.ZoneId);
+        }
 
         // Announce arriving in new room
         var movedMessage = new PlayerMoved(characterId.Value, characterName, oldRoomId, currentRoomId.Value, normalizedDirection);
