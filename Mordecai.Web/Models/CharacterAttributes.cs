@@ -19,14 +19,14 @@ public class CharacterAttributes
     public int Total => Physicality + Dodge + Drive + Reasoning + Awareness + Focus + Bearing;
 
     /// <summary>
-    /// Gets calculated Fatigue (END × 2) - 5
+    /// Gets calculated Fatigue (END + WIL) - 5
     /// </summary>
-    public int CalculatedFatigue => (Drive * 2) - 5;
+    public int CalculatedFatigue => (Drive + Focus) - 5;
 
     /// <summary>
-    /// Gets calculated Vitality (STR + END) - 5
+    /// Gets calculated Vitality (STR Ã— 2) - 5
     /// </summary>
-    public int CalculatedVitality => (Physicality + Drive) - 5;
+    public int CalculatedVitality => (Physicality * 2) - 5;
 
     /// <summary>
     /// Creates a copy of the current attributes

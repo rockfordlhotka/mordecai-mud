@@ -146,14 +146,14 @@ While all action resolution uses skills rather than raw attributes, attributes s
 
 #### Health Pool Calculations
 
-- **Fatigue (FAT)**: (END × 2) - 5
+- **Fatigue (FAT)**: (END + WIL) - 5
   - Represents stamina, exhaustion, and non-lethal damage capacity
   - **Low fatigue effects** (applies based on current FAT after pending damage):
     - **FAT = 3**: Must pass a Focus skill check (AS + 4dF+) against target value (TV) 5 or the action fails (no fatigue cost)
     - **FAT = 2**: Must pass a Focus skill check (AS + 4dF+) against TV 7 or the action fails (no fatigue cost)
     - **FAT = 1**: Must pass a Focus skill check (AS + 4dF+) against TV 12 or the action fails (no fatigue cost)
     - **FAT = 0**: Character immediately suffers 2 Vitality damage and cannot perform actions until FAT recovers above 0
-- **Vitality (VIT)**: (STR + END) - 5
+- **Vitality (VIT)**: (STR × 2) - 5
   - Represents life force and lethal damage capacity
   - Baseline recovery restores 1 VIT every hour when the character is alive (VIT > 0)
   - **Low vitality effects** (applies based on current VIT after pending damage):
@@ -233,9 +233,9 @@ During character creation:
     - Bearing (PHY) - physical beauty and presence
   
   - **Health System**:
-    - **Fatigue (FAT)**: Calculated as (END × 2) - 5, represents stamina and exhaustion
+    - **Fatigue (FAT)**: Calculated as (END + WIL) - 5, represents stamina and exhaustion
       - Baseline recovery restores 1 FAT every 3 seconds outside of pending damage application
-    - **Vitality (VIT)**: Calculated as (STR + END) - 5, represents physical health and life force
+    - **Vitality (VIT)**: Calculated as (STR × 2) - 5, represents physical health and life force
     - Both FAT and VIT track current values that can be reduced by damage and restored by rest/healing
     - Death occurs when VIT reaches 0; unconsciousness when FAT reaches 0
     - **Pending Damage/Healing System**:
@@ -1351,14 +1351,14 @@ While all action resolution uses skills rather than raw attributes, attributes s
 
 #### Health Pool Calculations
 
-- **Fatigue (FAT)**: (END × 2) - 5
+- **Fatigue (FAT)**: (END + WIL) - 5
   - Represents stamina, exhaustion, and non-lethal damage capacity
   - **Low fatigue effects** (applies based on current FAT after pending damage):
     - **FAT = 3**: Must pass a Focus skill check (AS + 4dF+) against target value (TV) 5 or the action fails (no fatigue cost)
     - **FAT = 2**: Must pass a Focus skill check (AS + 4dF+) against TV 7 or the action fails (no fatigue cost)
     - **FAT = 1**: Must pass a Focus skill check (AS + 4dF+) against TV 12 or the action fails (no fatigue cost)
     - **FAT = 0**: Character immediately suffers 2 Vitality damage and cannot perform actions until FAT recovers above 0
-- **Vitality (VIT)**: (STR + END) - 5
+- **Vitality (VIT)**: (STR × 2) - 5
   - Represents life force and lethal damage capacity
   - Baseline recovery restores 1 VIT every hour when the character is alive (VIT > 0)
   - **Low vitality effects** (applies based on current VIT after pending damage):
@@ -1438,9 +1438,9 @@ During character creation:
     - Bearing (PHY) - physical beauty and presence
   
   - **Health System**:
-    - **Fatigue (FAT)**: Calculated as (END × 2) - 5, represents stamina and exhaustion
+    - **Fatigue (FAT)**: Calculated as (END + WIL) - 5, represents stamina and exhaustion
       - Baseline recovery restores 1 FAT every 3 seconds outside of pending damage application
-    - **Vitality (VIT)**: Calculated as (STR + END) - 5, represents physical health and life force
+    - **Vitality (VIT)**: Calculated as (STR × 2) - 5, represents physical health and life force
     - Both FAT and VIT track current values that can be reduced by damage and restored by rest/healing
     - Death occurs when VIT reaches 0; unconsciousness when FAT reaches 0
     - **Pending Damage/Healing System**:
