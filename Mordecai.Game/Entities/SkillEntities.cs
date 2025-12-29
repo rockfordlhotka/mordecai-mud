@@ -68,10 +68,10 @@ public class Character
 
     // Calculated Properties (not stored in database)
     [NotMapped]
-    public int MaxFatigue => Math.Max(1, (Drive * 2) - 5);
+    public int MaxFatigue => Math.Max(1, (Drive + Focus) - 5);
 
     [NotMapped]
-    public int MaxVitality => Math.Max(1, (Physicality + Drive) - 5);
+    public int MaxVitality => Math.Max(1, (Physicality * 2) - 5);
 
     [NotMapped]
     public int CalculatedFatigue => MaxFatigue;

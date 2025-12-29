@@ -69,8 +69,8 @@ public class HealthTickBackgroundService : BackgroundService
         var characters = await context.Characters
             .Where(c => c.PendingFatigueDamage != 0
                         || c.PendingVitalityDamage != 0
-                        || c.CurrentFatigue < ((c.Drive * 2) - 5 > 1 ? (c.Drive * 2) - 5 : 1)
-                        || c.CurrentVitality < ((c.Physicality + c.Drive) - 5 > 1 ? (c.Physicality + c.Drive) - 5 : 1))
+                        || c.CurrentFatigue < ((c.Drive + c.Focus) - 5 > 1 ? (c.Drive + c.Focus) - 5 : 1)
+                        || c.CurrentVitality < ((c.Physicality * 2) - 5 > 1 ? (c.Physicality * 2) - 5 : 1))
             .ToListAsync(cancellationToken);
 
         if (characters.Count == 0)
@@ -85,8 +85,8 @@ public class HealthTickBackgroundService : BackgroundService
         foreach (var character in characters)
         {
             var characterUpdated = false;
-            var maxFatigue = Math.Max(1, (character.Drive * 2) - 5);
-            var maxVitality = Math.Max(1, (character.Physicality + character.Drive) - 5);
+            var maxFatigue = Math.Max(1, (character.Drive + character.Focus) - 5);
+            var maxVitality = Math.Max(1, (character.Physicality * 2) - 5);
             var availableVitality = VitalityEffectRules.CalculateAvailableVitality(character.CurrentVitality, character.PendingVitalityDamage);
             var regenInterval = VitalityEffectRules.GetFatigueRegenInterval(availableVitality, baseFatigueRegenInterval);
 
