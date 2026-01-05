@@ -84,9 +84,13 @@ builder.Services.AddScoped<ICurrencyService, CurrencyService>();
 // Add room effects service
 builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();
 
+// Add spawner service
+builder.Services.AddScoped<ISpawnerService, SpawnerService>();
+
 // Add background services
 builder.Services.AddHostedService<RoomEffectBackgroundService>();
 builder.Services.AddHostedService<HealthTickBackgroundService>();
+builder.Services.AddHostedService<Mordecai.BackgroundServices.SpawnerTickService>();
 
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();

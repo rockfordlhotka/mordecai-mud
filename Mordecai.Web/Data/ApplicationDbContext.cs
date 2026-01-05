@@ -43,6 +43,13 @@ public class ApplicationDbContext : IdentityDbContext
     // Game configuration
     public DbSet<GameEntities.GameConfiguration> GameConfigurations => Set<GameEntities.GameConfiguration>();
 
+    // NPC and Spawner System
+    public DbSet<GameEntities.NpcTemplate> NpcTemplates => Set<GameEntities.NpcTemplate>();
+    public DbSet<GameEntities.SpawnerTemplate> SpawnerTemplates => Set<GameEntities.SpawnerTemplate>();
+    public DbSet<GameEntities.SpawnerNpcEntry> SpawnerNpcEntries => Set<GameEntities.SpawnerNpcEntry>();
+    public DbSet<GameEntities.SpawnerInstance> SpawnerInstances => Set<GameEntities.SpawnerInstance>();
+    public DbSet<GameEntities.ActiveSpawn> ActiveSpawns => Set<GameEntities.ActiveSpawn>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -456,13 +463,116 @@ public class ApplicationDbContext : IdentityDbContext
                 .WithOne()
                 .HasForeignKey<GameEntities.CharacterInventory>(ci => ci.CharacterId)
                 .OnDelete(DeleteBehavior.Cascade);
-                
+
             // Configure precision for decimal fields
             entity.Property(ci => ci.MaxWeight)
                 .HasPrecision(10, 2);
-                
+
             entity.Property(ci => ci.MaxVolume)
                 .HasPrecision(10, 2);
+        });
+
+        // NpcTemplate configuration
+        builder.Entity<GameEntities.NpcTemplate>(entity =>
+        {
+            entity.HasIndex(nt => nt.Name);
+            entity.HasIndex(nt => nt.Level);
+            entity.HasIndex(nt => nt.IsActive);
+            entity.HasIndex(nt => nt.IsHostile);
+        });
+
+        // SpawnerTemplate configuration
+        builder.Entity<GameEntities.SpawnerTemplate>(entity =>
+        {
+            entity.HasIndex(st => st.Name);
+            entity.HasIndex(st => st.IsActive);
+            entity.HasIndex(st => st.SpawnBehavior);
+
+            entity.Property(st => st.SpawnBehavior)
+                .HasConversion<int>();
+        });
+
+        // SpawnerNpcEntry configuration
+        builder.Entity<GameEntities.SpawnerNpcEntry>(entity =>
+        {
+            entity.HasIndex(sne => sne.SpawnerTemplateId);
+            entity.HasIndex(sne => sne.NpcTemplateId);
+            entity.HasIndex(sne => new { sne.SpawnerTemplateId, sne.NpcTemplateId });
+
+            // Configure relationships
+            entity.HasOne(sne => sne.SpawnerTemplate)
+                .WithMany(st => st.SpawnTable)
+                .HasForeignKey(sne => sne.SpawnerTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(sne => sne.NpcTemplate)
+                .WithMany(nt => nt.SpawnerEntries)
+                .HasForeignKey(sne => sne.NpcTemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // SpawnerInstance configuration
+        builder.Entity<GameEntities.SpawnerInstance>(entity =>
+        {
+            entity.HasIndex(si => si.SpawnerTemplateId);
+            entity.HasIndex(si => si.RoomId);
+            entity.HasIndex(si => si.ZoneId);
+            entity.HasIndex(si => si.IsEnabled);
+            entity.HasIndex(si => si.NextSpawnTime);
+            entity.HasIndex(si => new { si.Type, si.IsEnabled });
+
+            entity.Property(si => si.Type)
+                .HasConversion<int>();
+
+            // Configure relationships
+            entity.HasOne(si => si.SpawnerTemplate)
+                .WithMany(st => st.Instances)
+                .HasForeignKey(si => si.SpawnerTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(si => si.Room)
+                .WithMany()
+                .HasForeignKey(si => si.RoomId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(si => si.Zone)
+                .WithMany()
+                .HasForeignKey(si => si.ZoneId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(si => si.CurrentRoom)
+                .WithMany()
+                .HasForeignKey(si => si.CurrentRoomId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ActiveSpawn configuration
+        builder.Entity<GameEntities.ActiveSpawn>(entity =>
+        {
+            entity.HasIndex(asp => asp.NpcId);
+            entity.HasIndex(asp => asp.SpawnerInstanceId);
+            entity.HasIndex(asp => asp.IsActive);
+            entity.HasIndex(asp => asp.SpawnedAt);
+            entity.HasIndex(asp => new { asp.SpawnerInstanceId, asp.IsActive });
+
+            entity.Property(asp => asp.DespawnReason)
+                .HasConversion<int?>();
+
+            // Configure relationships
+            entity.HasOne(asp => asp.SpawnerInstance)
+                .WithMany(si => si.ActiveSpawns)
+                .HasForeignKey(asp => asp.SpawnerInstanceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(asp => asp.NpcTemplate)
+                .WithMany()
+                .HasForeignKey(asp => asp.NpcTemplateId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(asp => asp.CurrentRoom)
+                .WithMany()
+                .HasForeignKey(asp => asp.CurrentRoomId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

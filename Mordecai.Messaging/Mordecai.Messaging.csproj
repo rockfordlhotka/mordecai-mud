@@ -15,4 +15,8 @@
   <PackageReference Include="RabbitMQ.Client" Version="6.2.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Mordecai.Game\Mordecai.Game.csproj" />
+  </ItemGroup>
+
 </Project>
