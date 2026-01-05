@@ -50,6 +50,11 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<GameEntities.SpawnerInstance> SpawnerInstances => Set<GameEntities.SpawnerInstance>();
     public DbSet<GameEntities.ActiveSpawn> ActiveSpawns => Set<GameEntities.ActiveSpawn>();
 
+    // Combat System
+    public DbSet<GameEntities.CombatSession> CombatSessions => Set<GameEntities.CombatSession>();
+    public DbSet<GameEntities.CombatParticipant> CombatParticipants => Set<GameEntities.CombatParticipant>();
+    public DbSet<GameEntities.CombatActionLog> CombatActionLogs => Set<GameEntities.CombatActionLog>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -573,6 +578,82 @@ public class ApplicationDbContext : IdentityDbContext
                 .WithMany()
                 .HasForeignKey(asp => asp.CurrentRoomId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // CombatSession configuration
+        builder.Entity<GameEntities.CombatSession>(entity =>
+        {
+            entity.HasIndex(cs => cs.RoomId);
+            entity.HasIndex(cs => cs.IsActive);
+            entity.HasIndex(cs => cs.StartedAt);
+            entity.HasIndex(cs => new { cs.IsActive, cs.RoomId });
+
+            // Configure relationships
+            entity.HasOne(cs => cs.Room)
+                .WithMany()
+                .HasForeignKey(cs => cs.RoomId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // CombatParticipant configuration
+        builder.Entity<GameEntities.CombatParticipant>(entity =>
+        {
+            entity.HasIndex(cp => cp.CombatSessionId);
+            entity.HasIndex(cp => cp.CharacterId);
+            entity.HasIndex(cp => cp.ActiveSpawnId);
+            entity.HasIndex(cp => cp.IsActive);
+            entity.HasIndex(cp => new { cp.CombatSessionId, cp.IsActive });
+
+            // Configure relationships
+            entity.HasOne(cp => cp.CombatSession)
+                .WithMany(cs => cs.Participants)
+                .HasForeignKey(cp => cp.CombatSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cp => cp.Character)
+                .WithMany()
+                .HasForeignKey(cp => cp.CharacterId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(cp => cp.ActiveSpawn)
+                .WithMany()
+                .HasForeignKey(cp => cp.ActiveSpawnId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // CombatActionLog configuration
+        builder.Entity<GameEntities.CombatActionLog>(entity =>
+        {
+            entity.HasIndex(cal => cal.CombatSessionId);
+            entity.HasIndex(cal => cal.ActorParticipantId);
+            entity.HasIndex(cal => cal.TargetParticipantId);
+            entity.HasIndex(cal => cal.Timestamp);
+            entity.HasIndex(cal => cal.ActionType);
+
+            entity.Property(cal => cal.ActionType)
+                .HasConversion<int>();
+
+            entity.Property(cal => cal.HitLocation)
+                .HasConversion<int?>();
+
+            entity.Property(cal => cal.DamageType)
+                .HasConversion<int?>();
+
+            // Configure relationships
+            entity.HasOne(cal => cal.CombatSession)
+                .WithMany()
+                .HasForeignKey(cal => cal.CombatSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cal => cal.ActorParticipant)
+                .WithMany()
+                .HasForeignKey(cal => cal.ActorParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(cal => cal.TargetParticipant)
+                .WithMany()
+                .HasForeignKey(cal => cal.TargetParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

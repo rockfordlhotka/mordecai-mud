@@ -1,5 +1,7 @@
 using Mordecai.Messaging.Messages;
 using Mordecai.Messaging.Services;
+using Mordecai.Game.Services;
+using static Mordecai.Messaging.Messages.TargetType;
 
 namespace Mordecai.Web.Services;
 
@@ -12,17 +14,20 @@ public class GameActionService
     private readonly IGameMessagePublisher _messagePublisher;
     private readonly TargetResolutionService _targetResolution;
     private readonly ISoundPropagationService _soundPropagation;
+    private readonly ICombatService _combatService;
     private readonly ILogger<GameActionService> _logger;
 
     public GameActionService(
         IGameMessagePublisher messagePublisher,
         TargetResolutionService targetResolution,
         ISoundPropagationService soundPropagation,
+        ICombatService combatService,
         ILogger<GameActionService> logger)
     {
         _messagePublisher = messagePublisher;
         _targetResolution = targetResolution;
         _soundPropagation = soundPropagation;
+        _combatService = combatService;
         _logger = logger;
     }
 
@@ -278,4 +283,102 @@ public class GameActionService
 
     private static string? GetPropagationCharacterName(ChatType chatType, string characterName)
         => chatType == ChatType.Yell ? characterName : null;
+
+    /// <summary>
+    /// Handles a combat attack action
+    /// </summary>
+    public async Task<string> HandleAttackAsync(
+        Guid characterId,
+        string characterName,
+        int roomId,
+        string? targetName = null)
+    {
+        try
+        {
+            // Resolve target
+            if (string.IsNullOrWhiteSpace(targetName))
+            {
+                return "Attack who?";
+            }
+
+            if (!TargetResolutionService.IsValidTargetName(targetName))
+            {
+                return "Invalid target name.";
+            }
+
+            var target = await _targetResolution.FindTargetInRoomAsync(targetName, roomId, characterId);
+            if (target == null)
+            {
+                return $"There is no '{targetName}' here.";
+            }
+
+            // Cannot attack yourself
+            if (target.Type == Character && target.Id == characterId)
+            {
+                return "You cannot attack yourself!";
+            }
+
+            // Perform the attack
+            bool targetIsPlayer = target.Type == Character;
+            var successValue = await _combatService.PerformMeleeAttackAsync(
+                characterId, true, target.Id, targetIsPlayer);
+
+            if (successValue == null)
+            {
+                return "You cannot attack right now.";
+            }
+
+            return $"You attack {target.Name}!";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to handle attack for character {CharacterId}", characterId);
+            return "An error occurred while attacking.";
+        }
+    }
+
+    /// <summary>
+    /// Handles fleeing from combat
+    /// </summary>
+    public async Task<string> HandleFleeAsync(Guid characterId, string characterName)
+    {
+        try
+        {
+            bool fled = await _combatService.FleeFromCombatAsync(characterId, true);
+
+            if (fled)
+            {
+                return "You flee from combat!";
+            }
+            else
+            {
+                return "You are not in combat.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to handle flee for character {CharacterId}", characterId);
+            return "An error occurred while fleeing.";
+        }
+    }
+
+    /// <summary>
+    /// Handles toggling parry mode
+    /// </summary>
+    public async Task<string> HandleParryAsync(Guid characterId, string characterName, bool enable)
+    {
+        try
+        {
+            await _combatService.SetParryModeAsync(characterId, true, enable);
+
+            return enable
+                ? "You enter parry mode, using your weapon to defend."
+                : "You exit parry mode, returning to dodging.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to handle parry for character {CharacterId}", characterId);
+            return "An error occurred while toggling parry mode.";
+        }
+    }
 }

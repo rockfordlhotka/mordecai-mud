@@ -52,6 +52,11 @@ public class Character
     public int PendingFatigueDamage { get; set; } = 0;
     public int PendingVitalityDamage { get; set; } = 0;
 
+    /// <summary>
+    /// Current number of wounds (long-term injuries)
+    /// </summary>
+    public int CurrentWounds { get; set; } = 0;
+
     // Currency (stored as individual coin counts)
     // Total value in copper = Copper + (Silver * 20) + (Gold * 400) + (Platinum * 8000)
     public int CopperCoins { get; set; } = 0;

@@ -87,6 +87,9 @@ builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();
 // Add spawner service
 builder.Services.AddScoped<ISpawnerService, SpawnerService>();
 
+// Add combat service
+builder.Services.AddScoped<ICombatService, CombatService>();
+
 // Add background services
 builder.Services.AddHostedService<RoomEffectBackgroundService>();
 builder.Services.AddHostedService<HealthTickBackgroundService>();

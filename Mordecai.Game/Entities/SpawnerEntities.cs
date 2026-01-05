@@ -339,6 +339,31 @@ public class ActiveSpawn
     /// </summary>
     public DespawnReason? DespawnReason { get; set; }
 
+    /// <summary>
+    /// Current fatigue (stamina) value for this NPC
+    /// </summary>
+    public int CurrentFatigue { get; set; }
+
+    /// <summary>
+    /// Current vitality (health) value for this NPC
+    /// </summary>
+    public int CurrentVitality { get; set; }
+
+    /// <summary>
+    /// Pending fatigue damage to be applied over time
+    /// </summary>
+    public int PendingFatigueDamage { get; set; } = 0;
+
+    /// <summary>
+    /// Pending vitality damage to be applied over time
+    /// </summary>
+    public int PendingVitalityDamage { get; set; } = 0;
+
+    /// <summary>
+    /// Current number of wounds (long-term injuries)
+    /// </summary>
+    public int CurrentWounds { get; set; } = 0;
+
     // Navigation properties
     [ForeignKey(nameof(SpawnerInstanceId))]
     public virtual SpawnerInstance SpawnerInstance { get; set; } = null!;
