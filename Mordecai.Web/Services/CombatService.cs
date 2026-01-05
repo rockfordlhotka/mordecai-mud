@@ -142,15 +142,30 @@ public sealed class CombatService : ICombatService
         }
 
         // Get weapon skill and modifiers
-        var weaponSkill = await GetWeaponSkillAsync(attackerData, isOffHand, cancellationToken);
-        if (weaponSkill == null)
+        var weaponInfo = await GetWeaponSkillAsync(attackerData, isOffHand, cancellationToken);
+        if (weaponInfo == null)
         {
             _logger.LogWarning("Attacker {Attacker} has no usable weapon", attackerData.Name);
             return null;
         }
 
+        // Check if weapon is broken
+        if (weaponInfo.IsBroken)
+        {
+            _logger.LogDebug("Attacker {Attacker} has a broken weapon: {Weapon}", attackerData.Name, weaponInfo.SkillName);
+            await _messagePublisher.PublishAsync(new CombatAction(
+                attackerId, attackerData.Name, targetId, targetData.Name,
+                attackerData.RoomId, $"{attackerData.Name}'s {weaponInfo.SkillName} is broken and unusable!",
+                0, false, weaponInfo.SkillName, SoundLevel.Quiet
+            ), cancellationToken);
+            return null;
+        }
+
         // Apply off-hand penalty
-        int attackSkill = weaponSkill.CurrentLevel + (isOffHand ? -2 : 0);
+        int attackSkill = weaponInfo.CurrentLevel + (isOffHand ? -2 : 0);
+
+        // Apply weapon attack value modifier
+        attackSkill += weaponInfo.AttackValueModifier;
 
         // Apply timed penalties
         attackSkill += await GetTotalTimedPenaltiesAsync(attackerId, attackerIsPlayer, cancellationToken);
@@ -192,7 +207,7 @@ public sealed class CombatService : ICombatService
             await _messagePublisher.PublishAsync(new CombatAction(
                 attackerId, attackerData.Name, targetId, targetData.Name,
                 attackerData.RoomId, $"{attackerData.Name} attacks {targetData.Name} but misses!",
-                0, false, weaponSkill.SkillName, SoundLevel.Normal
+                0, false, weaponInfo.SkillName, SoundLevel.Normal
             ), cancellationToken);
 
             return successValue;
@@ -207,6 +222,9 @@ public sealed class CombatService : ICombatService
         // Apply result value system to success value
         int modifiedSV = ApplyResultValueSystem(successValue, resultValue);
 
+        // Apply weapon success value modifier
+        modifiedSV += weaponInfo.SuccessValueModifier;
+
         // Apply timed penalty if physicality check failed badly
         if (resultValue <= -3)
         {
@@ -216,11 +234,11 @@ public sealed class CombatService : ICombatService
         // Determine hit location
         var hitLocation = RollHitLocation();
 
-        // Get damage type from weapon (default to Bashing)
-        var damageType = DamageType.Bashing; // TODO: Get from weapon when equipment system is implemented
+        // Get damage type from weapon
+        var damageType = weaponInfo.DamageType;
 
         // Calculate damage after absorption
-        int finalSV = await ApplyDefensesAsync(targetData, targetId, targetIsPlayer, modifiedSV, hitLocation, damageType, cancellationToken);
+        int finalSV = await ApplyDefensesAsync(targetData, targetId, targetIsPlayer, modifiedSV, hitLocation, damageType, weaponInfo.DamageClass, cancellationToken);
 
         // Convert SV to damage
         var (fatDamage, vitDamage, wounds) = CalculateDamageFromSV(finalSV);
@@ -236,7 +254,7 @@ public sealed class CombatService : ICombatService
         await _messagePublisher.PublishAsync(new CombatAction(
             attackerId, attackerData.Name, targetId, targetData.Name,
             attackerData.RoomId, $"{attackerData.Name} hits {targetData.Name} dealing {fatDamage} FAT and {vitDamage} VIT damage!",
-            fatDamage + vitDamage, true, weaponSkill.SkillName, SoundLevel.Normal
+            fatDamage + vitDamage, true, weaponInfo.SkillName, SoundLevel.Normal
         ), cancellationToken);
 
         // Check if target died
@@ -531,23 +549,64 @@ public sealed class CombatService : ICombatService
         }
     }
 
-    private async Task<SkillInfo?> GetWeaponSkillAsync(
+    private async Task<WeaponInfo?> GetWeaponSkillAsync(
         CombatantData combatant,
         bool isOffHand,
         CancellationToken cancellationToken)
     {
-        // TODO: Get actual weapon skill from equipped weapon when equipment system is implemented
-        // For now, use a default "Unarmed" skill based on Physicality
-        var physicalitySkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
-        if (physicalitySkill == null)
+        // Get equipped weapon from database
+        var equippedSlot = isOffHand ? ArmorSlot.OffHand : ArmorSlot.MainHand;
+
+        var equippedWeapon = await _dbContext.Items
+            .Include(i => i.ItemTemplate)
+                .ThenInclude(it => it.WeaponProperties)
+            .Include(i => i.ItemTemplate)
+                .ThenInclude(it => it.SkillBonuses)
+            .FirstOrDefaultAsync(i =>
+                (i.OwnerCharacterId == combatant.Id || (i.ContainerItem != null && i.ContainerItem.OwnerCharacterId == combatant.Id)) &&
+                i.IsEquipped &&
+                (i.EquippedSlot == equippedSlot || i.EquippedSlot == ArmorSlot.TwoHand),
+                cancellationToken);
+
+        if (equippedWeapon?.ItemTemplate?.WeaponProperties != null)
+        {
+            // Get weapon skill level (for now use Physicality, later integrate with skill system)
+            var physicalitySkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
+            var baseSkillLevel = physicalitySkill?.CurrentLevel ?? 10;
+
+            // Apply skill bonuses from the weapon itself
+            var weaponSkillBonuses = equippedWeapon.ItemTemplate.SkillBonuses
+                .Where(b => b.BonusType == "FlatBonus")
+                .Sum(b => (int)b.BonusValue);
+
+            return new WeaponInfo
+            {
+                SkillName = equippedWeapon.ItemTemplate.Name,
+                CurrentLevel = baseSkillLevel + weaponSkillBonuses,
+                AttackValueModifier = equippedWeapon.ItemTemplate.WeaponProperties.AttackValueModifier,
+                SuccessValueModifier = equippedWeapon.ItemTemplate.WeaponProperties.BaseSuccessValueModifier,
+                DamageType = equippedWeapon.ItemTemplate.WeaponProperties.DamageType,
+                DamageClass = equippedWeapon.ItemTemplate.WeaponProperties.DamageClass,
+                IsBroken = equippedWeapon.IsBroken
+            };
+        }
+
+        // No weapon equipped - use unarmed combat
+        var unarmedSkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
+        if (unarmedSkill == null)
         {
             return null;
         }
 
-        return new SkillInfo
+        return new WeaponInfo
         {
             SkillName = "Unarmed Combat",
-            CurrentLevel = physicalitySkill.CurrentLevel
+            CurrentLevel = unarmedSkill.CurrentLevel,
+            AttackValueModifier = 0,
+            SuccessValueModifier = 0,
+            DamageType = DamageType.Bashing,
+            DamageClass = DamageClass.Class1,
+            IsBroken = false
         };
     }
 
@@ -565,21 +624,64 @@ public sealed class CombatService : ICombatService
         bool defenderIsPlayer,
         CancellationToken cancellationToken)
     {
+        int baseDefense;
+
         // Check if defender is in parry mode
         bool inParryMode = await IsInParryModeAsync(defenderId, defenderIsPlayer, cancellationToken);
 
         if (inParryMode)
         {
             // Use weapon skill for defense
-            var weaponSkill = await GetWeaponSkillAsync(defender, false, cancellationToken);
-            return weaponSkill?.CurrentLevel ?? 10;
+            var weaponInfo = await GetWeaponSkillAsync(defender, false, cancellationToken);
+            baseDefense = weaponInfo?.CurrentLevel ?? 10;
         }
         else
         {
             // Use dodge skill for defense
             var dodgeSkill = defender.Skills.FirstOrDefault(s => s.SkillName == "Dodge");
-            return dodgeSkill?.CurrentLevel ?? 10;
+            baseDefense = dodgeSkill?.CurrentLevel ?? 10;
+
+            // Apply equipment dodge modifiers (armor and weapons can affect dodge)
+            var dodgeModifier = await GetEquipmentDodgeModifierAsync(defenderId, cancellationToken);
+            baseDefense += dodgeModifier;
         }
+
+        return baseDefense;
+    }
+
+    private async Task<int> GetEquipmentDodgeModifierAsync(Guid characterId, CancellationToken cancellationToken)
+    {
+        var equippedItems = await _dbContext.Items
+            .Include(i => i.ItemTemplate)
+                .ThenInclude(it => it.WeaponProperties)
+            .Include(i => i.ItemTemplate)
+                .ThenInclude(it => it.ArmorProperties)
+            .Where(i => i.OwnerCharacterId == characterId && i.IsEquipped)
+            .ToListAsync(cancellationToken);
+
+        int totalModifier = 0;
+
+        foreach (var item in equippedItems)
+        {
+            if (item.IsBroken)
+            {
+                continue; // Broken equipment provides no bonuses
+            }
+
+            // Add weapon dodge modifier
+            if (item.ItemTemplate.WeaponProperties != null)
+            {
+                totalModifier += item.ItemTemplate.WeaponProperties.DodgeModifier;
+            }
+
+            // Add armor dodge modifier
+            if (item.ItemTemplate.ArmorProperties != null)
+            {
+                totalModifier += item.ItemTemplate.ArmorProperties.DodgeModifier;
+            }
+        }
+
+        return totalModifier;
     }
 
     private async Task<bool> IsInParryModeAsync(
@@ -731,11 +833,120 @@ public sealed class CombatService : ICombatService
         int successValue,
         HitLocation hitLocation,
         DamageType damageType,
+        DamageClass weaponClass,
         CancellationToken cancellationToken)
     {
-        // TODO: Implement shield and armor absorption when equipment system is implemented
-        // For now, just return the SV unchanged
-        return successValue;
+        if (successValue < 0)
+        {
+            return successValue;
+        }
+
+        // Get all equipped armor pieces
+        var equippedArmor = await _dbContext.Items
+            .Include(i => i.ItemTemplate)
+                .ThenInclude(it => it.ArmorProperties)
+            .Where(i => i.OwnerCharacterId == defenderId && i.IsEquipped && i.ItemTemplate.ArmorProperties != null)
+            .OrderBy(i => i.ItemTemplate.ArmorProperties!.LayerPriority)
+            .ToListAsync(cancellationToken);
+
+        if (!equippedArmor.Any())
+        {
+            return successValue; // No armor, no absorption
+        }
+
+        // Filter armor that covers the hit location
+        var coveringArmor = equippedArmor
+            .Where(armor => ArmorCoversLocation(armor, hitLocation))
+            .ToList();
+
+        if (!coveringArmor.Any())
+        {
+            return successValue; // No armor covering this location
+        }
+
+        int totalAbsorption = 0;
+
+        // Calculate total absorption from all layers
+        foreach (var armor in coveringArmor)
+        {
+            if (armor.IsBroken)
+            {
+                continue; // Broken armor provides no protection
+            }
+
+            var props = armor.ItemTemplate.ArmorProperties!;
+
+            // Get absorption value based on damage type
+            int absorption = damageType switch
+            {
+                DamageType.Bashing => props.BashingAbsorption,
+                DamageType.Cutting => props.CuttingAbsorption,
+                DamageType.Piercing => props.PiercingAbsorption,
+                DamageType.Projectile => props.ProjectileAbsorption,
+                DamageType.Energy => props.EnergyAbsorption,
+                DamageType.Heat => props.HeatAbsorption,
+                DamageType.Cold => props.ColdAbsorption,
+                DamageType.Acid => props.AcidAbsorption,
+                _ => 0
+            };
+
+            // Apply damage class scaling
+            // Higher class weapons penetrate better against lower class armor
+            int classModifier = (int)weaponClass - (int)props.DamageClass;
+            if (classModifier > 0)
+            {
+                // Weapon class higher than armor class - reduce absorption
+                absorption = Math.Max(0, absorption - classModifier);
+            }
+
+            totalAbsorption += absorption;
+        }
+
+        // Apply absorption to success value
+        int finalSV = Math.Max(0, successValue - totalAbsorption);
+
+        _logger.LogDebug("Armor absorption: {Absorption} reduced SV from {OriginalSV} to {FinalSV} for {Defender}",
+            totalAbsorption, successValue, finalSV, defender.Name);
+
+        return finalSV;
+    }
+
+    private bool ArmorCoversLocation(Item armor, HitLocation hitLocation)
+    {
+        var coverage = armor.ItemTemplate?.ArmorProperties?.HitLocationCoverage;
+        if (string.IsNullOrWhiteSpace(coverage))
+        {
+            // If no coverage specified, assume it covers based on slot
+            return armor.EquippedSlot switch
+            {
+                ArmorSlot.Head => hitLocation == HitLocation.Head,
+                ArmorSlot.Chest => hitLocation == HitLocation.Torso,
+                ArmorSlot.ArmLeft => hitLocation == HitLocation.LeftArm,
+                ArmorSlot.ArmRight => hitLocation == HitLocation.RightArm,
+                ArmorSlot.Legs => hitLocation == HitLocation.LeftLeg || hitLocation == HitLocation.RightLeg,
+                _ => false
+            };
+        }
+
+        // Parse coverage string (e.g., "Head,Torso,Arms")
+        var coveredLocations = coverage.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim().ToLowerInvariant())
+            .ToHashSet();
+
+        var locationName = hitLocation.ToString().ToLowerInvariant();
+        if (coveredLocations.Contains(locationName))
+        {
+            return true;
+        }
+
+        // Check for common aliases
+        return hitLocation switch
+        {
+            HitLocation.Torso => coveredLocations.Contains("torso") || coveredLocations.Contains("chest") || coveredLocations.Contains("body"),
+            HitLocation.LeftArm or HitLocation.RightArm => coveredLocations.Contains("arms") || coveredLocations.Contains("arm"),
+            HitLocation.LeftLeg or HitLocation.RightLeg => coveredLocations.Contains("legs") || coveredLocations.Contains("leg"),
+            _ => false
+        };
     }
 
     private (int FatDamage, int VitDamage, int Wounds) CalculateDamageFromSV(int successValue)
@@ -959,5 +1170,16 @@ public sealed class CombatService : ICombatService
     {
         public string SkillName { get; set; } = string.Empty;
         public int CurrentLevel { get; set; }
+    }
+
+    private class WeaponInfo
+    {
+        public string SkillName { get; set; } = string.Empty;
+        public int CurrentLevel { get; set; }
+        public int AttackValueModifier { get; set; }
+        public int SuccessValueModifier { get; set; }
+        public DamageType DamageType { get; set; }
+        public DamageClass DamageClass { get; set; }
+        public bool IsBroken { get; set; }
     }
 }
