@@ -1,0 +1,474 @@
+@page "/admin/spawner-templates"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Data
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Spawner Templates - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-clock text-primary me-2"></i>
+                    Spawner Templates
+                </h1>
+                <div>
+                    <button class="btn btn-success" @onclick="ShowCreateDialog">
+                        <i class="oi oi-plus me-1"></i>
+                        Create Spawner Template
+                    </button>
+                    <a href="/admin" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading spawner templates...</span>
+            </div>
+        </div>
+    }
+    else if (!spawnerTemplates.Any())
+    {
+        <div class="alert alert-info text-center">
+            <h4>No Spawner Templates Found</h4>
+            <p>Create spawner templates to automatically spawn NPCs in rooms.</p>
+            <button class="btn btn-success" @onclick="ShowCreateDialog">
+                <i class="oi oi-plus me-1"></i>
+                Create First Spawner Template
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Spawner Templates (@spawnerTemplates.Count)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>NPCs</th>
+                                <th>Behavior</th>
+                                <th>Spawn Interval</th>
+                                <th>Max Active</th>
+                                <th>Instances</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var spawner in spawnerTemplates)
+                            {
+                                <tr class="@(!spawner.IsActive ? "table-warning" : "")">
+                                    <td><strong>@spawner.Id</strong></td>
+                                    <td>
+                                        <strong>@spawner.Name</strong>
+                                        @if (!string.IsNullOrEmpty(spawner.Description))
+                                        {
+                                            <br/><small class="text-muted">@spawner.Description</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (spawner.SpawnTable?.Any() == true)
+                                        {
+                                            <small>
+                                                @string.Join(", ", spawner.SpawnTable.Select(e => e.NpcTemplate.Name))
+                                            </small>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">None</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">@spawner.SpawnBehavior</span>
+                                    </td>
+                                    <td>
+                                        <small>@spawner.SpawnIntervalMin-@spawner.SpawnIntervalMax sec</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">@spawner.MaxActiveCreatures</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">@spawner.Instances.Count</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-@(spawner.IsActive ? "success" : "warning")">
+                                            @(spawner.IsActive ? "Active" : "Inactive")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Edit"
+                                                    @onclick="() => ShowEditDialog(spawner)">
+                                                <i class="oi oi-pencil"></i>
+                                            </button>
+                                            <a href="/admin/spawner-instances?template=@spawner.Id"
+                                               class="btn btn-outline-info" title="Manage Instances">
+                                                <i class="oi oi-map-marker"></i>
+                                            </a>
+                                            <button class="btn btn-outline-danger" title="Delete"
+                                                    @onclick="() => DeleteSpawnerTemplate(spawner)">
+                                                <i class="oi oi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* Create/Edit Dialog *@
+@if (showDialog)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(editingSpawner?.Id > 0 ? "Edit" : "Create") Spawner Template</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="editingSpawner" OnValidSubmit="SaveSpawnerTemplate">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Name *</label>
+                                <InputText class="form-control" @bind-Value="editingSpawner.Name" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Spawn Behavior</label>
+                                <InputSelect class="form-select" @bind-Value="editingSpawner.SpawnBehavior">
+                                    <option value="@SpawnBehavior.Fixed">Fixed (Always same NPC)</option>
+                                    <option value="@SpawnBehavior.Random">Random (Equal probability)</option>
+                                    <option value="@SpawnBehavior.Weighted">Weighted (By weight)</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <InputTextArea class="form-control" @bind-Value="editingSpawner.Description" rows="2" />
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Min Interval (sec)</label>
+                                <InputNumber class="form-control" @bind-Value="editingSpawner.SpawnIntervalMin" min="10" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Max Interval (sec)</label>
+                                <InputNumber class="form-control" @bind-Value="editingSpawner.SpawnIntervalMax" min="10" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Max Active Creatures</label>
+                                <InputNumber class="form-control" @bind-Value="editingSpawner.MaxActiveCreatures" min="1" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Respawn on Death</label>
+                                <InputCheckbox class="form-check-input" @bind-Value="editingSpawner.RespawnOnDeath" />
+                            </div>
+                        </div>
+
+                        <h6 class="mt-3 mb-2">NPCs to Spawn</h6>
+                        <div class="mb-3">
+                            @if (selectedNpcs.Any())
+                            {
+                                <div class="list-group mb-2">
+                                    @foreach (var npc in selectedNpcs)
+                                    {
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>@npc.Name</strong>
+                                                <span class="badge bg-secondary ms-2">Level @npc.Level</span>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-danger"
+                                                    @onclick="() => RemoveNpc(npc)">
+                                                Remove
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            <div class="input-group">
+                                <select class="form-select" @bind="selectedNpcId">
+                                    <option value="0">-- Select NPC to add --</option>
+                                    @foreach (var npc in availableNpcs.Where(n => !selectedNpcs.Any(s => s.Id == n.Id)))
+                                    {
+                                        <option value="@npc.Id">@npc.Name (Level @npc.Level)</option>
+                                    }
+                                </select>
+                                <button type="button" class="btn btn-primary" @onclick="AddNpc">
+                                    <i class="oi oi-plus"></i> Add
+                                </button>
+                            </div>
+                        </div>
+
+                        <h6 class="mt-3 mb-2">Spawn Conditions (Optional)</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="spawnConditions.BlockIfPlayersPresent"
+                                                   id="blockPlayers" />
+                                    <label class="form-check-label" for="blockPlayers">Block if players present</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="spawnConditions.BlockIfCreaturesPresent"
+                                                   id="blockCreatures" />
+                                    <label class="form-check-label" for="blockCreatures">Block if creatures present</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Spawn Chance (0.0-1.0)</label>
+                                <InputNumber class="form-control" @bind-Value="spawnConditions.SpawnChance"
+                                           step="0.1" min="0.0" max="1.0" />
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="oi oi-check me-1"></i>
+                                Save
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SpawnerTemplate> spawnerTemplates = new();
+    private List<NpcTemplate> availableNpcs = new();
+    private List<NpcTemplate> selectedNpcs = new();
+    private bool loading = true;
+    private bool showDialog = false;
+    private SpawnerTemplate editingSpawner = new();
+    private SpawnConditions spawnConditions = new();
+    private int selectedNpcId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            spawnerTemplates = await DbContext.SpawnerTemplates
+                .Include(st => st.SpawnTable)
+                    .ThenInclude(sne => sne.NpcTemplate)
+                .Include(st => st.Instances)
+                .OrderBy(st => st.Name)
+                .ToListAsync();
+
+            availableNpcs = await DbContext.NpcTemplates
+                .Where(nt => nt.IsActive)
+                .OrderBy(nt => nt.Name)
+                .ToListAsync();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowCreateDialog()
+    {
+        editingSpawner = new SpawnerTemplate
+        {
+            IsActive = true,
+            SpawnBehavior = SpawnBehavior.Fixed,
+            SpawnIntervalMin = 300,
+            SpawnIntervalMax = 600,
+            MaxActiveCreatures = 1,
+            RespawnOnDeath = true,
+            CreatedBy = "Admin",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        selectedNpcs = new();
+        spawnConditions = new SpawnConditions { SpawnChance = 1.0f };
+        showDialog = true;
+    }
+
+    private async Task ShowEditDialog(SpawnerTemplate spawner)
+    {
+        editingSpawner = new SpawnerTemplate
+        {
+            Id = spawner.Id,
+            Name = spawner.Name,
+            Description = spawner.Description,
+            SpawnBehavior = spawner.SpawnBehavior,
+            SpawnIntervalMin = spawner.SpawnIntervalMin,
+            SpawnIntervalMax = spawner.SpawnIntervalMax,
+            MaxActiveCreatures = spawner.MaxActiveCreatures,
+            RespawnOnDeath = spawner.RespawnOnDeath,
+            IsActive = spawner.IsActive,
+            CreatedBy = spawner.CreatedBy,
+            CreatedAt = spawner.CreatedAt
+        };
+
+        // Load selected NPCs
+        var entries = await DbContext.SpawnerNpcEntries
+            .Include(e => e.NpcTemplate)
+            .Where(e => e.SpawnerTemplateId == spawner.Id)
+            .ToListAsync();
+        selectedNpcs = entries.Select(e => e.NpcTemplate).ToList();
+
+        // Parse conditions
+        if (!string.IsNullOrEmpty(spawner.ConditionsJson))
+        {
+            spawnConditions = JsonSerializer.Deserialize<SpawnConditions>(spawner.ConditionsJson)
+                ?? new SpawnConditions { SpawnChance = 1.0f };
+        }
+        else
+        {
+            spawnConditions = new SpawnConditions { SpawnChance = 1.0f };
+        }
+
+        showDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        editingSpawner = new();
+        selectedNpcs = new();
+        spawnConditions = new();
+    }
+
+    private void AddNpc()
+    {
+        if (selectedNpcId > 0)
+        {
+            var npc = availableNpcs.FirstOrDefault(n => n.Id == selectedNpcId);
+            if (npc != null && !selectedNpcs.Any(s => s.Id == npc.Id))
+            {
+                selectedNpcs.Add(npc);
+            }
+            selectedNpcId = 0;
+        }
+    }
+
+    private void RemoveNpc(NpcTemplate npc)
+    {
+        selectedNpcs.Remove(npc);
+    }
+
+    private async Task SaveSpawnerTemplate()
+    {
+        if (!selectedNpcs.Any())
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please add at least one NPC to the spawn table.");
+            return;
+        }
+
+        try
+        {
+            // Serialize conditions
+            editingSpawner.ConditionsJson = JsonSerializer.Serialize(spawnConditions);
+
+            if (editingSpawner.Id > 0)
+            {
+                // Update existing
+                var existing = await DbContext.SpawnerTemplates
+                    .Include(st => st.SpawnTable)
+                    .FirstOrDefaultAsync(st => st.Id == editingSpawner.Id);
+
+                if (existing != null)
+                {
+                    existing.Name = editingSpawner.Name;
+                    existing.Description = editingSpawner.Description;
+                    existing.SpawnBehavior = editingSpawner.SpawnBehavior;
+                    existing.SpawnIntervalMin = editingSpawner.SpawnIntervalMin;
+                    existing.SpawnIntervalMax = editingSpawner.SpawnIntervalMax;
+                    existing.MaxActiveCreatures = editingSpawner.MaxActiveCreatures;
+                    existing.RespawnOnDeath = editingSpawner.RespawnOnDeath;
+                    existing.ConditionsJson = editingSpawner.ConditionsJson;
+                    existing.IsActive = editingSpawner.IsActive;
+
+                    // Update spawn table
+                    DbContext.SpawnerNpcEntries.RemoveRange(existing.SpawnTable);
+                    foreach (var npc in selectedNpcs)
+                    {
+                        existing.SpawnTable.Add(new SpawnerNpcEntry
+                        {
+                            NpcTemplateId = npc.Id,
+                            Weight = 1
+                        });
+                    }
+                }
+            }
+            else
+            {
+                // Create new
+                DbContext.SpawnerTemplates.Add(editingSpawner);
+                await DbContext.SaveChangesAsync();
+
+                // Add spawn table entries
+                foreach (var npc in selectedNpcs)
+                {
+                    DbContext.SpawnerNpcEntries.Add(new SpawnerNpcEntry
+                    {
+                        SpawnerTemplateId = editingSpawner.Id,
+                        NpcTemplateId = npc.Id,
+                        Weight = 1
+                    });
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving spawner template: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteSpawnerTemplate(SpawnerTemplate spawner)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Delete spawner template '{spawner.Name}'?"))
+        {
+            try
+            {
+                DbContext.SpawnerTemplates.Remove(spawner);
+                await DbContext.SaveChangesAsync();
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting spawner template: {ex.Message}");
+            }
+        }
+    }
+}

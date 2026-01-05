@@ -1,0 +1,374 @@
+@page "/admin/npc-templates"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Data
+@inject ApplicationDbContext DbContext
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>NPC Templates - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-people text-primary me-2"></i>
+                    NPC Templates
+                </h1>
+                <div>
+                    <button class="btn btn-success" @onclick="ShowCreateDialog">
+                        <i class="oi oi-plus me-1"></i>
+                        Create NPC Template
+                    </button>
+                    <a href="/admin" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading NPC templates...</span>
+            </div>
+            <p class="mt-2">Loading NPC templates...</p>
+        </div>
+    }
+    else if (!npcTemplates.Any())
+    {
+        <div class="alert alert-info text-center">
+            <h4>No NPC Templates Found</h4>
+            <p>Create NPC templates to use with spawners.</p>
+            <button class="btn btn-success" @onclick="ShowCreateDialog">
+                <i class="oi oi-plus me-1"></i>
+                Create First NPC Template
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="oi oi-list me-2"></i>
+                            NPC Templates (@npcTemplates.Count)
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Level</th>
+                                        <th>Attributes</th>
+                                        <th>Behavior</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var npc in npcTemplates)
+                                    {
+                                        <tr class="@(!npc.IsActive ? "table-warning" : "")">
+                                            <td><strong>@npc.Id</strong></td>
+                                            <td>
+                                                <div>
+                                                    <strong>@npc.Name</strong>
+                                                    @if (npc.IsHostile)
+                                                    {
+                                                        <span class="badge bg-danger ms-2">Hostile</span>
+                                                    }
+                                                </div>
+                                                <small class="text-muted">@npc.ShortDescription</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-primary">Level @npc.Level</span>
+                                            </td>
+                                            <td>
+                                                <small>
+                                                    STR:@npc.Strength END:@npc.Endurance<br/>
+                                                    COO:@npc.Coordination QUI:@npc.Quickness<br/>
+                                                    INT:@npc.Intelligence WIL:@npc.Willpower CHA:@npc.Charisma
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    @if (npc.CanWander)
+                                                    {
+                                                        <span class="badge bg-info">Wander</span>
+                                                    }
+                                                    @if (npc.IsGroupAssist)
+                                                    {
+                                                        <span class="badge bg-warning">Group Assist</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@(npc.IsActive ? "success" : "warning")">
+                                                    @(npc.IsActive ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <button class="btn btn-outline-primary" title="Edit"
+                                                            @onclick="() => ShowEditDialog(npc)">
+                                                        <i class="oi oi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-outline-danger" title="Delete"
+                                                            @onclick="() => DeleteNpcTemplate(npc)">
+                                                        <i class="oi oi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* Create/Edit Dialog *@
+@if (showDialog)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(editingNpc?.Id > 0 ? "Edit" : "Create") NPC Template</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="editingNpc" OnValidSubmit="SaveNpcTemplate">
+                        <DataAnnotationsValidator />
+
+                        <div class="mb-3">
+                            <label class="form-label">Name *</label>
+                            <InputText class="form-control" @bind-Value="editingNpc.Name" />
+                            <ValidationMessage For="() => editingNpc.Name" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description *</label>
+                            <InputTextArea class="form-control" @bind-Value="editingNpc.Description" rows="3" />
+                            <ValidationMessage For="() => editingNpc.Description" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Short Description (for room)</label>
+                            <InputText class="form-control" @bind-Value="editingNpc.ShortDescription"
+                                       placeholder="a goblin scout" />
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Level</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Level" min="1" />
+                            </div>
+                            <div class="col-md-9 mb-3">
+                                <label class="form-label">Behavior</label>
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="editingNpc.IsHostile" id="isHostile" />
+                                    <label class="form-check-label" for="isHostile">Hostile</label>
+                                </div>
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="editingNpc.IsGroupAssist" id="isGroupAssist" />
+                                    <label class="form-check-label" for="isGroupAssist">Group Assist</label>
+                                </div>
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="editingNpc.CanWander" id="canWander" />
+                                    <label class="form-check-label" for="canWander">Can Wander</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h6 class="mb-3">Attributes</h6>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Strength</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Strength" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Endurance</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Endurance" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Coordination</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Coordination" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Quickness</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Quickness" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Intelligence</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Intelligence" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Willpower</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Willpower" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Charisma</label>
+                                <InputNumber class="form-control" @bind-Value="editingNpc.Charisma" />
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="oi oi-check me-1"></i>
+                                Save
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<NpcTemplate> npcTemplates = new();
+    private bool loading = true;
+    private bool showDialog = false;
+    private NpcTemplate editingNpc = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNpcTemplates();
+    }
+
+    private async Task LoadNpcTemplates()
+    {
+        loading = true;
+        try
+        {
+            npcTemplates = await DbContext.NpcTemplates
+                .OrderBy(n => n.Level)
+                .ThenBy(n => n.Name)
+                .ToListAsync();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ShowCreateDialog()
+    {
+        editingNpc = new NpcTemplate
+        {
+            IsActive = true,
+            Level = 1,
+            CreatedBy = "Admin",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        showDialog = true;
+    }
+
+    private void ShowEditDialog(NpcTemplate npc)
+    {
+        editingNpc = new NpcTemplate
+        {
+            Id = npc.Id,
+            Name = npc.Name,
+            Description = npc.Description,
+            ShortDescription = npc.ShortDescription,
+            Level = npc.Level,
+            Strength = npc.Strength,
+            Endurance = npc.Endurance,
+            Coordination = npc.Coordination,
+            Quickness = npc.Quickness,
+            Intelligence = npc.Intelligence,
+            Willpower = npc.Willpower,
+            Charisma = npc.Charisma,
+            IsHostile = npc.IsHostile,
+            IsGroupAssist = npc.IsGroupAssist,
+            CanWander = npc.CanWander,
+            IsActive = npc.IsActive,
+            CreatedBy = npc.CreatedBy,
+            CreatedAt = npc.CreatedAt
+        };
+        showDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        showDialog = false;
+        editingNpc = new();
+    }
+
+    private async Task SaveNpcTemplate()
+    {
+        try
+        {
+            if (editingNpc.Id > 0)
+            {
+                var existing = await DbContext.NpcTemplates.FindAsync(editingNpc.Id);
+                if (existing != null)
+                {
+                    existing.Name = editingNpc.Name;
+                    existing.Description = editingNpc.Description;
+                    existing.ShortDescription = editingNpc.ShortDescription;
+                    existing.Level = editingNpc.Level;
+                    existing.Strength = editingNpc.Strength;
+                    existing.Endurance = editingNpc.Endurance;
+                    existing.Coordination = editingNpc.Coordination;
+                    existing.Quickness = editingNpc.Quickness;
+                    existing.Intelligence = editingNpc.Intelligence;
+                    existing.Willpower = editingNpc.Willpower;
+                    existing.Charisma = editingNpc.Charisma;
+                    existing.IsHostile = editingNpc.IsHostile;
+                    existing.IsGroupAssist = editingNpc.IsGroupAssist;
+                    existing.CanWander = editingNpc.CanWander;
+                    existing.IsActive = editingNpc.IsActive;
+                }
+            }
+            else
+            {
+                DbContext.NpcTemplates.Add(editingNpc);
+            }
+
+            await DbContext.SaveChangesAsync();
+            await LoadNpcTemplates();
+            CloseDialog();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error saving NPC template: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteNpcTemplate(NpcTemplate npc)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Delete NPC template '{npc.Name}'?"))
+        {
+            try
+            {
+                DbContext.NpcTemplates.Remove(npc);
+                await DbContext.SaveChangesAsync();
+                await LoadNpcTemplates();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting NPC template: {ex.Message}");
+            }
+        }
+    }
+}

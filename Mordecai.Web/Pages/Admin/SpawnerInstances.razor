@@ -1,0 +1,428 @@
+@page "/admin/spawner-instances"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Mordecai.Game.Entities
+@using Mordecai.Web.Data
+@using Mordecai.Game.Services
+@inject ApplicationDbContext DbContext
+@inject ISpawnerService SpawnerService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@attribute [Authorize(Policy = "AdminOnly")]
+
+<PageTitle>Spawner Instances - Admin</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>
+                    <i class="oi oi-target text-primary me-2"></i>
+                    Spawner Instances
+                </h1>
+                <div>
+                    <button class="btn btn-success" @onclick="ShowPlaceDialog">
+                        <i class="oi oi-plus me-1"></i>
+                        Place Spawner
+                    </button>
+                    <a href="/admin/spawner-templates" class="btn btn-secondary ms-2">
+                        <i class="oi oi-arrow-left me-1"></i>
+                        Back to Templates
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (!spawnerInstances.Any())
+    {
+        <div class="alert alert-info text-center">
+            <h4>No Spawner Instances Found</h4>
+            <p>Place spawner templates in rooms to start spawning NPCs.</p>
+            <button class="btn btn-success" @onclick="ShowPlaceDialog">
+                <i class="oi oi-plus me-1"></i>
+                Place First Spawner
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Placed Spawners (@spawnerInstances.Count)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>ID</th>
+                                <th>Template</th>
+                                <th>Location</th>
+                                <th>Type</th>
+                                <th>Active Spawns</th>
+                                <th>Last Spawn</th>
+                                <th>Next Spawn</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var instance in spawnerInstances)
+                            {
+                                var activeCount = instance.ActiveSpawns?.Count(asp => asp.IsActive) ?? 0;
+                                <tr class="@(!instance.IsEnabled ? "table-warning" : "")">
+                                    <td><strong>@instance.Id</strong></td>
+                                    <td>
+                                        <strong>@instance.SpawnerTemplate.Name</strong><br/>
+                                        <small class="text-muted">
+                                            Max: @instance.SpawnerTemplate.MaxActiveCreatures
+                                        </small>
+                                    </td>
+                                    <td>
+                                        @if (instance.Room != null)
+                                        {
+                                            <div>
+                                                <strong>@instance.Room.Name</strong><br/>
+                                                <small class="text-muted">Room #@instance.RoomId</small>
+                                            </div>
+                                        }
+                                        else if (instance.Zone != null)
+                                        {
+                                            <div>
+                                                <strong>@instance.Zone.Name</strong><br/>
+                                                <small class="text-muted">Zone #@instance.ZoneId</small>
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-@(instance.Type == SpawnerType.RoomBound ? "primary" : "info")">
+                                            @instance.Type
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-@(activeCount > 0 ? "success" : "secondary")">
+                                            @activeCount / @instance.SpawnerTemplate.MaxActiveCreatures
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (instance.LastSpawnTime.HasValue)
+                                        {
+                                            <small>@instance.LastSpawnTime.Value.ToString("MM/dd HH:mm")</small>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Never</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (instance.NextSpawnTime.HasValue)
+                                        {
+                                            var timeUntil = instance.NextSpawnTime.Value - DateTimeOffset.UtcNow;
+                                            if (timeUntil.TotalSeconds > 0)
+                                            {
+                                                <small>@((int)timeUntil.TotalMinutes)m @timeUntil.Seconds%60s</small>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-success">Ready</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Not scheduled</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox"
+                                                   checked="@instance.IsEnabled"
+                                                   @onchange="() => ToggleSpawner(instance)" />
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-info" title="View Active Spawns"
+                                                    @onclick="() => ShowActiveSpawns(instance)">
+                                                <i class="oi oi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="Remove"
+                                                    @onclick="() => RemoveInstance(instance)">
+                                                <i class="oi oi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* Place Spawner Dialog *@
+@if (showPlaceDialog)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Place Spawner</h5>
+                    <button type="button" class="btn-close" @onclick="ClosePlaceDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Spawner Template *</label>
+                        <select class="form-select" @bind="selectedTemplateId">
+                            <option value="0">-- Select Template --</option>
+                            @foreach (var template in availableTemplates)
+                            {
+                                <option value="@template.Id">@template.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Zone *</label>
+                        <select class="form-select" @bind="selectedZoneId" @bind:after="LoadRoomsForZone">
+                            <option value="0">-- Select Zone --</option>
+                            @foreach (var zone in availableZones)
+                            {
+                                <option value="@zone.Id">@zone.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Room *</label>
+                        <select class="form-select" @bind="selectedRoomId" disabled="@(selectedZoneId == 0)">
+                            <option value="0">-- Select Room --</option>
+                            @foreach (var room in availableRooms)
+                            {
+                                <option value="@room.Id">@room.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="ClosePlaceDialog">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="PlaceSpawner">
+                        <i class="oi oi-check me-1"></i>
+                        Place Spawner
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Active Spawns Dialog *@
+@if (showActiveSpawnsDialog)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Active Spawns - @selectedInstance?.SpawnerTemplate.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseActiveSpawnsDialog"></button>
+                </div>
+                <div class="modal-body">
+                    @if (activeSpawns?.Any() == true)
+                    {
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>NPC</th>
+                                    <th>Location</th>
+                                    <th>Spawned</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var spawn in activeSpawns)
+                                {
+                                    <tr>
+                                        <td>@spawn.NpcTemplate.Name</td>
+                                        <td>@spawn.CurrentRoom?.Name</td>
+                                        <td>@spawn.SpawnedAt.ToString("MM/dd HH:mm:ss")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-center text-muted">No active spawns</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseActiveSpawnsDialog">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<SpawnerInstance> spawnerInstances = new();
+    private List<SpawnerTemplate> availableTemplates = new();
+    private List<Zone> availableZones = new();
+    private List<Room> availableRooms = new();
+    private List<ActiveSpawn> activeSpawns = new();
+    private bool loading = true;
+    private bool showPlaceDialog = false;
+    private bool showActiveSpawnsDialog = false;
+    private int selectedTemplateId = 0;
+    private int selectedZoneId = 0;
+    private int selectedRoomId = 0;
+    private SpawnerInstance? selectedInstance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        loading = true;
+        try
+        {
+            spawnerInstances = await DbContext.SpawnerInstances
+                .Include(si => si.SpawnerTemplate)
+                .Include(si => si.Room)
+                .Include(si => si.Zone)
+                .Include(si => si.ActiveSpawns.Where(asp => asp.IsActive))
+                    .ThenInclude(asp => asp.NpcTemplate)
+                .OrderBy(si => si.Room != null ? si.Room.Name : si.Zone!.Name)
+                .ToListAsync();
+
+            availableTemplates = await DbContext.SpawnerTemplates
+                .Where(st => st.IsActive)
+                .OrderBy(st => st.Name)
+                .ToListAsync();
+
+            availableZones = await DbContext.Zones
+                .Where(z => z.IsActive)
+                .OrderBy(z => z.Name)
+                .ToListAsync();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task LoadRoomsForZone()
+    {
+        if (selectedZoneId > 0)
+        {
+            availableRooms = await DbContext.Rooms
+                .Where(r => r.ZoneId == selectedZoneId && r.IsActive)
+                .OrderBy(r => r.Name)
+                .ToListAsync();
+            selectedRoomId = 0;
+        }
+        else
+        {
+            availableRooms.Clear();
+            selectedRoomId = 0;
+        }
+    }
+
+    private void ShowPlaceDialog()
+    {
+        selectedTemplateId = 0;
+        selectedZoneId = 0;
+        selectedRoomId = 0;
+        availableRooms.Clear();
+        showPlaceDialog = true;
+    }
+
+    private void ClosePlaceDialog()
+    {
+        showPlaceDialog = false;
+    }
+
+    private async Task PlaceSpawner()
+    {
+        if (selectedTemplateId == 0 || selectedRoomId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select a template and room.");
+            return;
+        }
+
+        try
+        {
+            var instance = new SpawnerInstance
+            {
+                SpawnerTemplateId = selectedTemplateId,
+                Type = SpawnerType.RoomBound,
+                RoomId = selectedRoomId,
+                IsEnabled = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            DbContext.SpawnerInstances.Add(instance);
+            await DbContext.SaveChangesAsync();
+            await LoadData();
+            ClosePlaceDialog();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error placing spawner: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleSpawner(SpawnerInstance instance)
+    {
+        try
+        {
+            await SpawnerService.SetSpawnerEnabledAsync(instance.Id, !instance.IsEnabled);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error toggling spawner: {ex.Message}");
+        }
+    }
+
+    private async Task ShowActiveSpawns(SpawnerInstance instance)
+    {
+        selectedInstance = instance;
+        activeSpawns = (await SpawnerService.GetActiveSpawnsAsync(instance.Id)).ToList();
+        showActiveSpawnsDialog = true;
+    }
+
+    private void CloseActiveSpawnsDialog()
+    {
+        showActiveSpawnsDialog = false;
+        selectedInstance = null;
+        activeSpawns.Clear();
+    }
+
+    private async Task RemoveInstance(SpawnerInstance instance)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Remove spawner instance from {instance.Room?.Name ?? instance.Zone?.Name}?"))
+        {
+            try
+            {
+                DbContext.SpawnerInstances.Remove(instance);
+                await DbContext.SaveChangesAsync();
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error removing spawner instance: {ex.Message}");
+            }
+        }
+    }
+}
