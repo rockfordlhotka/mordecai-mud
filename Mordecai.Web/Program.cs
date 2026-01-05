@@ -98,6 +98,9 @@ builder.Services.AddHostedService<Mordecai.BackgroundServices.SpawnerTickService
 // Add character message broadcast service as singleton
 builder.Services.AddSingleton<CharacterMessageBroadcastService>();
 
+// Add combat message broadcast service as hosted background service
+builder.Services.AddHostedService<CombatMessageBroadcastService>();
+
 // Add target resolution service as scoped
 builder.Services.AddScoped<TargetResolutionService>();
 
