@@ -8,7 +8,9 @@
 @using Mordecai.Messaging.Services
 @using Mordecai.Messaging.Messages
 @using Mordecai.Game.Entities
+@using Mordecai.Game.Services
 @using Mordecai.Web.Data
+@using Microsoft.EntityFrameworkCore
 @using System.Threading
 @using System.Linq
 @attribute [Authorize]
@@ -23,6 +25,8 @@
 @inject IDoorInteractionService DoorInteractionService
 @inject IEquipmentService EquipmentService
 @inject IItemTemplateService ItemTemplateService
+@inject ISpawnerService SpawnerService
+@inject ApplicationDbContext DbContext
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
 @inject ICurrencyService CurrencyService
@@ -649,7 +653,24 @@
                     break;
 
                 case "rezz":
-                    await HandleRezzCommand(parts);
+                case "spawn-item":
+                    await HandleSpawnItemCommand(parts);
+                    break;
+
+                case "spawn-npc":
+                    await HandleSpawnNpcCommand(parts);
+                    break;
+
+                case "despawn":
+                    await HandleDespawnCommand(parts);
+                    break;
+
+                case "list-npcs":
+                    await HandleListNpcsCommand(parts);
+                    break;
+
+                case "list-items":
+                    await HandleListItemsCommand(parts);
                     break;
 
                 case "open":
@@ -864,11 +885,11 @@
         }
     }
 
-    private async Task HandleRezzCommand(string[] parts)
+    private async Task HandleSpawnItemCommand(string[] parts)
     {
         if (!isCurrentUserAdmin)
         {
-            AddMessage("Only administrators can use the rezz command.", "text-danger");
+            AddMessage("Only administrators can use the spawn-item command.", "text-danger");
             return;
         }
 
@@ -880,7 +901,8 @@
 
         if (parts.Length < 2)
         {
-            AddMessage("Usage: rezz [item template id or name]", "text-warning");
+            AddMessage("Usage: spawn-item [item template id or name]", "text-warning");
+            AddMessage("Use 'list-items' to see available items.", "text-info");
             return;
         }
 
@@ -904,15 +926,16 @@
             if (template == null)
             {
                 AddMessage($"No item template matches '{identifier}'.", "text-warning");
+                AddMessage("Use 'list-items' to see available items.", "text-info");
                 return;
             }
 
             var creationResult = await EquipmentService.CreateItemForCharacterAsync(characterId.Value, currentUserId, template.Id);
             var creationClass = creationResult.Success ? "text-success" : "text-warning";
-            AddMessage(creationResult.Message, creationClass);
 
             if (!creationResult.Success || creationResult.Item == null)
             {
+                AddMessage(creationResult.Message, creationClass);
                 return;
             }
 
@@ -920,16 +943,288 @@
 
             if (equipResult.Success)
             {
-                AddMessage("The item manifests in your primary hand.", "text-success");
+                AddMessage($"[ADMIN] {template.Name} spawned and equipped to your primary hand.", "text-success");
             }
             else
             {
-                AddMessage($"Item created but could not be equipped: {equipResult.Message}", "text-warning");
+                AddMessage($"[ADMIN] {template.Name} spawned but could not be equipped: {equipResult.Message}", "text-warning");
             }
         }
         catch (Exception ex)
         {
             AddMessage($"Error using rezz: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleSpawnNpcCommand(string[] parts)
+    {
+        if (!isCurrentUserAdmin)
+        {
+            AddMessage("Only administrators can use the spawn-npc command.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("You must be in a room to spawn an NPC.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Usage: spawn-npc [npc template id or name]", "text-warning");
+            return;
+        }
+
+        try
+        {
+            var identifier = string.Join(" ", parts.Skip(1));
+            NpcTemplate? template = null;
+
+            if (int.TryParse(parts[1], out var templateId))
+            {
+                template = await DbContext.NpcTemplates.FindAsync(templateId);
+            }
+
+            if (template == null)
+            {
+                var templates = await DbContext.NpcTemplates.ToListAsync();
+                template = templates
+                    .FirstOrDefault(t => t.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (template == null)
+            {
+                AddMessage($"No NPC template matches '{identifier}'.", "text-warning");
+                AddMessage("Use 'list-npcs' to see available NPCs.", "text-info");
+                return;
+            }
+
+            // Create a temporary spawner template and instance for this admin spawn
+            var spawnerTemplate = new SpawnerTemplate
+            {
+                Name = $"[ADMIN] Temporary Spawner - {template.Name}",
+                Description = "Created by admin spawn command",
+                SpawnBehavior = SpawnBehavior.Fixed,
+                SpawnIntervalMin = 0,
+                SpawnIntervalMax = 0,
+                MaxActiveCreatures = 1,
+                RespawnOnDeath = false,
+                CreatedBy = "admin-command",
+                IsActive = true
+            };
+
+            DbContext.SpawnerTemplates.Add(spawnerTemplate);
+            await DbContext.SaveChangesAsync();
+
+            // Create the instance
+            var spawnerInstance = new SpawnerInstance
+            {
+                SpawnerTemplateId = spawnerTemplate.Id,
+                Type = SpawnerType.RoomBound,
+                RoomId = currentRoomId.Value,
+                IsEnabled = true,
+                NextSpawnTime = DateTimeOffset.UtcNow
+            };
+
+            DbContext.SpawnerInstances.Add(spawnerInstance);
+            await DbContext.SaveChangesAsync();
+
+            // Add the NPC to the spawn table
+            var spawnEntry = new SpawnerNpcEntry
+            {
+                SpawnerTemplateId = spawnerTemplate.Id,
+                NpcTemplateId = template.Id,
+                Weight = 100
+            };
+
+            DbContext.SpawnerNpcEntries.Add(spawnEntry);
+            await DbContext.SaveChangesAsync();
+
+            // Spawn the NPC immediately
+            var npcId = await SpawnerService.TrySpawnNpcAsync(spawnerInstance.Id);
+
+            if (npcId.HasValue)
+            {
+                AddMessage($"[ADMIN] {template.Name} spawned successfully.", "text-success");
+                await RefreshCurrentRoomAsync();
+            }
+            else
+            {
+                AddMessage($"Failed to spawn {template.Name}.", "text-danger");
+                // Clean up the temporary spawner
+                DbContext.SpawnerInstances.Remove(spawnerInstance);
+                DbContext.SpawnerTemplates.Remove(spawnerTemplate);
+                await DbContext.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error spawning NPC: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleDespawnCommand(string[] parts)
+    {
+        if (!isCurrentUserAdmin)
+        {
+            AddMessage("Only administrators can use the despawn command.", "text-danger");
+            return;
+        }
+
+        if (!currentRoomId.HasValue)
+        {
+            AddMessage("You must be in a room to despawn an NPC.", "text-danger");
+            return;
+        }
+
+        if (parts.Length < 2)
+        {
+            AddMessage("Usage: despawn [npc name or 'all']", "text-warning");
+            return;
+        }
+
+        try
+        {
+            var identifier = string.Join(" ", parts.Skip(1));
+
+            // Get all active spawns in current room
+            var activeSpawns = await DbContext.ActiveSpawns
+                .Include(a => a.NpcTemplate)
+                .Include(a => a.SpawnerInstance)
+                .Where(a => a.SpawnerInstance != null && a.SpawnerInstance.RoomId == currentRoomId.Value)
+                .ToListAsync();
+
+            if (!activeSpawns.Any())
+            {
+                AddMessage("There are no spawned NPCs in this room.", "text-warning");
+                return;
+            }
+
+            if (identifier.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                var count = 0;
+                foreach (var spawn in activeSpawns)
+                {
+                    await SpawnerService.DespawnNpcAsync(spawn.NpcId, DespawnReason.AdminCommand);
+                    count++;
+                }
+                AddMessage($"[ADMIN] Despawned {count} NPC(s).", "text-success");
+                await RefreshCurrentRoomAsync();
+                return;
+            }
+
+            // Find specific NPC by name
+            var matchingSpawn = activeSpawns
+                .FirstOrDefault(a => a.NpcTemplate.Name.Equals(identifier, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingSpawn == null)
+            {
+                AddMessage($"No NPC named '{identifier}' found in this room.", "text-warning");
+                AddMessage($"Available: {string.Join(", ", activeSpawns.Select(a => a.NpcTemplate.Name))}", "text-info");
+                return;
+            }
+
+            await SpawnerService.DespawnNpcAsync(matchingSpawn.NpcId, DespawnReason.AdminCommand);
+            AddMessage($"[ADMIN] {matchingSpawn.NpcTemplate.Name} despawned.", "text-success");
+            await RefreshCurrentRoomAsync();
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error despawning NPC: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleListNpcsCommand(string[] parts)
+    {
+        if (!isCurrentUserAdmin)
+        {
+            AddMessage("Only administrators can use the list-npcs command.", "text-danger");
+            return;
+        }
+
+        try
+        {
+            var searchTerm = parts.Length > 1 ? string.Join(" ", parts.Skip(1)) : null;
+            var templates = await DbContext.NpcTemplates.ToListAsync();
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                templates = templates
+                    .Where(t => t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                               t.Description.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            if (!templates.Any())
+            {
+                AddMessage("No NPC templates found.", "text-warning");
+                return;
+            }
+
+            AddMessage("=== Available NPC Templates ===", "text-info");
+            foreach (var template in templates.OrderBy(t => t.Id))
+            {
+                var level = template.Level > 0 ? $" (Level {template.Level})" : "";
+                AddMessage($"  [{template.Id}] {template.Name}{level}", "text-muted");
+                if (!string.IsNullOrWhiteSpace(template.ShortDescription))
+                {
+                    AddMessage($"      {template.ShortDescription}", "text-muted");
+                }
+            }
+            AddMessage($"Total: {templates.Count} template(s)", "text-info");
+            AddMessage("Use 'spawn-npc [id or name]' to spawn an NPC.", "text-info");
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error listing NPCs: {ex.Message}", "text-danger");
+        }
+    }
+
+    private async Task HandleListItemsCommand(string[] parts)
+    {
+        if (!isCurrentUserAdmin)
+        {
+            AddMessage("Only administrators can use the list-items command.", "text-danger");
+            return;
+        }
+
+        try
+        {
+            var searchTerm = parts.Length > 1 ? string.Join(" ", parts.Skip(1)) : null;
+            var templates = await ItemTemplateService.GetItemTemplatesAsync(includeInactive: true);
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                templates = templates
+                    .Where(t => t.Name.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                               t.Description.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            if (!templates.Any())
+            {
+                AddMessage("No item templates found.", "text-warning");
+                return;
+            }
+
+            AddMessage("=== Available Item Templates ===", "text-info");
+            foreach (var template in templates.OrderBy(t => t.Id))
+            {
+                var status = template.IsActive ? "" : " (Inactive)";
+                var type = template.ItemType.ToString();
+                AddMessage($"  [{template.Id}] {template.Name} ({type}){status}", "text-muted");
+                if (!string.IsNullOrWhiteSpace(template.ShortDescription))
+                {
+                    AddMessage($"      {template.ShortDescription}", "text-muted");
+                }
+            }
+            AddMessage($"Total: {templates.Count} template(s)", "text-info");
+            AddMessage("Use 'spawn-item [id or name]' to spawn an item.", "text-info");
+        }
+        catch (Exception ex)
+        {
+            AddMessage($"Error listing items: {ex.Message}", "text-danger");
         }
     }
 
