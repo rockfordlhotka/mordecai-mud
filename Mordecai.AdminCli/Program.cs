@@ -79,15 +79,16 @@ public class Program
         var baseDirectory = AppContext.BaseDirectory;
         
         // Build configuration (includes environment variables and user secrets)
+        // Priority: Environment variables > User Secrets > appsettings.json
+        // (later sources override earlier ones)
         var configuration = new ConfigurationBuilder()
             .SetBasePath(baseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-            .AddEnvironmentVariables()
             .AddUserSecrets<Program>(optional: true)
+            .AddEnvironmentVariables()
             .Build();
 
-        // Build PostgreSQL connection string from environment variables (cloud-native)
-        // Priority: Environment variables > User Secrets > appsettings.json
+        // Build PostgreSQL connection string from configuration
         var dbHost = configuration["Database:Host"] ?? "localhost";
         var dbPort = configuration["Database:Port"] ?? "5432";
         var dbName = configuration["Database:Name"] ?? "mordecai";
