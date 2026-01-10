@@ -144,13 +144,13 @@
 </div>
 
 @* Create/Edit Dialog *@
-@if (showDialog)
+@if (showDialog && editingNpc is not null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">@(editingNpc?.Id > 0 ? "Edit" : "Create") NPC Template</h5>
+                    <h5 class="modal-title">@(editingNpc.Id > 0 ? "Edit" : "Create") NPC Template</h5>
                     <button type="button" class="btn-close" @onclick="CloseDialog"></button>
                 </div>
                 <div class="modal-body">

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Mordecai.Messaging.Messages;
 using Mordecai.Messaging.Services;
@@ -10,17 +11,17 @@ namespace Mordecai.Web.Services;
 public sealed class CombatMessageBroadcastService : BackgroundService
 {
     private readonly IGameMessageSubscriberFactory _subscriberFactory;
-    private readonly ISoundPropagationService _soundPropagationService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<CombatMessageBroadcastService> _logger;
     private IGameMessageSubscriber? _subscriber;
 
     public CombatMessageBroadcastService(
         IGameMessageSubscriberFactory subscriberFactory,
-        ISoundPropagationService soundPropagationService,
+        IServiceScopeFactory scopeFactory,
         ILogger<CombatMessageBroadcastService> logger)
     {
         _subscriberFactory = subscriberFactory ?? throw new ArgumentNullException(nameof(subscriberFactory));
-        _soundPropagationService = soundPropagationService ?? throw new ArgumentNullException(nameof(soundPropagationService));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -79,7 +80,10 @@ public sealed class CombatMessageBroadcastService : BackgroundService
     {
         var description = $"{message.InitiatorName} attacking {message.TargetName}";
 
-        await _soundPropagationService.PropagateSound(
+        using var scope = _scopeFactory.CreateScope();
+        var soundPropagationService = scope.ServiceProvider.GetRequiredService<ISoundPropagationService>();
+
+        await soundPropagationService.PropagateSound(
             message.LocationRoomId,
             message.SoundLevel,
             SoundType.Combat,
@@ -104,7 +108,10 @@ public sealed class CombatMessageBroadcastService : BackgroundService
 
         var description = $"{message.AttackerName} {descriptor}";
 
-        await _soundPropagationService.PropagateSound(
+        using var scope = _scopeFactory.CreateScope();
+        var soundPropagationService = scope.ServiceProvider.GetRequiredService<ISoundPropagationService>();
+
+        await soundPropagationService.PropagateSound(
             message.LocationRoomId,
             message.SoundLevel,
             SoundType.Combat,
@@ -126,7 +133,10 @@ public sealed class CombatMessageBroadcastService : BackgroundService
             ? $"{message.WinnerName} victorious"
             : "combat ending";
 
-        await _soundPropagationService.PropagateSound(
+        using var scope = _scopeFactory.CreateScope();
+        var soundPropagationService = scope.ServiceProvider.GetRequiredService<ISoundPropagationService>();
+
+        await soundPropagationService.PropagateSound(
             message.LocationRoomId,
             SoundLevel.Normal,
             SoundType.Combat,
