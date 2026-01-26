@@ -96,33 +96,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TGT-01 | TBD | Pending |
-| TGT-02 | TBD | Pending |
-| TGT-03 | TBD | Pending |
-| ORCH-01 | TBD | Pending |
-| ORCH-02 | TBD | Pending |
-| ORCH-03 | TBD | Pending |
-| ORCH-04 | TBD | Pending |
-| AI-01 | TBD | Pending |
-| AI-02 | TBD | Pending |
-| AI-03 | TBD | Pending |
-| AI-04 | TBD | Pending |
-| TICK-01 | TBD | Pending |
-| TICK-02 | TBD | Pending |
-| TICK-03 | TBD | Pending |
-| TICK-04 | TBD | Pending |
-| TICK-05 | TBD | Pending |
-| MSG-01 | TBD | Pending |
-| MSG-02 | TBD | Pending |
-| MSG-03 | TBD | Pending |
-| MECH-01 | TBD | Pending |
-| MULT-01 | TBD | Pending |
+| TGT-01 | Phase 1 | Pending |
+| TGT-02 | Phase 1 | Pending |
+| TGT-03 | Phase 1 | Pending |
+| ORCH-01 | Phase 2 | Pending |
+| ORCH-02 | Phase 2 | Pending |
+| ORCH-03 | Phase 2 | Pending |
+| ORCH-04 | Phase 2 | Pending |
+| MSG-01 | Phase 3 | Pending |
+| MSG-02 | Phase 3 | Pending |
+| MSG-03 | Phase 3 | Pending |
+| TICK-01 | Phase 3 | Pending |
+| TICK-02 | Phase 3 | Pending |
+| TICK-03 | Phase 3 | Pending |
+| TICK-04 | Phase 3 | Pending |
+| AI-01 | Phase 4 | Pending |
+| AI-02 | Phase 4 | Pending |
+| AI-03 | Phase 4 | Pending |
+| AI-04 | Phase 4 | Pending |
+| TICK-05 | Phase 4 | Pending |
+| MECH-01 | Phase 5 | Pending |
+| MULT-01 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 20 total
-- Mapped to phases: 0 (awaiting roadmap)
-- Unmapped: 20 ⚠️
+- v1 requirements: 21 total
+- Mapped to phases: 21
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-01-26*
-*Last updated: 2026-01-26 after initial definition*
+*Last updated: 2026-01-26 after roadmap creation*
