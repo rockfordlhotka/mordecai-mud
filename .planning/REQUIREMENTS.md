@@ -9,9 +9,9 @@ Requirements for initial NPC combat system. Each maps to roadmap phases.
 
 ### Target Resolution
 
-- [ ] **TGT-01**: TargetResolutionService queries ActiveSpawn entities instead of simulated NPC data
-- [ ] **TGT-02**: ActiveSpawn entities track CurrentRoomId for room-based targeting
-- [ ] **TGT-03**: "attack goblin" command resolves to correct ActiveSpawn NPC in same room as player
+- [x] **TGT-01**: TargetResolutionService queries ActiveSpawn entities instead of simulated NPC data
+- [x] **TGT-02**: ActiveSpawn entities track CurrentRoomId for room-based targeting
+- [x] **TGT-03**: "attack goblin" command resolves to correct ActiveSpawn NPC in same room as player
 
 ### Combat Orchestration
 
@@ -96,9 +96,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TGT-01 | Phase 1 | Pending |
-| TGT-02 | Phase 1 | Pending |
-| TGT-03 | Phase 1 | Pending |
+| TGT-01 | Phase 1 | Complete |
+| TGT-02 | Phase 1 | Complete |
+| TGT-03 | Phase 1 | Complete |
 | ORCH-01 | Phase 2 | Pending |
 | ORCH-02 | Phase 2 | Pending |
 | ORCH-03 | Phase 2 | Pending |
@@ -125,4 +125,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-01-26*
-*Last updated: 2026-01-26 after roadmap creation*
+*Last updated: 2026-01-26 after Phase 1 execution*

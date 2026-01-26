@@ -12,7 +12,7 @@ This roadmap delivers real-time NPC combat through five phases: first enabling N
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Target Resolution** - Enable NPCs to be targeted for combat via ActiveSpawn entities
+- [x] **Phase 1: Target Resolution** - Enable NPCs to be targeted for combat via ActiveSpawn entities
 - [ ] **Phase 2: Combat Orchestration** - Manage combat session lifecycle (create, track, end)
 - [ ] **Phase 3: Messaging & Round Tick** - Broadcast combat to room and process health pools continuously
 - [ ] **Phase 4: NPC AI Behavior** - NPCs make autonomous combat decisions (attack, defend, flee)
@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 1 plan
 
 Plans:
-- [ ] 01-01-PLAN.md - Implement real NPC target resolution with disambiguation
+- [x] 01-01-PLAN.md - Implement real NPC target resolution with disambiguation
 
 ### Phase 2: Combat Orchestration
 **Goal**: Combat sessions manage participant state from first attack to death/flee
@@ -98,7 +98,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Target Resolution | 0/1 | Planned | - |
+| 1. Target Resolution | 1/1 | Complete | 2026-01-26 |
 | 2. Combat Orchestration | 0/1 | Not started | - |
 | 3. Messaging & Round Tick | 0/2 | Not started | - |
 | 4. NPC AI Behavior | 0/2 | Not started | - |
