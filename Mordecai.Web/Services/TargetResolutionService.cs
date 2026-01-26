@@ -16,6 +16,29 @@ public sealed record CommunicationTarget(
 );
 
 /// <summary>
+/// Result of NPC target resolution
+/// </summary>
+public abstract record NpcResolutionResult;
+
+/// <summary>
+/// Single NPC found matching the search term
+/// </summary>
+public sealed record NpcFound(CommunicationTarget Target) : NpcResolutionResult;
+
+/// <summary>
+/// No NPC found matching the search term
+/// </summary>
+public sealed record NpcNotFound(string SearchTerm) : NpcResolutionResult;
+
+/// <summary>
+/// Multiple NPCs match - disambiguation required
+/// </summary>
+public sealed record MultipleNpcsFound(
+    string SearchTerm,
+    IReadOnlyList<CommunicationTarget> Matches
+) : NpcResolutionResult;
+
+/// <summary>
 /// Service for resolving communication targets (characters, NPCs, mobs) by name within rooms
 /// </summary>
 public class TargetResolutionService

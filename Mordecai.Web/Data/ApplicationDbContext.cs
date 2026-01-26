@@ -559,6 +559,7 @@ public class ApplicationDbContext : IdentityDbContext
             entity.HasIndex(asp => asp.IsActive);
             entity.HasIndex(asp => asp.SpawnedAt);
             entity.HasIndex(asp => new { asp.SpawnerInstanceId, asp.IsActive });
+            entity.HasIndex(asp => asp.CurrentRoomId);
 
             entity.Property(asp => asp.DespawnReason)
                 .HasConversion<int?>();

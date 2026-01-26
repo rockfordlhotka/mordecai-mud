@@ -161,12 +161,9 @@ public sealed class CombatSoundPropagationTests
 
         adjacencyService.AddAdjacentRoom(roomId, new AdjacentRoomInfo(301, 1, "north", "south", new List<string> { "north" }));
 
-        var subscriberFactory = new TestSubscriberFactory();
-        var broadcastService = new CombatMessageBroadcastService(
-            subscriberFactory,
-            soundPropagation,
-            NullLogger<CombatMessageBroadcastService>.Instance
-        );
+        // Note: CombatMessageBroadcastService is a BackgroundService that requires IServiceScopeFactory.
+        // This test validates sound propagation directly through the SoundPropagationService,
+        // which is what the broadcast service internally uses.
 
         // Act - Simulate combat events
         var combatStarted = new CombatStarted(
