@@ -28,10 +28,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. "attack goblin" command finds the correct ActiveSpawn NPC in the player's room
   2. ActiveSpawn entities have CurrentRoomId populated and queryable
   3. TargetResolutionService returns real NPC data instead of simulated/hardcoded values
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md - Implement real NPC target resolution with disambiguation
 
 ### Phase 2: Combat Orchestration
 **Goal**: Combat sessions manage participant state from first attack to death/flee
@@ -98,7 +98,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Target Resolution | 0/1 | Not started | - |
+| 1. Target Resolution | 0/1 | Planned | - |
 | 2. Combat Orchestration | 0/1 | Not started | - |
 | 3. Messaging & Round Tick | 0/2 | Not started | - |
 | 4. NPC AI Behavior | 0/2 | Not started | - |
