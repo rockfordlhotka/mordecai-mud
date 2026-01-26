@@ -83,21 +83,14 @@ public class TargetResolutionService
             if (partialCharacterMatch != null)
                 return partialCharacterMatch;
 
-            // TODO: Add NPC and Mob searches when those entities are implemented
-            // For now, we'll return placeholder data to demonstrate the system
-
-            // Simulate some NPCs and mobs that might be in rooms for testing
-            var simulatedTargets = GetSimulatedTargetsInRoom(roomId);
-            var simulatedMatch = simulatedTargets.FirstOrDefault(t => 
-                t.Name.ToLowerInvariant().Contains(searchName) ||
-                t.Name.ToLowerInvariant().StartsWith(searchName));
-
-            if (simulatedMatch != null)
+            // Try NPC match using real ActiveSpawn entities
+            var npcResult = await FindNpcInRoomAsync(searchName, roomId);
+            if (npcResult is NpcFound found)
             {
-                _logger.LogDebug("Found simulated target {TargetName} of type {TargetType} in room {RoomId}", 
-                    simulatedMatch.Name, simulatedMatch.Type, roomId);
-                return simulatedMatch;
+                _logger.LogDebug("Found NPC {TargetName} in room {RoomId}", found.Target.Name, roomId);
+                return found.Target;
             }
+            // Note: For now, multiple matches returns null (caller should use FindNpcInRoomAsync directly for disambiguation)
 
             return null;
         }
@@ -129,8 +122,19 @@ public class TargetResolutionService
 
             targets.AddRange(charactersInRoom);
 
-            // Add simulated NPCs and mobs
-            targets.AddRange(GetSimulatedTargetsInRoom(roomId));
+            // Get all active NPCs in the room
+            var npcsInRoom = await _context.ActiveSpawns
+                .AsNoTracking()
+                .Where(asp => asp.IsActive && asp.CurrentRoomId == roomId)
+                .Include(asp => asp.NpcTemplate)
+                .Select(asp => new CommunicationTarget(
+                    asp.NpcId,
+                    asp.NpcTemplate.Name,
+                    TargetType.Npc,
+                    true))
+                .ToListAsync();
+
+            targets.AddRange(npcsInRoom);
 
             return targets.OrderBy(t => t.Name).ToList();
         }
@@ -139,6 +143,127 @@ public class TargetResolutionService
             _logger.LogError(ex, "Error getting targets in room {RoomId}", roomId);
             return Array.Empty<CommunicationTarget>();
         }
+    }
+
+    /// <summary>
+    /// Finds NPC(s) matching the search term in the specified room.
+    /// Supports prefix matching (case-insensitive) and numeric disambiguation suffix.
+    /// </summary>
+    /// <param name="searchInput">Target string (e.g., "goblin", "gob", "goblin 2")</param>
+    /// <param name="roomId">Room ID to search within</param>
+    /// <returns>Resolution result indicating found, not found, or multiple matches</returns>
+    public async Task<NpcResolutionResult> FindNpcInRoomAsync(string searchInput, int roomId)
+    {
+        if (string.IsNullOrWhiteSpace(searchInput))
+            return new NpcNotFound(string.Empty);
+
+        // Parse input for numeric suffix: "goblin 2" -> searchTerm="goblin", index=2
+        var (searchTerm, disambiguationIndex) = ParseSearchInput(searchInput.Trim());
+        var normalizedSearchTerm = searchTerm.ToLowerInvariant();
+
+        try
+        {
+            // Query ActiveSpawns with filters
+            var matchingSpawns = await _context.ActiveSpawns
+                .AsNoTracking()
+                .Where(asp => asp.IsActive && asp.CurrentRoomId == roomId)
+                .Include(asp => asp.NpcTemplate)
+                .Where(asp => asp.NpcTemplate.Name.ToLower().StartsWith(normalizedSearchTerm))
+                .OrderBy(asp => asp.NpcTemplate.Name)
+                .ThenBy(asp => asp.Id)
+                .ToListAsync();
+
+            if (matchingSpawns.Count == 0)
+            {
+                _logger.LogDebug("No NPC matching '{SearchTerm}' found in room {RoomId}", searchTerm, roomId);
+                return new NpcNotFound(searchTerm);
+            }
+
+            // Handle disambiguation
+            if (disambiguationIndex.HasValue)
+            {
+                // User specified index (1-based)
+                var index = disambiguationIndex.Value - 1; // Convert to 0-based
+                if (index >= 0 && index < matchingSpawns.Count)
+                {
+                    var selected = matchingSpawns[index];
+                    var target = new CommunicationTarget(
+                        selected.NpcId,
+                        selected.NpcTemplate.Name,
+                        TargetType.Npc,
+                        true);
+                    _logger.LogDebug("Disambiguated to NPC '{NpcName}' (index {Index}) in room {RoomId}",
+                        target.Name, disambiguationIndex.Value, roomId);
+                    return new NpcFound(target);
+                }
+                else
+                {
+                    _logger.LogDebug("Invalid disambiguation index {Index} for '{SearchTerm}' (only {Count} matches) in room {RoomId}",
+                        disambiguationIndex.Value, searchTerm, matchingSpawns.Count, roomId);
+                    return new NpcNotFound($"{searchTerm} {disambiguationIndex.Value}");
+                }
+            }
+
+            // Single match - return directly
+            if (matchingSpawns.Count == 1)
+            {
+                var spawn = matchingSpawns[0];
+                var target = new CommunicationTarget(
+                    spawn.NpcId,
+                    spawn.NpcTemplate.Name,
+                    TargetType.Npc,
+                    true);
+                _logger.LogDebug("Found single NPC '{NpcName}' in room {RoomId}", target.Name, roomId);
+                return new NpcFound(target);
+            }
+
+            // Multiple matches - return disambiguation list
+            var matches = matchingSpawns
+                .Select(asp => new CommunicationTarget(
+                    asp.NpcId,
+                    asp.NpcTemplate.Name,
+                    TargetType.Npc,
+                    true))
+                .ToList();
+
+            _logger.LogDebug("Multiple NPCs ({Count}) matching '{SearchTerm}' found in room {RoomId}",
+                matches.Count, searchTerm, roomId);
+            return new MultipleNpcsFound(searchTerm, matches);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error finding NPC '{SearchInput}' in room {RoomId}", searchInput, roomId);
+            return new NpcNotFound(searchTerm);
+        }
+    }
+
+    /// <summary>
+    /// Parses search input for disambiguation suffix.
+    /// "goblin" -> ("goblin", null)
+    /// "goblin 2" -> ("goblin", 2)
+    /// "goblin warrior" -> ("goblin warrior", null)
+    /// "goblin warrior 2" -> ("goblin warrior", 2)
+    /// </summary>
+    private static (string SearchTerm, int? Index) ParseSearchInput(string input)
+    {
+        var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 0)
+            return (string.Empty, null);
+
+        if (parts.Length == 1)
+            return (parts[0], null);
+
+        // Check if last token is numeric
+        if (int.TryParse(parts[^1], out var index) && index > 0)
+        {
+            // Last token is a positive integer - it's a disambiguation index
+            var searchTerm = string.Join(' ', parts[..^1]);
+            return (searchTerm, index);
+        }
+
+        // Last token is not numeric - entire input is the search term
+        return (input, null);
     }
 
     private async Task<CommunicationTarget?> FindCharacterByNameAsync(
@@ -176,39 +301,6 @@ public class TargetResolutionService
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Simulated targets for demonstration purposes
-    /// TODO: Replace with actual NPC/Mob entities when implemented
-    /// </summary>
-    private static List<CommunicationTarget> GetSimulatedTargetsInRoom(int roomId)
-    {
-        return roomId switch
-        {
-            1 => new List<CommunicationTarget>
-            {
-                new(Guid.NewGuid(), "village guard", TargetType.Npc),
-                new(Guid.NewGuid(), "merchant", TargetType.Npc),
-                new(Guid.NewGuid(), "stray cat", TargetType.Mob),
-            },
-            2 => new List<CommunicationTarget>
-            {
-                new(Guid.NewGuid(), "innkeeper", TargetType.Npc),
-                new(Guid.NewGuid(), "tavern wench", TargetType.Npc),
-                new(Guid.NewGuid(), "drunk patron", TargetType.Npc),
-            },
-            3 => new List<CommunicationTarget>
-            {
-                new(Guid.NewGuid(), "forest sprite", TargetType.Mob),
-                new(Guid.NewGuid(), "ancient oak", TargetType.Npc),
-                new(Guid.NewGuid(), "woodland fox", TargetType.Mob),
-            },
-            _ => new List<CommunicationTarget>
-            {
-                new(Guid.NewGuid(), "mysterious figure", TargetType.Npc),
-            }
-        };
     }
 
     /// <summary>
