@@ -15,39 +15,39 @@ Requirements for initial NPC combat system. Each maps to roadmap phases.
 
 ### Combat Orchestration
 
-- [ ] **ORCH-01**: Attacking an NPC creates CombatSession automatically if none exists
-- [ ] **ORCH-02**: CombatParticipant entities created for attacker and defender when combat starts
-- [ ] **ORCH-03**: Combat session ends when participant dies or successfully flees
-- [ ] **ORCH-04**: Combat state tracked per participant (parry mode, timed penalties, last attack time)
+- [x] **ORCH-01**: Attacking an NPC creates CombatSession automatically if none exists
+- [x] **ORCH-02**: CombatParticipant entities created for attacker and defender when combat starts
+- [x] **ORCH-03**: Combat session ends when participant dies or successfully flees
+- [x] **ORCH-04**: Combat state tracked per participant (parry mode, timed penalties, last attack time)
 
 ### NPC AI Behavior
 
-- [ ] **AI-01**: NPC counterattacks automatically when attacked by player
-- [ ] **AI-02**: NPC selects defense mode (dodge/parry/shield) based on available FAT and equipment
-- [ ] **AI-03**: NPC attempts flee when VIT drops below threshold (25-30% modified by personality)
-- [ ] **AI-04**: NPC flee attempt uses skill check, can be intercepted/pursued
+- [x] **AI-01**: NPC counterattacks automatically when attacked by player
+- [x] **AI-02**: NPC selects defense mode (dodge/parry/shield) based on available FAT and equipment
+- [x] **AI-03**: NPC attempts flee when VIT drops below threshold (25-30% modified by personality)
+- [x] **AI-04**: NPC flee attempt uses skill check, can be intercepted/pursued
 
 ### Combat Round Tick
 
-- [ ] **TICK-01**: CombatRoundTickService runs as BackgroundService with 3-second tick interval
+- [x] **TICK-01**: CombatRoundTickService runs as BackgroundService with 3-second tick interval
 - [ ] **TICK-02**: Each tick recovers 1 FAT for participants not taking damage this round
-- [ ] **TICK-03**: Each tick drains half of pending FAT/VIT pools to actual health values
-- [ ] **TICK-04**: Each tick removes expired timed AV penalties from participants
-- [ ] **TICK-05**: Each tick executes NPC AI decisions (attack/defend/flee) for all active NPCs in combat
+- [x] **TICK-03**: Each tick drains half of pending FAT/VIT pools to actual health values
+- [x] **TICK-04**: Each tick removes expired timed AV penalties from participants
+- [x] **TICK-05**: Each tick executes NPC AI decisions (attack/defend/flee) for all active NPCs in combat
 
 ### Combat Messaging
 
-- [ ] **MSG-01**: Global room messages broadcast all combat actions (attacks, hits, misses, flees) to everyone in room
-- [ ] **MSG-02**: Personal messages send detailed damage breakdown (armor absorption, FAT/VIT damage, wounds) to affected participant
-- [ ] **MSG-03**: Messages use RabbitMQ scoped messaging (MessageScope.Zone for room, MessageScope.Personal for details)
+- [x] **MSG-01**: Global room messages broadcast all combat actions (attacks, hits, misses, flees) to everyone in room
+- [x] **MSG-02**: Personal messages send detailed damage breakdown (armor absorption, FAT/VIT damage, wounds) to affected participant
+- [x] **MSG-03**: Messages use RabbitMQ scoped messaging (MessageScope.Zone for room, MessageScope.Personal for details)
 
 ### Combat Mechanics
 
-- [ ] **MECH-01**: Failed attacks with SV < -3 apply timed AV penalties to attacker per damage table
+- [x] **MECH-01**: Failed attacks with SV < -3 apply timed AV penalties to attacker per damage table
 
 ### Multiple Combatants
 
-- [ ] **MULT-01**: CombatSession tracks all participants (players and NPCs) in same combat instance
+- [x] **MULT-01**: CombatSession tracks all participants (players and NPCs) in same combat instance
 
 ## v2 Requirements
 
@@ -99,10 +99,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TGT-01 | Phase 1 | Complete |
 | TGT-02 | Phase 1 | Complete |
 | TGT-03 | Phase 1 | Complete |
-| ORCH-01 | Phase 2 | Pending |
-| ORCH-02 | Phase 2 | Pending |
-| ORCH-03 | Phase 2 | Pending |
-| ORCH-04 | Phase 2 | Pending |
+| ORCH-01 | Phase 2 | Complete |
+| ORCH-02 | Phase 2 | Complete |
+| ORCH-03 | Phase 2 | Complete |
+| ORCH-04 | Phase 2 | Complete |
 | MSG-01 | Phase 3 | Pending |
 | MSG-02 | Phase 3 | Pending |
 | MSG-03 | Phase 3 | Pending |

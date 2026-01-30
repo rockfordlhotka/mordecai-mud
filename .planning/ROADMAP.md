@@ -13,10 +13,10 @@ This roadmap delivers real-time NPC combat through five phases: first enabling N
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Target Resolution** - Enable NPCs to be targeted for combat via ActiveSpawn entities
-- [ ] **Phase 2: Combat Orchestration** - Manage combat session lifecycle (create, track, end)
-- [ ] **Phase 3: Messaging & Round Tick** - Broadcast combat to room and process health pools continuously
-- [ ] **Phase 4: NPC AI Behavior** - NPCs make autonomous combat decisions (attack, defend, flee)
-- [ ] **Phase 5: Combat Polish** - Add timed penalties and multi-combatant session tracking
+- [x] **Phase 2: Combat Orchestration** - Manage combat session lifecycle (create, track, end)
+- [x] **Phase 3: Messaging & Round Tick** - Broadcast combat to room and process health pools continuously
+- [x] **Phase 4: NPC AI Behavior** - NPCs make autonomous combat decisions (attack, defend, flee)
+- [x] **Phase 5: Combat Polish** - Add timed penalties and multi-combatant session tracking
 
 ## Phase Details
 
@@ -45,7 +45,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 02-01: TBD
+- [x] 02-01: Combat session lifecycle implementation
 
 ### Phase 3: Messaging & Round Tick
 **Goal**: Combat actions broadcast to room and health pools drain continuously
@@ -60,8 +60,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [x] 03-01: Combat messaging and NPC health tick
 
 ### Phase 4: NPC AI Behavior
 **Goal**: NPCs fight back autonomously using same mechanics as players
@@ -76,8 +75,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [x] 04-01: NPC AI behavior implementation
 
 ### Phase 5: Combat Polish
 **Goal**: Complete combat loop with timed penalties and multi-combatant tracking
@@ -89,7 +87,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: TBD
+- [x] 05-01: Verification (already implemented)
 
 ## Progress
 
@@ -99,10 +97,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Target Resolution | 1/1 | Complete | 2026-01-26 |
-| 2. Combat Orchestration | 0/1 | Not started | - |
-| 3. Messaging & Round Tick | 0/2 | Not started | - |
-| 4. NPC AI Behavior | 0/2 | Not started | - |
-| 5. Combat Polish | 0/1 | Not started | - |
+| 2. Combat Orchestration | 1/1 | Complete | 2026-01-30 |
+| 3. Messaging & Round Tick | 1/1 | Complete | 2026-01-30 |
+| 4. NPC AI Behavior | 1/1 | Complete | 2026-01-30 |
+| 5. Combat Polish | 1/1 | Complete | 2026-01-30 |
 
 ---
 *Roadmap created: 2026-01-26*

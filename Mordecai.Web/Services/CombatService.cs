@@ -34,6 +34,10 @@ public sealed class CombatService : ICombatService
         bool targetIsPlayer,
         CancellationToken cancellationToken = default)
     {
+        // Get attacker and target info (needed for all code paths)
+        var (attackerName, attackerRoomId) = await GetParticipantInfoAsync(attackerId, attackerIsPlayer, cancellationToken);
+        var (targetName, targetRoomId) = await GetParticipantInfoAsync(targetId, targetIsPlayer, cancellationToken);
+
         // Check if attacker is already in combat
         var existingSession = await GetActiveCombatSessionAsync(attackerId, attackerIsPlayer, cancellationToken);
         if (existingSession != null)
@@ -42,9 +46,40 @@ public sealed class CombatService : ICombatService
             return existingSession.Id;
         }
 
-        // Get attacker and target info
-        var (attackerName, attackerRoomId) = await GetParticipantInfoAsync(attackerId, attackerIsPlayer, cancellationToken);
-        var (targetName, targetRoomId) = await GetParticipantInfoAsync(targetId, targetIsPlayer, cancellationToken);
+        // Check if target is already in combat - join their session instead of creating new
+        var targetSession = await GetActiveCombatSessionAsync(targetId, targetIsPlayer, cancellationToken);
+        if (targetSession != null)
+        {
+            // Verify attacker is in same room as the combat
+            if (attackerRoomId != targetSession.RoomId)
+            {
+                _logger.LogWarning("Cannot join combat - attacker in different room from combat");
+                return null;
+            }
+
+            // Add attacker as new participant to target's existing session
+            var joiningParticipant = new CombatParticipant
+            {
+                CombatSessionId = targetSession.Id,
+                CharacterId = attackerIsPlayer ? attackerId : null,
+                ActiveSpawnId = attackerIsPlayer ? null : (await _dbContext.ActiveSpawns
+                    .Where(asp => asp.NpcId == attackerId && asp.IsActive)
+                    .Select(asp => (int?)asp.Id)
+                    .FirstOrDefaultAsync(cancellationToken)),
+                ParticipantName = attackerName,
+                IsActive = true,
+                IsInParryMode = false,
+                JoinedAt = DateTimeOffset.UtcNow
+            };
+
+            _dbContext.CombatParticipants.Add(joiningParticipant);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Attacker {Attacker} joined existing combat session {Session}",
+                attackerName, targetSession.Id);
+
+            return targetSession.Id;
+        }
 
         if (attackerRoomId != targetRoomId)
         {
@@ -72,7 +107,9 @@ public sealed class CombatService : ICombatService
                 .Select(asp => (int?)asp.Id)
                 .FirstOrDefaultAsync(cancellationToken)),
             ParticipantName = attackerName,
-            IsActive = true
+            IsActive = true,
+            IsInParryMode = false,
+            JoinedAt = DateTimeOffset.UtcNow
         };
 
         var targetParticipant = new CombatParticipant
@@ -84,7 +121,9 @@ public sealed class CombatService : ICombatService
                 .Select(asp => (int?)asp.Id)
                 .FirstOrDefaultAsync(cancellationToken)),
             ParticipantName = targetName,
-            IsActive = true
+            IsActive = true,
+            IsInParryMode = false,
+            JoinedAt = DateTimeOffset.UtcNow
         };
 
         _dbContext.CombatParticipants.AddRange(attackerParticipant, targetParticipant);

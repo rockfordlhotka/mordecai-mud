@@ -90,6 +90,9 @@ builder.Services.AddScoped<ISpawnerService, SpawnerService>();
 // Add combat service
 builder.Services.AddScoped<ICombatService, CombatService>();
 
+// Add NPC AI service
+builder.Services.AddScoped<INpcAiService, NpcAiService>();
+
 // Add background services
 builder.Services.AddHostedService<RoomEffectBackgroundService>();
 builder.Services.AddHostedService<HealthTickBackgroundService>();
