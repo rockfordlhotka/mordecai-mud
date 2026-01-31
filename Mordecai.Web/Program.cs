@@ -58,6 +58,10 @@ builder.Services.AddScoped<ICharacterCreationService, CharacterCreationService>(
 builder.Services.AddScoped<ISkillService, SkillService>();
 builder.Services.AddScoped<SkillService>();
 
+// Add skill progression service with anti-abuse mechanics
+builder.Services.Configure<SkillProgressionSettings>(builder.Configuration.GetSection("SkillProgression"));
+builder.Services.AddScoped<ISkillProgressionService, SkillProgressionService>();
+
 // Add admin services
 builder.Services.AddScoped<AdminSeedService>();
 
@@ -79,6 +83,9 @@ builder.Services.AddScoped<IWorldService, WorldService>();
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 builder.Services.AddScoped<IEquipmentService, EquipmentService>();
 builder.Services.AddScoped<IItemTemplateService, ItemTemplateService>();
+builder.Services.AddScoped<IItemService, ItemService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IContainerService, ContainerService>();
 builder.Services.AddScoped<ICurrencyService, CurrencyService>();
 
 // Add room effects service

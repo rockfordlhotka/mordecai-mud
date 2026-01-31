@@ -13,17 +13,20 @@ public sealed class CombatService : ICombatService
     private readonly ApplicationDbContext _dbContext;
     private readonly IGameMessagePublisher _messagePublisher;
     private readonly IDiceService _diceService;
+    private readonly ISkillProgressionService _skillProgressionService;
     private readonly ILogger<CombatService> _logger;
 
     public CombatService(
         ApplicationDbContext dbContext,
         IGameMessagePublisher messagePublisher,
         IDiceService diceService,
+        ISkillProgressionService skillProgressionService,
         ILogger<CombatService> logger)
     {
         _dbContext = dbContext;
         _messagePublisher = messagePublisher;
         _diceService = diceService;
+        _skillProgressionService = skillProgressionService;
         _logger = logger;
     }
 
@@ -249,6 +252,14 @@ public sealed class CombatService : ICombatService
                 0, false, weaponInfo.SkillName, SoundLevel.Normal
             ), cancellationToken);
 
+            // Track weapon skill usage (failed attack - reduced XP)
+            if (attackerIsPlayer && weaponInfo.SkillDefinitionId.HasValue)
+            {
+                await TrackCombatSkillUsageAsync(
+                    attackerId, weaponInfo.SkillDefinitionId.Value, targetId, targetIsPlayer,
+                    actionSucceeded: false, Data.SkillUsageType.RoutineUse, cancellationToken);
+            }
+
             return successValue;
         }
 
@@ -295,6 +306,19 @@ public sealed class CombatService : ICombatService
             attackerData.RoomId, $"{attackerData.Name} hits {targetData.Name} dealing {fatDamage} FAT and {vitDamage} VIT damage!",
             fatDamage + vitDamage, true, weaponInfo.SkillName, SoundLevel.Normal
         ), cancellationToken);
+
+        // Track weapon skill usage (successful attack)
+        if (attackerIsPlayer && weaponInfo.SkillDefinitionId.HasValue)
+        {
+            // Determine usage type based on success margin
+            var usageType = successValue >= 4 ? Data.SkillUsageType.CriticalSuccess
+                : successValue >= 2 ? Data.SkillUsageType.ChallengingUse
+                : Data.SkillUsageType.RoutineUse;
+
+            await TrackCombatSkillUsageAsync(
+                attackerId, weaponInfo.SkillDefinitionId.Value, targetId, targetIsPlayer,
+                actionSucceeded: true, usageType, cancellationToken);
+        }
 
         // Check if target died
         await CheckForDeathAsync(targetId, targetIsPlayer, targetData.Name, combatSessionId.Value, cancellationToken);
@@ -530,8 +554,13 @@ public sealed class CombatService : ICombatService
                 return null;
             }
 
-            // For players, create skills from their base attributes
-            // TODO: Load actual skill levels from Skills table when we have combat skills defined
+            // Load actual skill levels from CharacterSkills table
+            var characterSkills = await _dbContext.CharacterSkills
+                .Include(cs => cs.SkillDefinition)
+                .Where(cs => cs.CharacterId == participantId)
+                .ToListAsync(cancellationToken);
+
+            // Build skills list combining base attributes and learned skills
             var skills = new List<SkillInfo>
             {
                 new() { SkillName = "Physicality", CurrentLevel = character.Physicality },
@@ -543,6 +572,17 @@ public sealed class CombatService : ICombatService
                 new() { SkillName = "Bearing", CurrentLevel = character.Bearing }
             };
 
+            // Add learned skills with their definition IDs
+            foreach (var cs in characterSkills)
+            {
+                skills.Add(new SkillInfo
+                {
+                    SkillName = cs.SkillDefinition.Name,
+                    CurrentLevel = cs.Level,
+                    SkillDefinitionId = cs.SkillDefinitionId
+                });
+            }
+
             return new CombatantData
             {
                 Id = character.Id,
@@ -550,6 +590,7 @@ public sealed class CombatService : ICombatService
                 RoomId = character.CurrentRoomId ?? 0,
                 CurrentFatigue = character.CurrentFatigue,
                 CurrentVitality = character.CurrentVitality,
+                Level = 0, // Players don't have a "level" for challenge calculation
                 Skills = skills
             };
         }
@@ -583,6 +624,7 @@ public sealed class CombatService : ICombatService
                 RoomId = npc.CurrentRoomId ?? 0,
                 CurrentFatigue = npc.CurrentFatigue,
                 CurrentVitality = npc.CurrentVitality,
+                Level = npc.NpcTemplate!.Level, // NPC level for challenge calculation
                 Skills = skills
             };
         }
@@ -609,9 +651,12 @@ public sealed class CombatService : ICombatService
 
         if (equippedWeapon?.ItemTemplate?.WeaponProperties != null)
         {
-            // Get weapon skill level (for now use Physicality, later integrate with skill system)
-            var physicalitySkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
-            var baseSkillLevel = physicalitySkill?.CurrentLevel ?? 10;
+            // Get the weapon's required skill definition ID for progression tracking
+            var weaponSkillDefId = equippedWeapon.ItemTemplate.WeaponProperties.SkillDefinitionId;
+            
+            // Get weapon skill level from character's skills
+            var weaponSkillInfo = combatant.Skills.FirstOrDefault(s => s.SkillDefinitionId == weaponSkillDefId);
+            var baseSkillLevel = weaponSkillInfo?.CurrentLevel ?? combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality")?.CurrentLevel ?? 10;
 
             // Apply skill bonuses from the weapon itself
             var weaponSkillBonuses = equippedWeapon.ItemTemplate.SkillBonuses
@@ -622,6 +667,7 @@ public sealed class CombatService : ICombatService
             {
                 SkillName = equippedWeapon.ItemTemplate.Name,
                 CurrentLevel = baseSkillLevel + weaponSkillBonuses,
+                SkillDefinitionId = weaponSkillDefId,
                 AttackValueModifier = equippedWeapon.ItemTemplate.WeaponProperties.AttackValueModifier,
                 SuccessValueModifier = equippedWeapon.ItemTemplate.WeaponProperties.BaseSuccessValueModifier,
                 DamageType = equippedWeapon.ItemTemplate.WeaponProperties.DamageType,
@@ -631,7 +677,17 @@ public sealed class CombatService : ICombatService
         }
 
         // No weapon equipped - use unarmed combat
-        var unarmedSkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
+        // Try to find an "Unarmed Combat" or "Brawling" skill
+        var unarmedSkill = combatant.Skills.FirstOrDefault(s => 
+            s.SkillName.Contains("Unarmed", StringComparison.OrdinalIgnoreCase) ||
+            s.SkillName.Contains("Brawling", StringComparison.OrdinalIgnoreCase));
+        
+        // Fall back to Physicality if no dedicated unarmed skill
+        if (unarmedSkill == null)
+        {
+            unarmedSkill = combatant.Skills.FirstOrDefault(s => s.SkillName == "Physicality");
+        }
+
         if (unarmedSkill == null)
         {
             return null;
@@ -641,6 +697,7 @@ public sealed class CombatService : ICombatService
         {
             SkillName = "Unarmed Combat",
             CurrentLevel = unarmedSkill.CurrentLevel,
+            SkillDefinitionId = unarmedSkill.SkillDefinitionId,
             AttackValueModifier = 0,
             SuccessValueModifier = 0,
             DamageType = DamageType.Bashing,
@@ -1251,6 +1308,64 @@ public sealed class CombatService : ICombatService
         );
     }
 
+    /// <summary>
+    /// Tracks skill usage during combat for skill progression
+    /// </summary>
+    private async Task TrackCombatSkillUsageAsync(
+        Guid attackerId,
+        int skillDefinitionId,
+        Guid targetId,
+        bool targetIsPlayer,
+        bool actionSucceeded,
+        Data.SkillUsageType usageType = Data.SkillUsageType.RoutineUse,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            // Get target difficulty (NPC level) for challenge multiplier
+            int? targetDifficulty = null;
+            if (!targetIsPlayer)
+            {
+                var npc = await _dbContext.ActiveSpawns
+                    .Include(asp => asp.NpcTemplate)
+                    .FirstOrDefaultAsync(asp => asp.NpcId == targetId && asp.IsActive, cancellationToken);
+                targetDifficulty = npc?.NpcTemplate?.Level;
+            }
+
+            // Build target ID for cooldown tracking
+            var targetIdString = targetIsPlayer ? $"player:{targetId}" : $"npc:{targetId}";
+
+            var result = await _skillProgressionService.LogUsageAsync(
+                attackerId,
+                skillDefinitionId,
+                usageType,
+                baseExperience: 1,
+                targetId: targetIdString,
+                targetDifficulty: targetDifficulty,
+                actionSucceeded: actionSucceeded,
+                context: "Combat",
+                details: actionSucceeded ? "Successful attack" : "Failed attack",
+                cancellationToken);
+
+            if (result.FeedbackMessage != null)
+            {
+                _logger.LogDebug("Skill progression feedback for {CharacterId}: {Message}",
+                    attackerId, result.FeedbackMessage);
+            }
+
+            if (result.DidLevelUp)
+            {
+                _logger.LogInformation("Character {CharacterId} skill {SkillId} leveled up to {Level} during combat",
+                    attackerId, skillDefinitionId, result.NewLevel);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail combat due to skill progression errors
+            _logger.LogWarning(ex, "Failed to track skill progression for character {CharacterId}", attackerId);
+        }
+    }
+
     private class CombatantData
     {
         public Guid Id { get; set; }
@@ -1258,6 +1373,7 @@ public sealed class CombatService : ICombatService
         public int RoomId { get; set; }
         public int CurrentFatigue { get; set; }
         public int CurrentVitality { get; set; }
+        public int Level { get; set; } // NPC level for challenge calculation
         public List<SkillInfo> Skills { get; set; } = new();
     }
 
@@ -1265,12 +1381,14 @@ public sealed class CombatService : ICombatService
     {
         public string SkillName { get; set; } = string.Empty;
         public int CurrentLevel { get; set; }
+        public int? SkillDefinitionId { get; set; }
     }
 
     private class WeaponInfo
     {
         public string SkillName { get; set; } = string.Empty;
         public int CurrentLevel { get; set; }
+        public int? SkillDefinitionId { get; set; } // For skill progression tracking
         public int AttackValueModifier { get; set; }
         public int SuccessValueModifier { get; set; }
         public DamageType DamageType { get; set; }

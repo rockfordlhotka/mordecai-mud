@@ -40,6 +40,11 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<WebEntities.CharacterSkill> CharacterSkills => Set<WebEntities.CharacterSkill>();
     public DbSet<WebEntities.SkillUsageLog> SkillUsageLogs => Set<WebEntities.SkillUsageLog>();
     
+    // Skill Progression Anti-Abuse Tracking
+    public DbSet<WebEntities.SkillUsageHourlyTracking> SkillUsageHourlyTracking => Set<WebEntities.SkillUsageHourlyTracking>();
+    public DbSet<WebEntities.SkillUsageDailyTracking> SkillUsageDailyTracking => Set<WebEntities.SkillUsageDailyTracking>();
+    public DbSet<WebEntities.SkillUsageTargetCooldown> SkillUsageTargetCooldowns => Set<WebEntities.SkillUsageTargetCooldown>();
+    
     // Game configuration
     public DbSet<GameEntities.GameConfiguration> GameConfigurations => Set<GameEntities.GameConfiguration>();
 
@@ -307,6 +312,42 @@ public class ApplicationDbContext : IdentityDbContext
             // Configure precision for decimal fields
             entity.Property(sul => sul.UsageMultiplier)
                 .HasPrecision(3, 2);
+        });
+
+        // SkillUsageHourlyTracking configuration
+        builder.Entity<WebEntities.SkillUsageHourlyTracking>(entity =>
+        {
+            entity.HasIndex(t => new { t.CharacterId, t.SkillDefinitionId, t.WindowStartTime }).IsUnique();
+            entity.HasIndex(t => t.WindowStartTime);
+
+            entity.HasOne(t => t.SkillDefinition)
+                .WithMany()
+                .HasForeignKey(t => t.SkillDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // SkillUsageDailyTracking configuration
+        builder.Entity<WebEntities.SkillUsageDailyTracking>(entity =>
+        {
+            entity.HasIndex(t => new { t.CharacterId, t.SkillDefinitionId, t.TrackingDate }).IsUnique();
+            entity.HasIndex(t => t.TrackingDate);
+
+            entity.HasOne(t => t.SkillDefinition)
+                .WithMany()
+                .HasForeignKey(t => t.SkillDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // SkillUsageTargetCooldown configuration
+        builder.Entity<WebEntities.SkillUsageTargetCooldown>(entity =>
+        {
+            entity.HasIndex(c => new { c.CharacterId, c.SkillDefinitionId, c.TargetId }).IsUnique();
+            entity.HasIndex(c => c.LastCountedAt);
+
+            entity.HasOne(c => c.SkillDefinition)
+                .WithMany()
+                .HasForeignKey(c => c.SkillDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ItemTemplate configuration

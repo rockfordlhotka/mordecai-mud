@@ -1,6 +1,9 @@
 @page "/admin"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Mordecai.Web.Data
 @attribute [Authorize(Policy = "AdminOnly")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
 <PageTitle>Admin Dashboard - Mordecai MUD</PageTitle>
 
@@ -147,6 +150,33 @@
                             </div>
                         </div>
                     </div>
+                    <hr class="my-3" />
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Total Zones</h6>
+                                <h4 class="text-secondary">@totalZones</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>NPC Templates</h6>
+                                <h4 class="text-secondary">@totalNpcTemplates</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Active Combats</h6>
+                                <h4 class="text-danger">@activeCombats</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6>Total Characters</h6>
+                                <h4 class="text-secondary">@totalCharacters</h4>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -154,27 +184,47 @@
 </div>
 
 @code {
-    // Placeholder data - will be replaced with actual service calls
-    private int playersOnline = 1;
+    private static readonly DateTimeOffset ServerStartTime = DateTimeOffset.UtcNow;
+    
+    private int playersOnline = 0;
     private int totalRooms = 0;
     private int activeNpcs = 0;
     private string serverUptime = "0:00:00";
+    private int totalZones = 0;
+    private int totalNpcTemplates = 0;
+    private int activeCombats = 0;
+    private int totalCharacters = 0;
 
     protected override async Task OnInitializedAsync()
     {
-        // TODO: Implement actual data retrieval
         await LoadDashboardData();
     }
 
     private async Task LoadDashboardData()
     {
-        // Simulate loading data
-        await Task.Delay(100);
+        await using var context = await DbFactory.CreateDbContextAsync();
         
-        // TODO: Replace with actual service calls
-        // playersOnline = await PlayerService.GetOnlineCountAsync();
-        // totalRooms = await WorldService.GetRoomCountAsync();
-        // activeNpcs = await NpcService.GetActiveCountAsync();
-        // serverUptime = (DateTime.Now - ServerStartTime).ToString(@"h\:mm\:ss");
+        // Count total rooms and zones
+        totalRooms = await context.Rooms.CountAsync();
+        totalZones = await context.Zones.CountAsync();
+        
+        // Count active spawned NPCs and templates
+        activeNpcs = await context.ActiveSpawns.CountAsync(s => s.IsActive);
+        totalNpcTemplates = await context.NpcTemplates.CountAsync();
+        
+        // Count players online (active in last 15 minutes) and total characters
+        var onlineThreshold = DateTimeOffset.UtcNow.AddMinutes(-15);
+        playersOnline = await context.Characters
+            .CountAsync(c => c.LastPlayedAt != null && c.LastPlayedAt > onlineThreshold);
+        totalCharacters = await context.Characters.CountAsync();
+        
+        // Count active combat sessions
+        activeCombats = await context.CombatSessions.CountAsync(s => s.IsActive);
+        
+        // Calculate server uptime
+        var uptime = DateTimeOffset.UtcNow - ServerStartTime;
+        serverUptime = uptime.TotalHours >= 24 
+            ? $"{(int)uptime.TotalDays}d {uptime:hh\\:mm\\:ss}"
+            : uptime.ToString(@"h\:mm\:ss");
     }
 }

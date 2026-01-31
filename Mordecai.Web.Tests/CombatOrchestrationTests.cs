@@ -27,6 +27,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // Act
@@ -85,6 +86,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // First combat - player attacks NPC1
@@ -137,6 +139,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // Player 1 attacks NPC first
@@ -185,6 +188,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // Act
@@ -226,6 +230,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // Start combat
@@ -266,6 +271,7 @@ public sealed class CombatOrchestrationTests
             await factory.CreateDbContextAsync(),
             publisher,
             diceService,
+            new StubSkillProgressionService(),
             NullLogger<CombatService>.Instance);
 
         // Before combat
@@ -432,6 +438,31 @@ public sealed class CombatOrchestrationTests
         public int RollExploding4dF() => 0;
         public int Roll4dFWithModifier(int modifier, int minValue = 1, int maxValue = 20) => modifier;
         public int RollMultiple4dF(int count) => 0;
+    }
+
+    private sealed class StubSkillProgressionService : ISkillProgressionService
+    {
+        public Task<SkillProgressionResult> LogUsageAsync(Guid characterId, int skillDefinitionId, Data.SkillUsageType usageType, int baseExperience = 1, string? targetId = null, int? targetDifficulty = null, bool actionSucceeded = true, string? context = null, string? details = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new SkillProgressionResult { ProgressionApplied = true, FinalExperience = baseExperience });
+        }
+
+        public Task<int> GetHourlyUsageCountAsync(Guid characterId, int skillDefinitionId, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> GetDailyUsageCountAsync(Guid characterId, int skillDefinitionId, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<bool> IsTargetOnCooldownAsync(Guid characterId, int skillDefinitionId, string targetId, CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task<decimal> CalculateEffectiveMultiplierAsync(Guid characterId, int skillDefinitionId, Data.SkillUsageType usageType, string? targetId = null, int? targetDifficulty = null, bool actionSucceeded = true, CancellationToken cancellationToken = default)
+            => Task.FromResult(1.0m);
+
+        public SkillProgressionSettings GetSettings() => new();
+
+        public Task CleanupOldTrackingDataAsync(int hourlyRetentionHours = 24, int dailyRetentionDays = 7, int cooldownRetentionHours = 24, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 
     #endregion
