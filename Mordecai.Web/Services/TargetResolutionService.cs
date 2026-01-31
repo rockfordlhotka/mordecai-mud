@@ -112,11 +112,17 @@ public class TargetResolutionService
 
         try
         {
-            // Get all characters in the room (for now, we'll simulate this since room-character relationships aren't implemented yet)
-            // TODO: Replace with actual room-character lookup when room system is implemented
-            var charactersInRoom = await _context.Characters
+            // Get all characters in the room
+            var charactersQuery = _context.Characters
                 .AsNoTracking()
-                .Where(c => excludeCharacterId == null || c.Id != excludeCharacterId)
+                .Where(c => c.CurrentRoomId == roomId);
+            
+            if (excludeCharacterId.HasValue)
+            {
+                charactersQuery = charactersQuery.Where(c => c.Id != excludeCharacterId.Value);
+            }
+            
+            var charactersInRoom = await charactersQuery
                 .Select(c => new CommunicationTarget(c.Id, c.Name, TargetType.Character, true))
                 .ToListAsync();
 
@@ -272,10 +278,9 @@ public class TargetResolutionService
         Guid? excludeCharacterId, 
         bool exactMatch)
     {
-        // TODO: When room-character relationships are implemented, add proper room filtering
-        // For now, search all characters since we don't have room positions tracked
-        
-        var query = _context.Characters.AsNoTracking();
+        var query = _context.Characters
+            .AsNoTracking()
+            .Where(c => c.CurrentRoomId == roomId);
 
         if (excludeCharacterId.HasValue)
         {

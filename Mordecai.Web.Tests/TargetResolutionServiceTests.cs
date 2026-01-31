@@ -451,6 +451,146 @@ public sealed class TargetResolutionServiceTests
         Assert.Contains(npcs, n => n.Id == npcIds[1]);
     }
 
+    [Fact]
+    public async Task FindTargetInRoomAsync_FindsCharacterInSameRoom()
+    {
+        // Arrange
+        var dbName = $"TargetRes_CharInRoom_{Guid.NewGuid()}";
+        var factory = CreateFactory(dbName);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var context = await factory.CreateDbContextAsync(cancellationToken);
+        var (room1Id, room2Id) = await SeedTwoRoomsAsync(context, cancellationToken);
+
+        // Create character in room 1
+        var character = new Character
+        {
+            Name = "TestPlayer",
+            UserId = "user1",
+            CurrentRoomId = room1Id
+        };
+        context.Characters.Add(character);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var service = new TargetResolutionService(
+            await factory.CreateDbContextAsync(cancellationToken),
+            NullLogger<TargetResolutionService>.Instance);
+
+        // Act - search in room 1 (where character is)
+        var result = await service.FindTargetInRoomAsync("TestPlayer", room1Id);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(character.Id, result.Id);
+        Assert.Equal("TestPlayer", result.Name);
+        Assert.Equal(TargetType.Character, result.Type);
+    }
+
+    [Fact]
+    public async Task FindTargetInRoomAsync_DoesNotFindCharacterInDifferentRoom()
+    {
+        // Arrange
+        var dbName = $"TargetRes_CharOtherRoom_{Guid.NewGuid()}";
+        var factory = CreateFactory(dbName);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var context = await factory.CreateDbContextAsync(cancellationToken);
+        var (room1Id, room2Id) = await SeedTwoRoomsAsync(context, cancellationToken);
+
+        // Create character in room 1
+        var character = new Character
+        {
+            Name = "TestPlayer",
+            UserId = "user1",
+            CurrentRoomId = room1Id
+        };
+        context.Characters.Add(character);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var service = new TargetResolutionService(
+            await factory.CreateDbContextAsync(cancellationToken),
+            NullLogger<TargetResolutionService>.Instance);
+
+        // Act - search in room 2 (where character is NOT)
+        var result = await service.FindTargetInRoomAsync("TestPlayer", room2Id);
+
+        // Assert - should not find the character
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetAllTargetsInRoomAsync_OnlyReturnsCharactersInThatRoom()
+    {
+        // Arrange
+        var dbName = $"TargetRes_CharsFiltered_{Guid.NewGuid()}";
+        var factory = CreateFactory(dbName);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var context = await factory.CreateDbContextAsync(cancellationToken);
+        var (room1Id, room2Id) = await SeedTwoRoomsAsync(context, cancellationToken);
+
+        // Create characters in different rooms
+        var char1 = new Character { Name = "Player1", UserId = "user1", CurrentRoomId = room1Id };
+        var char2 = new Character { Name = "Player2", UserId = "user2", CurrentRoomId = room1Id };
+        var char3 = new Character { Name = "Player3", UserId = "user3", CurrentRoomId = room2Id };
+        context.Characters.AddRange(char1, char2, char3);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var service = new TargetResolutionService(
+            await factory.CreateDbContextAsync(cancellationToken),
+            NullLogger<TargetResolutionService>.Instance);
+
+        // Act - get targets in room 1
+        var targetsRoom1 = await service.GetAllTargetsInRoomAsync(room1Id);
+
+        // Assert - only Player1 and Player2 should be in room 1
+        var charsRoom1 = targetsRoom1.Where(t => t.Type == TargetType.Character).ToList();
+        Assert.Equal(2, charsRoom1.Count);
+        Assert.Contains(charsRoom1, c => c.Name == "Player1");
+        Assert.Contains(charsRoom1, c => c.Name == "Player2");
+        Assert.DoesNotContain(charsRoom1, c => c.Name == "Player3");
+
+        // Act - get targets in room 2
+        var targetsRoom2 = await service.GetAllTargetsInRoomAsync(room2Id);
+
+        // Assert - only Player3 should be in room 2
+        var charsRoom2 = targetsRoom2.Where(t => t.Type == TargetType.Character).ToList();
+        Assert.Single(charsRoom2);
+        Assert.Contains(charsRoom2, c => c.Name == "Player3");
+    }
+
+    [Fact]
+    public async Task FindTargetInRoomAsync_FindsCharacterByPartialName()
+    {
+        // Arrange
+        var dbName = $"TargetRes_CharPartial_{Guid.NewGuid()}";
+        var factory = CreateFactory(dbName);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var context = await factory.CreateDbContextAsync(cancellationToken);
+        var (room1Id, _) = await SeedTwoRoomsAsync(context, cancellationToken);
+
+        var character = new Character
+        {
+            Name = "Gandalf",
+            UserId = "user1",
+            CurrentRoomId = room1Id
+        };
+        context.Characters.Add(character);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var service = new TargetResolutionService(
+            await factory.CreateDbContextAsync(cancellationToken),
+            NullLogger<TargetResolutionService>.Instance);
+
+        // Act - search by prefix
+        var result = await service.FindTargetInRoomAsync("gan", room1Id);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Gandalf", result.Name);
+    }
+
     [Theory]
     [InlineData("goblin warrior 2", "goblin warrior", 2)]
     [InlineData("ancient 3", "ancient", 3)]
@@ -558,6 +698,49 @@ public sealed class TargetResolutionServiceTests
         await context.SaveChangesAsync(cancellationToken);
 
         return (room.Id, npcIds);
+    }
+
+    private static async Task<(int Room1Id, int Room2Id)> SeedTwoRoomsAsync(
+        ApplicationDbContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var zone = new Zone
+        {
+            Name = "Test Zone",
+            Description = "Zone",
+            CreatedBy = "tests"
+        };
+        context.Zones.Add(zone);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var roomType = new RoomType
+        {
+            Name = "Test Type",
+            Description = "Type"
+        };
+        context.RoomTypes.Add(roomType);
+        await context.SaveChangesAsync(cancellationToken);
+
+        var room1 = new Room
+        {
+            ZoneId = zone.Id,
+            RoomTypeId = roomType.Id,
+            Name = "Room 1",
+            Description = "First room",
+            CreatedBy = "tests"
+        };
+        var room2 = new Room
+        {
+            ZoneId = zone.Id,
+            RoomTypeId = roomType.Id,
+            Name = "Room 2",
+            Description = "Second room",
+            CreatedBy = "tests"
+        };
+        context.Rooms.AddRange(room1, room2);
+        await context.SaveChangesAsync(cancellationToken);
+
+        return (room1.Id, room2.Id);
     }
 
     private sealed class TestDbContextFactory : IDbContextFactory<ApplicationDbContext>
