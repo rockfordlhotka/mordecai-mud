@@ -26,6 +26,7 @@
 @inject IEquipmentService EquipmentService
 @inject IItemTemplateService ItemTemplateService
 @inject ISpawnerService SpawnerService
+@inject ICombatService CombatService
 @inject ApplicationDbContext DbContext
 @inject IJSRuntime JSRuntime
 @inject ILoggerFactory LoggerFactory
@@ -94,38 +95,50 @@
                 <div class="character-stats mb-3">
                     <h6 class="text-warning mb-2">Vitals</h6>
 
-                    <!-- FAT (Fatigue) -->
+                    <!-- FAT (Fatigue) - Using HealthBar component -->
                     <div class="vital-bar mb-2">
                         <div class="d-flex justify-content-between small mb-1">
                             <span>FAT</span>
                             <span>@currentFat / @maxFat</span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-warning"
-                                 style="width: @(maxFat > 0 ? (currentFat * 100.0 / maxFat) : 0)%"></div>
-                        </div>
-                        @if (pendingFat != 0)
-                        {
-                            <div class="small text-muted">Pending: @FormatPendingChange(pendingFat)</div>
-                        }
+                        <Mordecai.Web.Components.HealthBar 
+                            Current="@currentFat" 
+                            Max="@maxFat" 
+                            PendingDamage="@(pendingFat > 0 ? pendingFat : 0)"
+                            PendingHealing="@(pendingFat < 0 ? -pendingFat : 0)"
+                            Height="10" />
                     </div>
 
-                    <!-- VIT (Vitality/Health) -->
+                    <!-- VIT (Vitality/Health) - Using HealthBar component -->
                     <div class="vital-bar mb-2">
                         <div class="d-flex justify-content-between small mb-1">
                             <span>VIT</span>
                             <span>@currentVit / @maxVit</span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-danger"
-                                 style="width: @(maxVit > 0 ? (currentVit * 100.0 / maxVit) : 0)%"></div>
-                        </div>
-                        @if (pendingVit != 0)
-                        {
-                            <div class="small text-muted">Pending: @FormatPendingChange(pendingVit)</div>
-                        }
+                        <Mordecai.Web.Components.HealthBar 
+                            Current="@currentVit" 
+                            Max="@maxVit" 
+                            PendingDamage="@(pendingVit > 0 ? pendingVit : 0)"
+                            PendingHealing="@(pendingVit < 0 ? -pendingVit : 0)"
+                            Height="10" />
                     </div>
+                    
+                    <!-- Combat Status Indicators -->
+                    <Mordecai.Web.Components.CombatStatusIndicators 
+                        IsInCombat="@isInCombat"
+                        IsParryMode="@isParryMode"
+                        CurrentFatigue="@currentFat"
+                        CurrentVitality="@currentVit"
+                        MaxVitality="@maxVit"
+                        IsFleeing="@isFleeing"
+                        PendingDamage="@(Math.Max(0, pendingFat) + Math.Max(0, pendingVit))" />
                 </div>
+
+                <!-- Combat Panel -->
+                <Mordecai.Web.Components.CombatPanel 
+                    IsInCombat="@isInCombat"
+                    CombatLog="@combatLog"
+                    MaxLines="18" />
 
                 <!-- Active Effects -->
                 <div class="active-effects">
@@ -252,6 +265,13 @@
     private int currentVit = 0;
     private int maxVit = 0;
     private int pendingVit = 0;
+
+    // Combat state
+    private bool isInCombat = false;
+    private bool isParryMode = false;
+    private bool isFleeing = false;
+    private Guid? combatSessionId = null;
+    private List<Mordecai.Web.Components.CombatPanel.CombatLogEntry> combatLog = new();
 
     // Active effects (placeholder - should come from your character service)
     private List<ActiveEffect> activeEffects = new();
@@ -468,8 +488,84 @@
             InvokeAsync(() =>
             {
                 AddMessage(message, "text-light");
+                
+                // Parse combat messages and add to combat log
+                TryAddToCombatLog(message);
             });
         }
+    }
+    
+    private void TryAddToCombatLog(string message)
+    {
+        // Check for combat-related CSS classes in the message
+        var messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.Info;
+        
+        if (message.Contains("combat-start", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.CombatStart;
+            isInCombat = true;
+        }
+        else if (message.Contains("combat-end", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.CombatEnd;
+            // Keep log visible for a moment after combat ends
+        }
+        else if (message.Contains("combat-hit-dealt", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.HitDealt;
+        }
+        else if (message.Contains("combat-hit-received", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.HitReceived;
+        }
+        else if (message.Contains("combat-miss", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.Miss;
+        }
+        else if (message.Contains("combat-flee", StringComparison.OrdinalIgnoreCase))
+        {
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.Flee;
+            isFleeing = message.Contains("flee", StringComparison.OrdinalIgnoreCase);
+        }
+        else if (message.Contains("combat-block", StringComparison.OrdinalIgnoreCase) || 
+                 message.Contains("combat-parry", StringComparison.OrdinalIgnoreCase) ||
+                 message.Contains("combat-dodge", StringComparison.OrdinalIgnoreCase))
+        {
+            // Blocks, parries, and dodges count as misses from the attacker's perspective
+            messageType = Mordecai.Web.Components.CombatPanel.CombatMessageType.Miss;
+        }
+        else
+        {
+            // Not a combat message
+            return;
+        }
+        
+        // Extract plain text from HTML message for combat log
+        var plainText = StripHtmlTags(message);
+        
+        combatLog.Add(new Mordecai.Web.Components.CombatPanel.CombatLogEntry
+        {
+            Timestamp = DateTime.Now,
+            Message = plainText,
+            MessageType = messageType
+        });
+        
+        // Keep combat log at max size
+        while (combatLog.Count > 20)
+        {
+            combatLog.RemoveAt(0);
+        }
+        
+        StateHasChanged();
+    }
+    
+    private static string StripHtmlTags(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return html;
+        
+        // Simple HTML tag removal for display purposes
+        var result = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", "");
+        return System.Net.WebUtility.HtmlDecode(result).Trim();
     }
 
     private async Task ScrollToBottom()
@@ -2906,6 +3002,9 @@
                                 StateHasChanged();
                             });
                         }
+                        
+                        // Refresh combat state
+                        await RefreshCombatStateAsync();
                     }
                     catch (OperationCanceledException)
                     {
@@ -2922,6 +3021,37 @@
                 // Expected during shutdown
             }
         }, token);
+    }
+    
+    private async Task RefreshCombatStateAsync()
+    {
+        if (!characterId.HasValue) return;
+        
+        try
+        {
+            var combatState = await CombatService.GetCharacterCombatStateAsync(characterId.Value);
+            
+            await InvokeAsync(() =>
+            {
+                var wasInCombat = isInCombat;
+                
+                isInCombat = combatState.IsInCombat;
+                combatSessionId = combatState.SessionId;
+                isParryMode = combatState.IsParryMode;
+                
+                // If combat just ended, notify but keep the log visible briefly
+                if (wasInCombat && !isInCombat)
+                {
+                    // Combat ended - log entry will be added by message handler
+                }
+                
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Error refreshing combat state");
+        }
     }
 
     private void StopHealthRefreshLoop()

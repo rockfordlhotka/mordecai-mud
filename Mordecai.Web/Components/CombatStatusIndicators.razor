@@ -1,0 +1,95 @@
+@*
+    CombatStatusIndicators.razor - Combat state badges and indicators
+    
+    Shows:
+    - Parry mode (active/inactive)
+    - Exhausted (FAT = 0)
+    - Wounded (VIT < 25%)
+    - Fleeing status
+*@
+
+<div class="combat-status-indicators">
+    @if (IsInCombat)
+    {
+        <div class="status-badge status-in-combat">
+            <i class="oi oi-target"></i> In Combat
+        </div>
+    }
+    
+    @if (IsParryMode)
+    {
+        <div class="status-badge status-parry">
+            <i class="oi oi-shield"></i> Parry
+        </div>
+    }
+    
+    @if (IsExhausted)
+    {
+        <div class="status-badge status-exhausted">
+            <i class="oi oi-warning"></i> Exhausted
+        </div>
+    }
+    
+    @if (IsWounded)
+    {
+        <div class="status-badge status-wounded">
+            <i class="oi oi-pulse"></i> Wounded
+        </div>
+    }
+    
+    @if (IsFleeing)
+    {
+        <div class="status-badge status-fleeing">
+            <i class="oi oi-arrow-circle-right"></i> Fleeing
+        </div>
+    }
+    
+    @if (HasPendingDamage)
+    {
+        <div class="status-badge status-pending-damage">
+            <i class="oi oi-bolt"></i> Taking Damage
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Whether the character is in combat
+    /// </summary>
+    [Parameter] public bool IsInCombat { get; set; }
+    
+    /// <summary>
+    /// Whether parry mode is active
+    /// </summary>
+    [Parameter] public bool IsParryMode { get; set; }
+    
+    /// <summary>
+    /// Current fatigue value
+    /// </summary>
+    [Parameter] public int CurrentFatigue { get; set; }
+    
+    /// <summary>
+    /// Current vitality value
+    /// </summary>
+    [Parameter] public int CurrentVitality { get; set; }
+    
+    /// <summary>
+    /// Maximum vitality value
+    /// </summary>
+    [Parameter] public int MaxVitality { get; set; }
+    
+    /// <summary>
+    /// Whether character is fleeing
+    /// </summary>
+    [Parameter] public bool IsFleeing { get; set; }
+    
+    /// <summary>
+    /// Total pending damage (FAT + VIT)
+    /// </summary>
+    [Parameter] public int PendingDamage { get; set; }
+
+    // Computed states
+    private bool IsExhausted => CurrentFatigue <= 0;
+    private bool IsWounded => MaxVitality > 0 && (double)CurrentVitality / MaxVitality < 0.25;
+    private bool HasPendingDamage => PendingDamage > 0;
+}

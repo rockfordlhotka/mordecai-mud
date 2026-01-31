@@ -1195,6 +1195,62 @@ public sealed class CombatService : ICombatService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public async Task<CharacterCombatState> GetCharacterCombatStateAsync(
+        Guid characterId,
+        CancellationToken cancellationToken = default)
+    {
+        var participant = await _dbContext.CombatParticipants
+            .Include(p => p.CombatSession)
+            .Where(p => p.CharacterId == characterId && p.CombatSession != null && p.CombatSession.IsActive)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (participant == null)
+        {
+            return new CharacterCombatState(
+                IsInCombat: false,
+                SessionId: null,
+                IsParryMode: false,
+                IsFleeing: false,
+                TargetName: null
+            );
+        }
+
+        // Find the opponent's name (if any)
+        string? targetName = null;
+        var opponent = await _dbContext.CombatParticipants
+            .Where(p => p.CombatSessionId == participant.CombatSessionId && p.Id != participant.Id)
+            .Select(p => new { p.CharacterId, p.ActiveSpawnId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (opponent != null)
+        {
+            if (opponent.CharacterId.HasValue)
+            {
+                targetName = await _dbContext.Characters
+                    .Where(c => c.Id == opponent.CharacterId)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+            else if (opponent.ActiveSpawnId.HasValue)
+            {
+                targetName = await _dbContext.ActiveSpawns
+                    .Include(a => a.NpcTemplate)
+                    .Where(a => a.Id == opponent.ActiveSpawnId)
+                    .Select(a => a.NpcTemplate.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+        }
+
+        return new CharacterCombatState(
+            IsInCombat: true,
+            SessionId: participant.CombatSessionId,
+            IsParryMode: participant.IsInParryMode,
+            IsFleeing: false, // Could track this if needed
+            TargetName: targetName
+        );
+    }
+
     private class CombatantData
     {
         public Guid Id { get; set; }

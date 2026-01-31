@@ -1,0 +1,97 @@
+@* 
+    HealthBar.razor - Multi-segment health bar showing current value and pending changes
+    
+    Segments (left to right):
+    - Blue: Current actual value
+    - Red: Pending damage (will drain over time)
+    - Green: Pending healing (will restore over time)
+    - Gray: Remaining capacity to max
+*@
+
+<div class="health-bar-container">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <div class="health-bar-label">@Label</div>
+    }
+    <div class="health-bar" style="height: @(Height)px;">
+        @* Current value (blue) *@
+        <div class="health-bar-segment health-bar-current" 
+             style="width: @CurrentPercent%;"
+             title="Current: @Current / @Max"></div>
+        
+        @* Pending damage (red) - extends after current *@
+        @if (PendingDamage > 0)
+        {
+            <div class="health-bar-segment health-bar-pending-damage" 
+                 style="width: @PendingDamagePercent%;"
+                 title="Pending damage: @PendingDamage"></div>
+        }
+        
+        @* Pending healing (green) - extends after current *@
+        @if (PendingHealing > 0)
+        {
+            <div class="health-bar-segment health-bar-pending-heal" 
+                 style="width: @PendingHealPercent%;"
+                 title="Pending healing: @PendingHealing"></div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Optional label to display above the bar (e.g., "FAT", "VIT")
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Current actual value
+    /// </summary>
+    [Parameter] public int Current { get; set; }
+    
+    /// <summary>
+    /// Maximum possible value
+    /// </summary>
+    [Parameter] public int Max { get; set; }
+    
+    /// <summary>
+    /// Pending damage value (positive = damage incoming)
+    /// </summary>
+    [Parameter] public int PendingDamage { get; set; }
+    
+    /// <summary>
+    /// Pending healing value (positive = healing incoming)
+    /// </summary>
+    [Parameter] public int PendingHealing { get; set; }
+    
+    /// <summary>
+    /// Height of the bar in pixels
+    /// </summary>
+    [Parameter] public int Height { get; set; } = 10;
+
+    private double CurrentPercent => Max > 0 ? Math.Min(100, (double)Current / Max * 100) : 0;
+    
+    private double PendingDamagePercent
+    {
+        get
+        {
+            if (Max <= 0 || PendingDamage <= 0) return 0;
+            // Cap pending damage display at remaining space after current
+            var availablePercent = 100 - CurrentPercent;
+            var damagePercent = (double)PendingDamage / Max * 100;
+            return Math.Min(availablePercent, damagePercent);
+        }
+    }
+    
+    private double PendingHealPercent
+    {
+        get
+        {
+            if (Max <= 0 || PendingHealing <= 0) return 0;
+            // Healing shows after current (and after any pending damage)
+            var usedPercent = CurrentPercent + PendingDamagePercent;
+            var availablePercent = 100 - usedPercent;
+            var healPercent = (double)PendingHealing / Max * 100;
+            return Math.Min(availablePercent, healPercent);
+        }
+    }
+}

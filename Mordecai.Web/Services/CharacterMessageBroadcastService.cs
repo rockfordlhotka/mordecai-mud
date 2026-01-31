@@ -206,12 +206,9 @@ public sealed class CharacterMessageBroadcastService : IDisposable
                 $"{emote.CharacterName} {emote.EmoteText} {emote.TargetCharacterName}.",
             EmoteMessage emote => $"{emote.CharacterName} {emote.EmoteText}.",
             
-            CombatStarted combat => $"{combat.InitiatorName} attacks {combat.TargetName}!",
-            CombatAction action when action.IsHit => 
-                $"{action.AttackerName} {action.ActionDescription} {action.DefenderName} for {action.Damage} damage!",
-            CombatAction action => $"{action.AttackerName} {action.ActionDescription} {action.DefenderName} but misses!",
-            CombatEnded ended when ended.WinnerName != null => $"Combat ends. {ended.WinnerName} is victorious!",
-            CombatEnded ended => $"Combat ends. {ended.EndReason}",
+            CombatStarted combat => FormatCombatStarted(combat),
+            CombatAction action => FormatCombatAction(action),
+            CombatEnded ended => FormatCombatEnded(ended),
             
             SkillExperienceGained skillXp when skillXp.LeveledUp => 
                 $"Your {skillXp.SkillName} skill increases! You are now level {skillXp.NewLevel}.",
@@ -227,6 +224,40 @@ public sealed class CharacterMessageBroadcastService : IDisposable
             
             _ => string.Empty
         };
+    }
+
+    private static string FormatCombatStarted(CombatStarted combat)
+    {
+        return $"<span class=\"combat-start\">{combat.InitiatorName} attacks {combat.TargetName}!</span>";
+    }
+
+    private static string FormatCombatAction(CombatAction action)
+    {
+        if (action.IsHit)
+        {
+            var damageClass = action.Damage >= 5 ? "combat-critical" : "";
+            return $"<span class=\"combat-hit-dealt {damageClass}\">{action.AttackerName} hits {action.DefenderName} for {action.Damage} damage!</span>";
+        }
+        else
+        {
+            return $"<span class=\"combat-miss\">{action.AttackerName} attacks {action.DefenderName} but misses.</span>";
+        }
+    }
+
+    private static string FormatCombatEnded(CombatEnded ended)
+    {
+        if (ended.WinnerName != null)
+        {
+            return $"<span class=\"combat-end\">Combat ends. {ended.WinnerName} is victorious!</span>";
+        }
+        
+        // Check for flee
+        if (ended.EndReason?.Contains("fled", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return $"<span class=\"combat-flee\">Combat ends. {ended.EndReason}</span>";
+        }
+        
+        return $"<span class=\"combat-end\">Combat ends. {ended.EndReason}</span>";
     }
 
     private static string FormatTargetedChatMessage(ChatMessage chat)
@@ -306,6 +337,28 @@ public sealed class CharacterMessageBroadcastService : IDisposable
         }
 
         return $"{itemPickedUp.CharacterName} picks up {itemLabel}.";
+    }
+
+    /// <summary>
+    /// Gets a descriptive health status for an NPC based on health percentage
+    /// </summary>
+    public static string GetNpcHealthDescription(string npcName, int currentHealth, int maxHealth)
+    {
+        if (maxHealth <= 0) return $"{npcName} looks uninjured.";
+        
+        var healthPercent = (double)currentHealth / maxHealth * 100;
+        
+        var description = healthPercent switch
+        {
+            >= 100 => "uninjured",
+            >= 75 => "barely scratched",
+            >= 50 => "lightly wounded",
+            >= 25 => "badly wounded",
+            >= 10 => "near death",
+            _ => "on the verge of collapse"
+        };
+        
+        return $"{npcName} looks {description}.";
     }
 
     public void Dispose()

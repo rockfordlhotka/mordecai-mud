@@ -342,6 +342,9 @@ public sealed class NpcAiTests
 
         public Task<List<CombatParticipant>> GetCombatParticipantsAsync(Guid combatSessionId, CancellationToken cancellationToken = default)
             => Task.FromResult(new List<CombatParticipant>());
+
+        public Task<CharacterCombatState> GetCharacterCombatStateAsync(Guid characterId, CancellationToken cancellationToken = default)
+            => Task.FromResult(new CharacterCombatState(false, null, false));
     }
 
     private sealed class TestLogger<T> : Microsoft.Extensions.Logging.ILogger<T>

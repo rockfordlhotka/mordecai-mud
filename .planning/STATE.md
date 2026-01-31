@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Players can engage in real-time combat with NPCs in rooms, with NPCs fighting back autonomously using the same skill-based 4dF mechanics as players, creating immersive tactical combat until death or flee.
-**Current focus:** NPC Combat System COMPLETE 🎉
+**Current focus:** Phase 6 - Combat UI - COMPLETE
 
 ## Current Position
 
-Phase: 5 of 5 (Combat Polish) - COMPLETE
-Plan: 1 of 1 in current phase
-Status: ROADMAP COMPLETE
-Last activity: 2026-01-30 - Verified 05-01 (already implemented)
+Phase: 6 of 6 (Combat UI) - COMPLETE
+Plan: 1 of 1 in current phase - COMPLETE
+Status: All 6 phases of NPC Combat System complete
+Last activity: 2026-01-31 - Completed 06-01-PLAN.md
 
-Progress: [##########] 100%
+Progress: [##########] 100% (all phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 12 min
-- Total execution time: 1 hour
+- Total execution time: ~1.5 hours
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [##########] 100%
 | 03-messaging-round-tick | 1 | 15 min | 15 min |
 | 04-npc-ai-behavior | 1 | 15 min | 15 min |
 | 05-combat-polish | 1 | 5 min | 5 min (verification) |
+| 06-combat-ui | 1 | 20 min | 20 min |
 
 **Recent Trend:**
-- Last 5 plans: 9 min, 20 min, 15 min, 15 min, 5 min
-- Trend: Complete - roadmap finished
+- All phases: Complete - NPC Combat System roadmap finished
+- Test count: 102 tests passing
 
 *Updated after each plan completion*
 
@@ -58,6 +59,9 @@ Recent decisions affecting current work:
 | 2026-01-30 | 04-01 | INpcAiService for AI decisions | Separate service for testability, called from tick |
 | 2026-01-30 | 04-01 | AI priority: flee → defense → attack | Survival instinct first, then optimize defense, then counterattack |
 | 2026-01-30 | 04-01 | Default flee threshold 25% VIT | Configurable via NpcTemplate.BehaviorConfig JSON |
+| 2026-01-31 | 06-01 | Multi-segment health bars (Option A - extend) | Blue=current, Red=pending damage, Green=pending heal |
+| 2026-01-31 | 06-01 | Combat state polling via health tick | 3s refresh of combat state alongside health snapshot |
+| 2026-01-31 | 06-01 | CharacterCombatState record | New return type for GetCharacterCombatStateAsync |
 | 2026-01-30 | 04-01 | Parry mode when FAT < 3 | Conserve stamina by switching to no-cost parry defense |
 
 ### Pending Todos

@@ -17,6 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Messaging & Round Tick** - Broadcast combat to room and process health pools continuously
 - [x] **Phase 4: NPC AI Behavior** - NPCs make autonomous combat decisions (attack, defend, flee)
 - [x] **Phase 5: Combat Polish** - Add timed penalties and multi-combatant session tracking
+- [x] **Phase 6: Combat UI** - Visual feedback for combat (health bars, combat log, status indicators)
 
 ## Phase Details
 
@@ -89,10 +90,25 @@ Plans:
 Plans:
 - [x] 05-01: Verification (already implemented)
 
+### Phase 6: Combat UI
+**Goal**: Visual feedback for combat makes the system usable and immersive
+**Depends on**: Phase 5
+**Requirements**: UI-01, UI-02, UI-03
+**Success Criteria** (what must be TRUE):
+  1. Health bars show current (blue), pending damage (red), pending healing (green)
+  2. Combat panel appears when in combat, collapses when peaceful
+  3. Combat messages are color-coded by type (hits, misses, flee)
+  4. Status indicators show parry mode, exhausted, wounded states
+  5. NPC health displayed as descriptive text in messages
+**Plans**: 1 plan
+
+Plans:
+- [x] 06-01: Combat UI components and integration
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -101,7 +117,10 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Messaging & Round Tick | 1/1 | Complete | 2026-01-30 |
 | 4. NPC AI Behavior | 1/1 | Complete | 2026-01-30 |
 | 5. Combat Polish | 1/1 | Complete | 2026-01-30 |
+| 6. Combat UI | 1/1 | Complete | 2026-01-31 |
+
+**ALL PHASES COMPLETE** - NPC Combat System roadmap finished
 
 ---
 *Roadmap created: 2026-01-26*
-*Last updated: 2026-01-26*
+*Last updated: 2026-01-31*

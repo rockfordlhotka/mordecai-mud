@@ -1,0 +1,140 @@
+@*
+    CombatPanel.razor - Collapsible combat log panel
+    
+    Shows 15-20 lines of combat history when in combat.
+    Collapses to minimal state when not in combat.
+*@
+
+@inject IJSRuntime JSRuntime
+
+<div class="combat-panel @(IsInCombat ? "combat-panel-expanded" : "combat-panel-collapsed")">
+    <div class="combat-panel-header" @onclick="ToggleExpanded">
+        <span class="combat-panel-title">
+            @if (IsInCombat)
+            {
+                <span class="combat-indicator combat-active"></span>
+                <span>Combat</span>
+            }
+            else
+            {
+                <span class="combat-indicator combat-inactive"></span>
+                <span>Combat</span>
+            }
+        </span>
+        <span class="combat-panel-toggle">
+            @if (IsExpanded)
+            {
+                <i class="oi oi-chevron-bottom"></i>
+            }
+            else
+            {
+                <i class="oi oi-chevron-top"></i>
+            }
+        </span>
+    </div>
+    
+    @if (IsExpanded)
+    {
+        <div class="combat-panel-body" @ref="logContainer">
+            @if (CombatLog.Any())
+            {
+                @foreach (var entry in CombatLog.TakeLast(MaxLines))
+                {
+                    <div class="combat-log-entry @entry.CssClass">
+                        @((MarkupString)entry.Message)
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="combat-log-empty">No recent combat activity</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Whether the character is currently in combat
+    /// </summary>
+    [Parameter] public bool IsInCombat { get; set; }
+    
+    /// <summary>
+    /// Combat log entries to display
+    /// </summary>
+    [Parameter] public List<CombatLogEntry> CombatLog { get; set; } = new();
+    
+    /// <summary>
+    /// Maximum lines to display
+    /// </summary>
+    [Parameter] public int MaxLines { get; set; } = 18;
+    
+    /// <summary>
+    /// Event callback when panel is toggled
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnToggle { get; set; }
+
+    private bool IsExpanded { get; set; } = true;
+    private ElementReference logContainer;
+
+    protected override void OnParametersSet()
+    {
+        // Auto-expand when combat starts
+        if (IsInCombat && !IsExpanded)
+        {
+            IsExpanded = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsExpanded && CombatLog.Any())
+        {
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task ToggleExpanded()
+    {
+        IsExpanded = !IsExpanded;
+        await OnToggle.InvokeAsync(IsExpanded);
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("scrollToBottom", logContainer);
+        }
+        catch
+        {
+            // Ignore scroll errors
+        }
+    }
+    
+    /// <summary>
+    /// Represents a single combat log entry with styling
+    /// </summary>
+    public class CombatLogEntry
+    {
+        public string Message { get; set; } = string.Empty;
+        public string CssClass { get; set; } = string.Empty;
+        public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
+        public CombatMessageType MessageType { get; set; } = CombatMessageType.Info;
+    }
+    
+    /// <summary>
+    /// Types of combat messages for styling
+    /// </summary>
+    public enum CombatMessageType
+    {
+        Info,
+        HitDealt,      // You hit someone (green)
+        HitReceived,   // You got hit (red)
+        Miss,          // Attack missed (gray)
+        Critical,      // Critical hit (bold)
+        Flee,          // Flee attempt (yellow)
+        CombatStart,   // Combat started
+        CombatEnd      // Combat ended
+    }
+}

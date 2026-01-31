@@ -3,6 +3,17 @@ using Mordecai.Game.Entities;
 namespace Mordecai.Game.Services;
 
 /// <summary>
+/// Combat state snapshot for a character
+/// </summary>
+public record CharacterCombatState(
+    bool IsInCombat,
+    Guid? SessionId,
+    bool IsParryMode,
+    bool IsFleeing = false,
+    string? TargetName = null
+);
+
+/// <summary>
 /// Service interface for managing combat sessions and resolving combat actions
 /// </summary>
 public interface ICombatService
@@ -102,5 +113,12 @@ public interface ICombatService
     /// </summary>
     Task<List<CombatParticipant>> GetCombatParticipantsAsync(
         Guid combatSessionId,
+        CancellationToken cancellationToken = default);
+        
+    /// <summary>
+    /// Gets the combat state snapshot for a player character
+    /// </summary>
+    Task<CharacterCombatState> GetCharacterCombatStateAsync(
+        Guid characterId,
         CancellationToken cancellationToken = default);
 }
