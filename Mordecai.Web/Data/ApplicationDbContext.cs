@@ -60,6 +60,14 @@ public class ApplicationDbContext : IdentityDbContext
     public DbSet<GameEntities.CombatParticipant> CombatParticipants => Set<GameEntities.CombatParticipant>();
     public DbSet<GameEntities.CombatActionLog> CombatActionLogs => Set<GameEntities.CombatActionLog>();
 
+    // Character Effects System
+    public DbSet<GameEntities.CharacterEffectDefinition> CharacterEffectDefinitions => Set<GameEntities.CharacterEffectDefinition>();
+    public DbSet<GameEntities.CharacterEffectImpact> CharacterEffectImpacts => Set<GameEntities.CharacterEffectImpact>();
+    public DbSet<GameEntities.CharacterEffect> CharacterEffects => Set<GameEntities.CharacterEffect>();
+
+    // Mana system
+    public DbSet<GameEntities.CharacterManaPool> CharacterManaPools => Set<GameEntities.CharacterManaPool>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -696,6 +704,92 @@ public class ApplicationDbContext : IdentityDbContext
                 .WithMany()
                 .HasForeignKey(cal => cal.TargetParticipantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // CharacterEffectDefinition configuration
+        builder.Entity<GameEntities.CharacterEffectDefinition>(entity =>
+        {
+            entity.HasIndex(ced => ced.Name);
+            entity.HasIndex(ced => ced.EffectType);
+            entity.HasIndex(ced => ced.IsActive);
+            entity.HasIndex(ced => ced.IsSystemEffect);
+
+            entity.Property(ced => ced.EffectType)
+                .HasConversion<int>();
+
+            entity.Property(ced => ced.DefaultIntensity)
+                .HasPrecision(10, 2);
+        });
+
+        // CharacterEffectImpact configuration
+        builder.Entity<GameEntities.CharacterEffectImpact>(entity =>
+        {
+            entity.HasIndex(cei => cei.CharacterEffectDefinitionId);
+            entity.HasIndex(cei => cei.ImpactType);
+            entity.HasIndex(cei => cei.TargetSkillDefinitionId);
+
+            entity.Property(cei => cei.ImpactType)
+                .HasConversion<int>();
+
+            entity.Property(cei => cei.ModifierValue)
+                .HasPrecision(10, 2);
+
+            // Configure relationships
+            entity.HasOne(cei => cei.Definition)
+                .WithMany(ced => ced.Impacts)
+                .HasForeignKey(cei => cei.CharacterEffectDefinitionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // CharacterEffect configuration
+        builder.Entity<GameEntities.CharacterEffect>(entity =>
+        {
+            entity.HasIndex(ce => ce.CharacterId);
+            entity.HasIndex(ce => ce.EffectDefinitionId);
+            entity.HasIndex(ce => ce.IsActive);
+            entity.HasIndex(ce => ce.ExpiresAt);
+            entity.HasIndex(ce => new { ce.CharacterId, ce.IsActive });
+            entity.HasIndex(ce => new { ce.CharacterId, ce.EffectDefinitionId, ce.IsActive });
+
+            entity.Property(ce => ce.Intensity)
+                .HasPrecision(10, 2);
+
+            entity.Property(ce => ce.BodyLocation)
+                .HasConversion<int?>();
+
+            // Configure relationships
+            entity.HasOne(ce => ce.Character)
+                .WithMany()
+                .HasForeignKey(ce => ce.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ce => ce.SourceCharacter)
+                .WithMany()
+                .HasForeignKey(ce => ce.SourceCharacterId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(ce => ce.EffectDefinition)
+                .WithMany(ced => ced.ActiveEffects)
+                .HasForeignKey(ce => ce.EffectDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // CharacterManaPool configuration
+        builder.Entity<GameEntities.CharacterManaPool>(entity =>
+        {
+            entity.HasKey(mp => mp.Id);
+
+            entity.Property(mp => mp.School)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            // Each character can only have one pool per school
+            entity.HasIndex(mp => new { mp.CharacterId, mp.School }).IsUnique();
+
+            entity.HasOne(mp => mp.Character)
+                .WithMany()
+                .HasForeignKey(mp => mp.CharacterId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

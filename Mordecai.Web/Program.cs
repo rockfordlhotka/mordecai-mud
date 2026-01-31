@@ -91,6 +91,13 @@ builder.Services.AddScoped<ICurrencyService, CurrencyService>();
 // Add room effects service
 builder.Services.AddScoped<IRoomEffectService, RoomEffectService>();
 
+// Add character effects service
+builder.Services.AddScoped<ICharacterEffectService, CharacterEffectService>();
+builder.Services.AddScoped<CharacterEffectSeedService>();
+
+// Add mana service
+builder.Services.AddScoped<IManaService, ManaService>();
+
 // Add spawner service
 builder.Services.AddScoped<ISpawnerService, SpawnerService>();
 
@@ -156,6 +163,10 @@ using (var scope = app.Services.CreateScope())
     // Seed skill data if needed
     var skillSeedService = scope.ServiceProvider.GetRequiredService<SkillSeedService>();
     await skillSeedService.SeedSkillDataAsync();
+    
+    // Seed character effect definitions
+    var characterEffectSeedService = scope.ServiceProvider.GetRequiredService<CharacterEffectSeedService>();
+    await characterEffectSeedService.SeedAsync();
     
     // Run any necessary data migrations
     var dataMigrationService = scope.ServiceProvider.GetRequiredService<DataMigrationService>();

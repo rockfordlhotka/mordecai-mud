@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Mordecai.Web.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Mordecai.Web.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260131034008_AddCharacterEffectsSystem")]
+    partial class AddCharacterEffectsSystem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -673,42 +676,6 @@ namespace Mordecai.Web.Migrations
                     b.HasIndex("LastCalculatedAt");
 
                     b.ToTable("CharacterInventories");
-                });
-
-            modelBuilder.Entity("Mordecai.Game.Entities.CharacterManaPool", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("CharacterId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("CurrentMana")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("GatheringStartedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("LastRegenAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("MaxMana")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("School")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CharacterId", "School")
-                        .IsUnique();
-
-                    b.ToTable("CharacterManaPools");
                 });
 
             modelBuilder.Entity("Mordecai.Game.Entities.CharacterSkill", b =>
@@ -2681,17 +2648,6 @@ namespace Mordecai.Web.Migrations
                     b.HasOne("Mordecai.Game.Entities.Character", "Character")
                         .WithOne()
                         .HasForeignKey("Mordecai.Game.Entities.CharacterInventory", "CharacterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Character");
-                });
-
-            modelBuilder.Entity("Mordecai.Game.Entities.CharacterManaPool", b =>
-                {
-                    b.HasOne("Mordecai.Game.Entities.Character", "Character")
-                        .WithMany()
-                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
