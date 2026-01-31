@@ -71,6 +71,7 @@ builder.Services.AddScoped<DataMigrationService>();
 // Add seed services
 builder.Services.AddScoped<SkillSeedService>();
 builder.Services.AddScoped<RoomTypeSeedService>();
+builder.Services.AddScoped<ItemSeedService>();
 
 // Add game services
 builder.Services.AddSingleton<IGameTimeService, GameTimeService>();
@@ -97,6 +98,9 @@ builder.Services.AddScoped<CharacterEffectSeedService>();
 
 // Add mana service
 builder.Services.AddScoped<IManaService, ManaService>();
+
+// Add spell casting service
+builder.Services.AddScoped<ISpellCastingService, SpellCastingService>();
 
 // Add spawner service
 builder.Services.AddScoped<ISpawnerService, SpawnerService>();
@@ -167,6 +171,10 @@ using (var scope = app.Services.CreateScope())
     // Seed character effect definitions
     var characterEffectSeedService = scope.ServiceProvider.GetRequiredService<CharacterEffectSeedService>();
     await characterEffectSeedService.SeedAsync();
+    
+    // Seed item templates
+    var itemSeedService = scope.ServiceProvider.GetRequiredService<ItemSeedService>();
+    await itemSeedService.SeedItemDataAsync();
     
     // Run any necessary data migrations
     var dataMigrationService = scope.ServiceProvider.GetRequiredService<DataMigrationService>();
